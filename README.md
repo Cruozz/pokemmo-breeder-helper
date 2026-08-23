@@ -12,12 +12,22 @@
 
 ## 运行
 
-开发运行：
+新电脑首次使用：
 
 ```powershell
-$py = 'C:\Users\Chenruo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-& $py app.py
+Set-ExecutionPolicy -Scope Process Bypass
+./setup.ps1
+python app.py
 ```
+
+如果电脑同时安装了多个 Python，可以指定解释器：
+
+```powershell
+./setup.ps1 -Python 'C:\Path\to\python.exe'
+./build.ps1 -Python 'C:\Path\to\python.exe'
+```
+
+`setup.ps1` 会把 OCR 和打包依赖安装到项目自己的 `vendor/` 目录；该目录被 Git 忽略，不需要上传。
 
 首次运行建议按下面的顺序使用：
 
