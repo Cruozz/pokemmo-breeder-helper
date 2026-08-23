@@ -1,0 +1,2 @@
+rapidocr_onnxruntime==1.4.4
+pyinstaller==6.22.2
