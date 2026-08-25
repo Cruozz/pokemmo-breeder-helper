@@ -1,5 +1,10 @@
 __pycache__/
 build/
+build-onefile/
 dist/
+release/
+build-update/
+dist-update/
 *.spec
 vendor/
+.runtime/

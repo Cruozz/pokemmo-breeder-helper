@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "description": "Reviewed OCR confusions observed in user-provided PokeMMO screenshots.",
+  "aliases": {
+    "吸章": "吸取",
+    "吸联": "吸取",
+    "麻牌粉": "麻痹粉",
+    "长豪": "长嚎"
+  }
+}

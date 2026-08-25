@@ -1,0 +1,5553 @@
+{
+  "schema_version": 1,
+  "scope": "Moves introduced in generations 1-5; used only as an OCR name dictionary",
+  "source": "PokeAPI/pokeapi CSV data",
+  "source_url": "https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv",
+  "moves": [
+    {
+      "id": 1,
+      "identifier": "pound",
+      "names": [
+        "pound",
+        "Pound",
+        "拍击",
+        "拍擊"
+      ]
+    },
+    {
+      "id": 2,
+      "identifier": "karate-chop",
+      "names": [
+        "karate-chop",
+        "Karate Chop",
+        "空手劈"
+      ]
+    },
+    {
+      "id": 3,
+      "identifier": "double-slap",
+      "names": [
+        "double-slap",
+        "Double Slap",
+        "连环巴掌",
+        "連環巴掌"
+      ]
+    },
+    {
+      "id": 4,
+      "identifier": "comet-punch",
+      "names": [
+        "comet-punch",
+        "Comet Punch",
+        "连续拳",
+        "連續拳"
+      ]
+    },
+    {
+      "id": 5,
+      "identifier": "mega-punch",
+      "names": [
+        "mega-punch",
+        "Mega Punch",
+        "百万吨重拳",
+        "百萬噸重拳"
+      ]
+    },
+    {
+      "id": 6,
+      "identifier": "pay-day",
+      "names": [
+        "pay-day",
+        "Pay Day",
+        "聚宝功",
+        "聚寶功"
+      ]
+    },
+    {
+      "id": 7,
+      "identifier": "fire-punch",
+      "names": [
+        "fire-punch",
+        "Fire Punch",
+        "火焰拳"
+      ]
+    },
+    {
+      "id": 8,
+      "identifier": "ice-punch",
+      "names": [
+        "ice-punch",
+        "Ice Punch",
+        "冰冻拳",
+        "冰凍拳"
+      ]
+    },
+    {
+      "id": 9,
+      "identifier": "thunder-punch",
+      "names": [
+        "thunder-punch",
+        "Thunder Punch",
+        "雷电拳",
+        "雷電拳"
+      ]
+    },
+    {
+      "id": 10,
+      "identifier": "scratch",
+      "names": [
+        "scratch",
+        "Scratch",
+        "抓"
+      ]
+    },
+    {
+      "id": 11,
+      "identifier": "vice-grip",
+      "names": [
+        "vice-grip",
+        "Vise Grip",
+        "夹住",
+        "夾住"
+      ]
+    },
+    {
+      "id": 12,
+      "identifier": "guillotine",
+      "names": [
+        "guillotine",
+        "Guillotine",
+        "断头钳",
+        "斷頭鉗"
+      ]
+    },
+    {
+      "id": 13,
+      "identifier": "razor-wind",
+      "names": [
+        "razor-wind",
+        "Razor Wind",
+        "旋风刀",
+        "旋風刀"
+      ]
+    },
+    {
+      "id": 14,
+      "identifier": "swords-dance",
+      "names": [
+        "swords-dance",
+        "Swords Dance",
+        "剑舞",
+        "劍舞"
+      ]
+    },
+    {
+      "id": 15,
+      "identifier": "cut",
+      "names": [
+        "cut",
+        "Cut",
+        "居合斩",
+        "居合斬"
+      ]
+    },
+    {
+      "id": 16,
+      "identifier": "gust",
+      "names": [
+        "gust",
+        "Gust",
+        "起风",
+        "起風"
+      ]
+    },
+    {
+      "id": 17,
+      "identifier": "wing-attack",
+      "names": [
+        "wing-attack",
+        "Wing Attack",
+        "翅膀攻击",
+        "翅膀攻擊"
+      ]
+    },
+    {
+      "id": 18,
+      "identifier": "whirlwind",
+      "names": [
+        "whirlwind",
+        "Whirlwind",
+        "吹飞",
+        "吹飛"
+      ]
+    },
+    {
+      "id": 19,
+      "identifier": "fly",
+      "names": [
+        "fly",
+        "Fly",
+        "飞翔",
+        "飛翔"
+      ]
+    },
+    {
+      "id": 20,
+      "identifier": "bind",
+      "names": [
+        "bind",
+        "Bind",
+        "绑紧",
+        "綁緊"
+      ]
+    },
+    {
+      "id": 21,
+      "identifier": "slam",
+      "names": [
+        "slam",
+        "Slam",
+        "摔打"
+      ]
+    },
+    {
+      "id": 22,
+      "identifier": "vine-whip",
+      "names": [
+        "vine-whip",
+        "Vine Whip",
+        "藤鞭"
+      ]
+    },
+    {
+      "id": 23,
+      "identifier": "stomp",
+      "names": [
+        "stomp",
+        "Stomp",
+        "踩踏"
+      ]
+    },
+    {
+      "id": 24,
+      "identifier": "double-kick",
+      "names": [
+        "double-kick",
+        "Double Kick",
+        "二连踢",
+        "二連踢"
+      ]
+    },
+    {
+      "id": 25,
+      "identifier": "mega-kick",
+      "names": [
+        "mega-kick",
+        "Mega Kick",
+        "百万吨重踢",
+        "百萬噸重踢"
+      ]
+    },
+    {
+      "id": 26,
+      "identifier": "jump-kick",
+      "names": [
+        "jump-kick",
+        "Jump Kick",
+        "飞踢",
+        "飛踢"
+      ]
+    },
+    {
+      "id": 27,
+      "identifier": "rolling-kick",
+      "names": [
+        "rolling-kick",
+        "Rolling Kick",
+        "回旋踢",
+        "迴旋踢"
+      ]
+    },
+    {
+      "id": 28,
+      "identifier": "sand-attack",
+      "names": [
+        "sand-attack",
+        "Sand Attack",
+        "泼沙",
+        "潑沙"
+      ]
+    },
+    {
+      "id": 29,
+      "identifier": "headbutt",
+      "names": [
+        "headbutt",
+        "Headbutt",
+        "头锤",
+        "頭錘"
+      ]
+    },
+    {
+      "id": 30,
+      "identifier": "horn-attack",
+      "names": [
+        "horn-attack",
+        "Horn Attack",
+        "角撞"
+      ]
+    },
+    {
+      "id": 31,
+      "identifier": "fury-attack",
+      "names": [
+        "fury-attack",
+        "Fury Attack",
+        "乱击",
+        "亂擊"
+      ]
+    },
+    {
+      "id": 32,
+      "identifier": "horn-drill",
+      "names": [
+        "horn-drill",
+        "Horn Drill",
+        "角钻",
+        "角鑽"
+      ]
+    },
+    {
+      "id": 33,
+      "identifier": "tackle",
+      "names": [
+        "tackle",
+        "Tackle",
+        "撞击",
+        "撞擊"
+      ]
+    },
+    {
+      "id": 34,
+      "identifier": "body-slam",
+      "names": [
+        "body-slam",
+        "Body Slam",
+        "泰山压顶",
+        "泰山壓頂"
+      ]
+    },
+    {
+      "id": 35,
+      "identifier": "wrap",
+      "names": [
+        "wrap",
+        "Wrap",
+        "紧束",
+        "緊束"
+      ]
+    },
+    {
+      "id": 36,
+      "identifier": "take-down",
+      "names": [
+        "take-down",
+        "Take Down",
+        "猛撞"
+      ]
+    },
+    {
+      "id": 37,
+      "identifier": "thrash",
+      "names": [
+        "thrash",
+        "Thrash",
+        "大闹一番",
+        "大鬧一番"
+      ]
+    },
+    {
+      "id": 38,
+      "identifier": "double-edge",
+      "names": [
+        "double-edge",
+        "Double-Edge",
+        "舍身冲撞",
+        "捨身衝撞"
+      ]
+    },
+    {
+      "id": 39,
+      "identifier": "tail-whip",
+      "names": [
+        "tail-whip",
+        "Tail Whip",
+        "摇尾巴",
+        "搖尾巴"
+      ]
+    },
+    {
+      "id": 40,
+      "identifier": "poison-sting",
+      "names": [
+        "poison-sting",
+        "Poison Sting",
+        "毒针",
+        "毒針"
+      ]
+    },
+    {
+      "id": 41,
+      "identifier": "twineedle",
+      "names": [
+        "twineedle",
+        "Twineedle",
+        "双针",
+        "雙針"
+      ]
+    },
+    {
+      "id": 42,
+      "identifier": "pin-missile",
+      "names": [
+        "pin-missile",
+        "Pin Missile",
+        "飞弹针",
+        "飛彈針"
+      ]
+    },
+    {
+      "id": 43,
+      "identifier": "leer",
+      "names": [
+        "leer",
+        "Leer",
+        "瞪眼"
+      ]
+    },
+    {
+      "id": 44,
+      "identifier": "bite",
+      "names": [
+        "bite",
+        "Bite",
+        "咬住"
+      ]
+    },
+    {
+      "id": 45,
+      "identifier": "growl",
+      "names": [
+        "growl",
+        "Growl",
+        "叫声",
+        "叫聲"
+      ]
+    },
+    {
+      "id": 46,
+      "identifier": "roar",
+      "names": [
+        "roar",
+        "Roar",
+        "吼叫"
+      ]
+    },
+    {
+      "id": 47,
+      "identifier": "sing",
+      "names": [
+        "sing",
+        "Sing",
+        "唱歌"
+      ]
+    },
+    {
+      "id": 48,
+      "identifier": "supersonic",
+      "names": [
+        "supersonic",
+        "Supersonic",
+        "超音波"
+      ]
+    },
+    {
+      "id": 49,
+      "identifier": "sonic-boom",
+      "names": [
+        "sonic-boom",
+        "Sonic Boom",
+        "音爆"
+      ]
+    },
+    {
+      "id": 50,
+      "identifier": "disable",
+      "names": [
+        "disable",
+        "Disable",
+        "定身法"
+      ]
+    },
+    {
+      "id": 51,
+      "identifier": "acid",
+      "names": [
+        "acid",
+        "Acid",
+        "溶解液"
+      ]
+    },
+    {
+      "id": 52,
+      "identifier": "ember",
+      "names": [
+        "ember",
+        "Ember",
+        "火花"
+      ]
+    },
+    {
+      "id": 53,
+      "identifier": "flamethrower",
+      "names": [
+        "flamethrower",
+        "Flamethrower",
+        "喷射火焰",
+        "噴射火焰"
+      ]
+    },
+    {
+      "id": 54,
+      "identifier": "mist",
+      "names": [
+        "mist",
+        "Mist",
+        "白雾",
+        "白霧"
+      ]
+    },
+    {
+      "id": 55,
+      "identifier": "water-gun",
+      "names": [
+        "water-gun",
+        "Water Gun",
+        "水枪",
+        "水槍"
+      ]
+    },
+    {
+      "id": 56,
+      "identifier": "hydro-pump",
+      "names": [
+        "hydro-pump",
+        "Hydro Pump",
+        "水炮"
+      ]
+    },
+    {
+      "id": 57,
+      "identifier": "surf",
+      "names": [
+        "surf",
+        "Surf",
+        "冲浪",
+        "衝浪"
+      ]
+    },
+    {
+      "id": 58,
+      "identifier": "ice-beam",
+      "names": [
+        "ice-beam",
+        "Ice Beam",
+        "冰冻光束",
+        "冰凍光束"
+      ]
+    },
+    {
+      "id": 59,
+      "identifier": "blizzard",
+      "names": [
+        "blizzard",
+        "Blizzard",
+        "暴风雪",
+        "暴風雪"
+      ]
+    },
+    {
+      "id": 60,
+      "identifier": "psybeam",
+      "names": [
+        "psybeam",
+        "Psybeam",
+        "幻象光线",
+        "幻象光線"
+      ]
+    },
+    {
+      "id": 61,
+      "identifier": "bubble-beam",
+      "names": [
+        "bubble-beam",
+        "Bubble Beam",
+        "泡沫光线",
+        "泡沫光線"
+      ]
+    },
+    {
+      "id": 62,
+      "identifier": "aurora-beam",
+      "names": [
+        "aurora-beam",
+        "Aurora Beam",
+        "极光束",
+        "極光束"
+      ]
+    },
+    {
+      "id": 63,
+      "identifier": "hyper-beam",
+      "names": [
+        "hyper-beam",
+        "Hyper Beam",
+        "破坏光线",
+        "破壞光線"
+      ]
+    },
+    {
+      "id": 64,
+      "identifier": "peck",
+      "names": [
+        "peck",
+        "Peck",
+        "啄"
+      ]
+    },
+    {
+      "id": 65,
+      "identifier": "drill-peck",
+      "names": [
+        "drill-peck",
+        "Drill Peck",
+        "啄钻",
+        "啄鑽"
+      ]
+    },
+    {
+      "id": 66,
+      "identifier": "submission",
+      "names": [
+        "submission",
+        "Submission",
+        "地狱翻滚",
+        "地獄翻滾"
+      ]
+    },
+    {
+      "id": 67,
+      "identifier": "low-kick",
+      "names": [
+        "low-kick",
+        "Low Kick",
+        "踢倒"
+      ]
+    },
+    {
+      "id": 68,
+      "identifier": "counter",
+      "names": [
+        "counter",
+        "Counter",
+        "双倍奉还",
+        "雙倍奉還"
+      ]
+    },
+    {
+      "id": 69,
+      "identifier": "seismic-toss",
+      "names": [
+        "seismic-toss",
+        "Seismic Toss",
+        "地球上投"
+      ]
+    },
+    {
+      "id": 70,
+      "identifier": "strength",
+      "names": [
+        "strength",
+        "Strength",
+        "怪力"
+      ]
+    },
+    {
+      "id": 71,
+      "identifier": "absorb",
+      "names": [
+        "absorb",
+        "Absorb",
+        "吸取"
+      ]
+    },
+    {
+      "id": 72,
+      "identifier": "mega-drain",
+      "names": [
+        "mega-drain",
+        "Mega Drain",
+        "超级吸取",
+        "超級吸取"
+      ]
+    },
+    {
+      "id": 73,
+      "identifier": "leech-seed",
+      "names": [
+        "leech-seed",
+        "Leech Seed",
+        "寄生种子",
+        "寄生種子"
+      ]
+    },
+    {
+      "id": 74,
+      "identifier": "growth",
+      "names": [
+        "growth",
+        "Growth",
+        "生长",
+        "生長"
+      ]
+    },
+    {
+      "id": 75,
+      "identifier": "razor-leaf",
+      "names": [
+        "razor-leaf",
+        "Razor Leaf",
+        "飞叶快刀",
+        "飛葉快刀"
+      ]
+    },
+    {
+      "id": 76,
+      "identifier": "solar-beam",
+      "names": [
+        "solar-beam",
+        "Solar Beam",
+        "日光束"
+      ]
+    },
+    {
+      "id": 77,
+      "identifier": "poison-powder",
+      "names": [
+        "poison-powder",
+        "Poison Powder",
+        "毒粉"
+      ]
+    },
+    {
+      "id": 78,
+      "identifier": "stun-spore",
+      "names": [
+        "stun-spore",
+        "Stun Spore",
+        "麻痹粉",
+        "麻痺粉"
+      ]
+    },
+    {
+      "id": 79,
+      "identifier": "sleep-powder",
+      "names": [
+        "sleep-powder",
+        "Sleep Powder",
+        "催眠粉"
+      ]
+    },
+    {
+      "id": 80,
+      "identifier": "petal-dance",
+      "names": [
+        "petal-dance",
+        "Petal Dance",
+        "花瓣舞"
+      ]
+    },
+    {
+      "id": 81,
+      "identifier": "string-shot",
+      "names": [
+        "string-shot",
+        "String Shot",
+        "吐丝",
+        "吐絲"
+      ]
+    },
+    {
+      "id": 82,
+      "identifier": "dragon-rage",
+      "names": [
+        "dragon-rage",
+        "Dragon Rage",
+        "龙之怒",
+        "龍之怒"
+      ]
+    },
+    {
+      "id": 83,
+      "identifier": "fire-spin",
+      "names": [
+        "fire-spin",
+        "Fire Spin",
+        "火焰旋涡",
+        "火焰旋渦"
+      ]
+    },
+    {
+      "id": 84,
+      "identifier": "thunder-shock",
+      "names": [
+        "thunder-shock",
+        "Thunder Shock",
+        "电击",
+        "電擊"
+      ]
+    },
+    {
+      "id": 85,
+      "identifier": "thunderbolt",
+      "names": [
+        "thunderbolt",
+        "Thunderbolt",
+        "十万伏特",
+        "十萬伏特"
+      ]
+    },
+    {
+      "id": 86,
+      "identifier": "thunder-wave",
+      "names": [
+        "thunder-wave",
+        "Thunder Wave",
+        "电磁波",
+        "電磁波"
+      ]
+    },
+    {
+      "id": 87,
+      "identifier": "thunder",
+      "names": [
+        "thunder",
+        "Thunder",
+        "打雷"
+      ]
+    },
+    {
+      "id": 88,
+      "identifier": "rock-throw",
+      "names": [
+        "rock-throw",
+        "Rock Throw",
+        "落石"
+      ]
+    },
+    {
+      "id": 89,
+      "identifier": "earthquake",
+      "names": [
+        "earthquake",
+        "Earthquake",
+        "地震"
+      ]
+    },
+    {
+      "id": 90,
+      "identifier": "fissure",
+      "names": [
+        "fissure",
+        "Fissure",
+        "地裂"
+      ]
+    },
+    {
+      "id": 91,
+      "identifier": "dig",
+      "names": [
+        "dig",
+        "Dig",
+        "挖洞"
+      ]
+    },
+    {
+      "id": 92,
+      "identifier": "toxic",
+      "names": [
+        "toxic",
+        "Toxic",
+        "剧毒",
+        "劇毒"
+      ]
+    },
+    {
+      "id": 93,
+      "identifier": "confusion",
+      "names": [
+        "confusion",
+        "Confusion",
+        "念力"
+      ]
+    },
+    {
+      "id": 94,
+      "identifier": "psychic",
+      "names": [
+        "psychic",
+        "Psychic",
+        "精神强念",
+        "精神強念"
+      ]
+    },
+    {
+      "id": 95,
+      "identifier": "hypnosis",
+      "names": [
+        "hypnosis",
+        "Hypnosis",
+        "催眠术",
+        "催眠術"
+      ]
+    },
+    {
+      "id": 96,
+      "identifier": "meditate",
+      "names": [
+        "meditate",
+        "Meditate",
+        "瑜伽姿势",
+        "瑜伽姿勢"
+      ]
+    },
+    {
+      "id": 97,
+      "identifier": "agility",
+      "names": [
+        "agility",
+        "Agility",
+        "高速移动",
+        "高速移動"
+      ]
+    },
+    {
+      "id": 98,
+      "identifier": "quick-attack",
+      "names": [
+        "quick-attack",
+        "Quick Attack",
+        "电光一闪",
+        "電光一閃"
+      ]
+    },
+    {
+      "id": 99,
+      "identifier": "rage",
+      "names": [
+        "rage",
+        "Rage",
+        "愤怒",
+        "憤怒"
+      ]
+    },
+    {
+      "id": 100,
+      "identifier": "teleport",
+      "names": [
+        "teleport",
+        "Teleport",
+        "瞬间移动",
+        "瞬間移動"
+      ]
+    },
+    {
+      "id": 101,
+      "identifier": "night-shade",
+      "names": [
+        "night-shade",
+        "Night Shade",
+        "黑夜魔影"
+      ]
+    },
+    {
+      "id": 102,
+      "identifier": "mimic",
+      "names": [
+        "mimic",
+        "Mimic",
+        "模仿"
+      ]
+    },
+    {
+      "id": 103,
+      "identifier": "screech",
+      "names": [
+        "screech",
+        "Screech",
+        "刺耳声",
+        "刺耳聲"
+      ]
+    },
+    {
+      "id": 104,
+      "identifier": "double-team",
+      "names": [
+        "double-team",
+        "Double Team",
+        "影子分身"
+      ]
+    },
+    {
+      "id": 105,
+      "identifier": "recover",
+      "names": [
+        "recover",
+        "Recover",
+        "自我再生"
+      ]
+    },
+    {
+      "id": 106,
+      "identifier": "harden",
+      "names": [
+        "harden",
+        "Harden",
+        "变硬",
+        "變硬"
+      ]
+    },
+    {
+      "id": 107,
+      "identifier": "minimize",
+      "names": [
+        "minimize",
+        "Minimize",
+        "变小",
+        "變小"
+      ]
+    },
+    {
+      "id": 108,
+      "identifier": "smokescreen",
+      "names": [
+        "smokescreen",
+        "Smokescreen",
+        "烟幕",
+        "煙幕"
+      ]
+    },
+    {
+      "id": 109,
+      "identifier": "confuse-ray",
+      "names": [
+        "confuse-ray",
+        "Confuse Ray",
+        "奇异之光",
+        "奇異之光"
+      ]
+    },
+    {
+      "id": 110,
+      "identifier": "withdraw",
+      "names": [
+        "withdraw",
+        "Withdraw",
+        "缩入壳中",
+        "縮入殼中"
+      ]
+    },
+    {
+      "id": 111,
+      "identifier": "defense-curl",
+      "names": [
+        "defense-curl",
+        "Defense Curl",
+        "变圆",
+        "變圓"
+      ]
+    },
+    {
+      "id": 112,
+      "identifier": "barrier",
+      "names": [
+        "barrier",
+        "Barrier",
+        "屏障"
+      ]
+    },
+    {
+      "id": 113,
+      "identifier": "light-screen",
+      "names": [
+        "light-screen",
+        "Light Screen",
+        "光墙",
+        "光牆"
+      ]
+    },
+    {
+      "id": 114,
+      "identifier": "haze",
+      "names": [
+        "haze",
+        "Haze",
+        "黑雾",
+        "黑霧"
+      ]
+    },
+    {
+      "id": 115,
+      "identifier": "reflect",
+      "names": [
+        "reflect",
+        "Reflect",
+        "反射壁"
+      ]
+    },
+    {
+      "id": 116,
+      "identifier": "focus-energy",
+      "names": [
+        "focus-energy",
+        "Focus Energy",
+        "聚气",
+        "聚氣"
+      ]
+    },
+    {
+      "id": 117,
+      "identifier": "bide",
+      "names": [
+        "bide",
+        "Bide",
+        "忍耐"
+      ]
+    },
+    {
+      "id": 118,
+      "identifier": "metronome",
+      "names": [
+        "metronome",
+        "Metronome",
+        "挥指",
+        "揮指"
+      ]
+    },
+    {
+      "id": 119,
+      "identifier": "mirror-move",
+      "names": [
+        "mirror-move",
+        "Mirror Move",
+        "鹦鹉学舌",
+        "鸚鵡學舌"
+      ]
+    },
+    {
+      "id": 120,
+      "identifier": "self-destruct",
+      "names": [
+        "self-destruct",
+        "Self-Destruct",
+        "自爆"
+      ]
+    },
+    {
+      "id": 121,
+      "identifier": "egg-bomb",
+      "names": [
+        "egg-bomb",
+        "Egg Bomb",
+        "炸蛋"
+      ]
+    },
+    {
+      "id": 122,
+      "identifier": "lick",
+      "names": [
+        "lick",
+        "Lick",
+        "舌舔"
+      ]
+    },
+    {
+      "id": 123,
+      "identifier": "smog",
+      "names": [
+        "smog",
+        "Smog",
+        "浊雾",
+        "濁霧"
+      ]
+    },
+    {
+      "id": 124,
+      "identifier": "sludge",
+      "names": [
+        "sludge",
+        "Sludge",
+        "污泥攻击",
+        "污泥攻擊"
+      ]
+    },
+    {
+      "id": 125,
+      "identifier": "bone-club",
+      "names": [
+        "bone-club",
+        "Bone Club",
+        "骨棒"
+      ]
+    },
+    {
+      "id": 126,
+      "identifier": "fire-blast",
+      "names": [
+        "fire-blast",
+        "Fire Blast",
+        "大字爆炎"
+      ]
+    },
+    {
+      "id": 127,
+      "identifier": "waterfall",
+      "names": [
+        "waterfall",
+        "Waterfall",
+        "攀瀑"
+      ]
+    },
+    {
+      "id": 128,
+      "identifier": "clamp",
+      "names": [
+        "clamp",
+        "Clamp",
+        "贝壳夹击",
+        "貝殼夾擊"
+      ]
+    },
+    {
+      "id": 129,
+      "identifier": "swift",
+      "names": [
+        "swift",
+        "Swift",
+        "高速星星"
+      ]
+    },
+    {
+      "id": 130,
+      "identifier": "skull-bash",
+      "names": [
+        "skull-bash",
+        "Skull Bash",
+        "火箭头锤",
+        "火箭頭錘"
+      ]
+    },
+    {
+      "id": 131,
+      "identifier": "spike-cannon",
+      "names": [
+        "spike-cannon",
+        "Spike Cannon",
+        "尖刺加农炮",
+        "尖刺加農炮"
+      ]
+    },
+    {
+      "id": 132,
+      "identifier": "constrict",
+      "names": [
+        "constrict",
+        "Constrict",
+        "缠绕",
+        "纏繞"
+      ]
+    },
+    {
+      "id": 133,
+      "identifier": "amnesia",
+      "names": [
+        "amnesia",
+        "Amnesia",
+        "瞬间失忆",
+        "瞬間失憶"
+      ]
+    },
+    {
+      "id": 134,
+      "identifier": "kinesis",
+      "names": [
+        "kinesis",
+        "Kinesis",
+        "折弯汤匙",
+        "折彎湯匙"
+      ]
+    },
+    {
+      "id": 135,
+      "identifier": "soft-boiled",
+      "names": [
+        "soft-boiled",
+        "Soft-Boiled",
+        "生蛋"
+      ]
+    },
+    {
+      "id": 136,
+      "identifier": "high-jump-kick",
+      "names": [
+        "high-jump-kick",
+        "High Jump Kick",
+        "飞膝踢",
+        "飛膝踢"
+      ]
+    },
+    {
+      "id": 137,
+      "identifier": "glare",
+      "names": [
+        "glare",
+        "Glare",
+        "大蛇瞪眼"
+      ]
+    },
+    {
+      "id": 138,
+      "identifier": "dream-eater",
+      "names": [
+        "dream-eater",
+        "Dream Eater",
+        "食梦",
+        "食夢"
+      ]
+    },
+    {
+      "id": 139,
+      "identifier": "poison-gas",
+      "names": [
+        "poison-gas",
+        "Poison Gas",
+        "毒瓦斯"
+      ]
+    },
+    {
+      "id": 140,
+      "identifier": "barrage",
+      "names": [
+        "barrage",
+        "Barrage",
+        "投球"
+      ]
+    },
+    {
+      "id": 141,
+      "identifier": "leech-life",
+      "names": [
+        "leech-life",
+        "Leech Life",
+        "吸血"
+      ]
+    },
+    {
+      "id": 142,
+      "identifier": "lovely-kiss",
+      "names": [
+        "lovely-kiss",
+        "Lovely Kiss",
+        "恶魔之吻",
+        "惡魔之吻"
+      ]
+    },
+    {
+      "id": 143,
+      "identifier": "sky-attack",
+      "names": [
+        "sky-attack",
+        "Sky Attack",
+        "神鸟猛击",
+        "神鳥猛擊"
+      ]
+    },
+    {
+      "id": 144,
+      "identifier": "transform",
+      "names": [
+        "transform",
+        "Transform",
+        "变身",
+        "變身"
+      ]
+    },
+    {
+      "id": 145,
+      "identifier": "bubble",
+      "names": [
+        "bubble",
+        "Bubble",
+        "泡沫"
+      ]
+    },
+    {
+      "id": 146,
+      "identifier": "dizzy-punch",
+      "names": [
+        "dizzy-punch",
+        "Dizzy Punch",
+        "迷昏拳"
+      ]
+    },
+    {
+      "id": 147,
+      "identifier": "spore",
+      "names": [
+        "spore",
+        "Spore",
+        "蘑菇孢子"
+      ]
+    },
+    {
+      "id": 148,
+      "identifier": "flash",
+      "names": [
+        "flash",
+        "Flash",
+        "闪光",
+        "閃光"
+      ]
+    },
+    {
+      "id": 149,
+      "identifier": "psywave",
+      "names": [
+        "psywave",
+        "Psywave",
+        "精神波"
+      ]
+    },
+    {
+      "id": 150,
+      "identifier": "splash",
+      "names": [
+        "splash",
+        "Splash",
+        "跃起",
+        "躍起"
+      ]
+    },
+    {
+      "id": 151,
+      "identifier": "acid-armor",
+      "names": [
+        "acid-armor",
+        "Acid Armor",
+        "溶化"
+      ]
+    },
+    {
+      "id": 152,
+      "identifier": "crabhammer",
+      "names": [
+        "crabhammer",
+        "Crabhammer",
+        "蟹钳锤",
+        "蟹鉗錘"
+      ]
+    },
+    {
+      "id": 153,
+      "identifier": "explosion",
+      "names": [
+        "explosion",
+        "Explosion",
+        "大爆炸"
+      ]
+    },
+    {
+      "id": 154,
+      "identifier": "fury-swipes",
+      "names": [
+        "fury-swipes",
+        "Fury Swipes",
+        "乱抓",
+        "亂抓"
+      ]
+    },
+    {
+      "id": 155,
+      "identifier": "bonemerang",
+      "names": [
+        "bonemerang",
+        "Bonemerang",
+        "骨头回力镖",
+        "骨頭回力鏢"
+      ]
+    },
+    {
+      "id": 156,
+      "identifier": "rest",
+      "names": [
+        "rest",
+        "Rest",
+        "睡觉",
+        "睡覺"
+      ]
+    },
+    {
+      "id": 157,
+      "identifier": "rock-slide",
+      "names": [
+        "rock-slide",
+        "Rock Slide",
+        "岩崩"
+      ]
+    },
+    {
+      "id": 158,
+      "identifier": "hyper-fang",
+      "names": [
+        "hyper-fang",
+        "Hyper Fang",
+        "必杀门牙",
+        "必殺門牙"
+      ]
+    },
+    {
+      "id": 159,
+      "identifier": "sharpen",
+      "names": [
+        "sharpen",
+        "Sharpen",
+        "棱角化",
+        "稜角化"
+      ]
+    },
+    {
+      "id": 160,
+      "identifier": "conversion",
+      "names": [
+        "conversion",
+        "Conversion",
+        "纹理",
+        "紋理"
+      ]
+    },
+    {
+      "id": 161,
+      "identifier": "tri-attack",
+      "names": [
+        "tri-attack",
+        "Tri Attack",
+        "三重攻击",
+        "三重攻擊"
+      ]
+    },
+    {
+      "id": 162,
+      "identifier": "super-fang",
+      "names": [
+        "super-fang",
+        "Super Fang",
+        "愤怒门牙",
+        "憤怒門牙"
+      ]
+    },
+    {
+      "id": 163,
+      "identifier": "slash",
+      "names": [
+        "slash",
+        "Slash",
+        "劈开",
+        "劈開"
+      ]
+    },
+    {
+      "id": 164,
+      "identifier": "substitute",
+      "names": [
+        "substitute",
+        "Substitute",
+        "替身"
+      ]
+    },
+    {
+      "id": 165,
+      "identifier": "struggle",
+      "names": [
+        "struggle",
+        "Struggle",
+        "挣扎",
+        "掙扎"
+      ]
+    },
+    {
+      "id": 166,
+      "identifier": "sketch",
+      "names": [
+        "sketch",
+        "Sketch",
+        "写生",
+        "寫生"
+      ]
+    },
+    {
+      "id": 167,
+      "identifier": "triple-kick",
+      "names": [
+        "triple-kick",
+        "Triple Kick",
+        "三连踢",
+        "三連踢"
+      ]
+    },
+    {
+      "id": 168,
+      "identifier": "thief",
+      "names": [
+        "thief",
+        "Thief",
+        "小偷"
+      ]
+    },
+    {
+      "id": 169,
+      "identifier": "spider-web",
+      "names": [
+        "spider-web",
+        "Spider Web",
+        "蛛网",
+        "蛛網"
+      ]
+    },
+    {
+      "id": 170,
+      "identifier": "mind-reader",
+      "names": [
+        "mind-reader",
+        "Mind Reader",
+        "心之眼"
+      ]
+    },
+    {
+      "id": 171,
+      "identifier": "nightmare",
+      "names": [
+        "nightmare",
+        "Nightmare",
+        "恶梦",
+        "惡夢"
+      ]
+    },
+    {
+      "id": 172,
+      "identifier": "flame-wheel",
+      "names": [
+        "flame-wheel",
+        "Flame Wheel",
+        "火焰轮",
+        "火焰輪"
+      ]
+    },
+    {
+      "id": 173,
+      "identifier": "snore",
+      "names": [
+        "snore",
+        "Snore",
+        "打鼾"
+      ]
+    },
+    {
+      "id": 174,
+      "identifier": "curse",
+      "names": [
+        "curse",
+        "Curse",
+        "诅咒",
+        "詛咒"
+      ]
+    },
+    {
+      "id": 175,
+      "identifier": "flail",
+      "names": [
+        "flail",
+        "Flail",
+        "抓狂"
+      ]
+    },
+    {
+      "id": 176,
+      "identifier": "conversion-2",
+      "names": [
+        "conversion-2",
+        "Conversion 2",
+        "纹理２",
+        "紋理２"
+      ]
+    },
+    {
+      "id": 177,
+      "identifier": "aeroblast",
+      "names": [
+        "aeroblast",
+        "Aeroblast",
+        "气旋攻击",
+        "氣旋攻擊"
+      ]
+    },
+    {
+      "id": 178,
+      "identifier": "cotton-spore",
+      "names": [
+        "cotton-spore",
+        "Cotton Spore",
+        "棉孢子"
+      ]
+    },
+    {
+      "id": 179,
+      "identifier": "reversal",
+      "names": [
+        "reversal",
+        "Reversal",
+        "起死回生"
+      ]
+    },
+    {
+      "id": 180,
+      "identifier": "spite",
+      "names": [
+        "spite",
+        "Spite",
+        "怨恨"
+      ]
+    },
+    {
+      "id": 181,
+      "identifier": "powder-snow",
+      "names": [
+        "powder-snow",
+        "Powder Snow",
+        "细雪",
+        "細雪"
+      ]
+    },
+    {
+      "id": 182,
+      "identifier": "protect",
+      "names": [
+        "protect",
+        "Protect",
+        "守住"
+      ]
+    },
+    {
+      "id": 183,
+      "identifier": "mach-punch",
+      "names": [
+        "mach-punch",
+        "Mach Punch",
+        "音速拳"
+      ]
+    },
+    {
+      "id": 184,
+      "identifier": "scary-face",
+      "names": [
+        "scary-face",
+        "Scary Face",
+        "鬼面"
+      ]
+    },
+    {
+      "id": 185,
+      "identifier": "feint-attack",
+      "names": [
+        "feint-attack",
+        "Feint Attack",
+        "出奇一击",
+        "出奇一擊"
+      ]
+    },
+    {
+      "id": 186,
+      "identifier": "sweet-kiss",
+      "names": [
+        "sweet-kiss",
+        "Sweet Kiss",
+        "天使之吻"
+      ]
+    },
+    {
+      "id": 187,
+      "identifier": "belly-drum",
+      "names": [
+        "belly-drum",
+        "Belly Drum",
+        "腹鼓"
+      ]
+    },
+    {
+      "id": 188,
+      "identifier": "sludge-bomb",
+      "names": [
+        "sludge-bomb",
+        "Sludge Bomb",
+        "污泥炸弹",
+        "污泥炸彈"
+      ]
+    },
+    {
+      "id": 189,
+      "identifier": "mud-slap",
+      "names": [
+        "mud-slap",
+        "Mud-Slap",
+        "掷泥",
+        "擲泥"
+      ]
+    },
+    {
+      "id": 190,
+      "identifier": "octazooka",
+      "names": [
+        "octazooka",
+        "Octazooka",
+        "章鱼桶炮",
+        "章魚桶炮"
+      ]
+    },
+    {
+      "id": 191,
+      "identifier": "spikes",
+      "names": [
+        "spikes",
+        "Spikes",
+        "撒菱"
+      ]
+    },
+    {
+      "id": 192,
+      "identifier": "zap-cannon",
+      "names": [
+        "zap-cannon",
+        "Zap Cannon",
+        "电磁炮",
+        "電磁炮"
+      ]
+    },
+    {
+      "id": 193,
+      "identifier": "foresight",
+      "names": [
+        "foresight",
+        "Foresight",
+        "识破",
+        "識破"
+      ]
+    },
+    {
+      "id": 194,
+      "identifier": "destiny-bond",
+      "names": [
+        "destiny-bond",
+        "Destiny Bond",
+        "同命"
+      ]
+    },
+    {
+      "id": 195,
+      "identifier": "perish-song",
+      "names": [
+        "perish-song",
+        "Perish Song",
+        "灭亡之歌",
+        "滅亡之歌"
+      ]
+    },
+    {
+      "id": 196,
+      "identifier": "icy-wind",
+      "names": [
+        "icy-wind",
+        "Icy Wind",
+        "冰冻之风",
+        "冰凍之風"
+      ]
+    },
+    {
+      "id": 197,
+      "identifier": "detect",
+      "names": [
+        "detect",
+        "Detect",
+        "看穿"
+      ]
+    },
+    {
+      "id": 198,
+      "identifier": "bone-rush",
+      "names": [
+        "bone-rush",
+        "Bone Rush",
+        "骨棒乱打",
+        "骨棒亂打"
+      ]
+    },
+    {
+      "id": 199,
+      "identifier": "lock-on",
+      "names": [
+        "lock-on",
+        "Lock-On",
+        "锁定",
+        "鎖定"
+      ]
+    },
+    {
+      "id": 200,
+      "identifier": "outrage",
+      "names": [
+        "outrage",
+        "Outrage",
+        "逆鳞",
+        "逆鱗"
+      ]
+    },
+    {
+      "id": 201,
+      "identifier": "sandstorm",
+      "names": [
+        "sandstorm",
+        "Sandstorm",
+        "沙暴"
+      ]
+    },
+    {
+      "id": 202,
+      "identifier": "giga-drain",
+      "names": [
+        "giga-drain",
+        "Giga Drain",
+        "终极吸取",
+        "終極吸取"
+      ]
+    },
+    {
+      "id": 203,
+      "identifier": "endure",
+      "names": [
+        "endure",
+        "Endure",
+        "挺住"
+      ]
+    },
+    {
+      "id": 204,
+      "identifier": "charm",
+      "names": [
+        "charm",
+        "Charm",
+        "撒娇",
+        "撒嬌"
+      ]
+    },
+    {
+      "id": 205,
+      "identifier": "rollout",
+      "names": [
+        "rollout",
+        "Rollout",
+        "滚动",
+        "滾動"
+      ]
+    },
+    {
+      "id": 206,
+      "identifier": "false-swipe",
+      "names": [
+        "false-swipe",
+        "False Swipe",
+        "点到为止",
+        "點到為止"
+      ]
+    },
+    {
+      "id": 207,
+      "identifier": "swagger",
+      "names": [
+        "swagger",
+        "Swagger",
+        "虚张声势",
+        "虛張聲勢"
+      ]
+    },
+    {
+      "id": 208,
+      "identifier": "milk-drink",
+      "names": [
+        "milk-drink",
+        "Milk Drink",
+        "喝牛奶"
+      ]
+    },
+    {
+      "id": 209,
+      "identifier": "spark",
+      "names": [
+        "spark",
+        "Spark",
+        "电光",
+        "電光"
+      ]
+    },
+    {
+      "id": 210,
+      "identifier": "fury-cutter",
+      "names": [
+        "fury-cutter",
+        "Fury Cutter",
+        "连斩",
+        "連斬"
+      ]
+    },
+    {
+      "id": 211,
+      "identifier": "steel-wing",
+      "names": [
+        "steel-wing",
+        "Steel Wing",
+        "钢翼",
+        "鋼翼"
+      ]
+    },
+    {
+      "id": 212,
+      "identifier": "mean-look",
+      "names": [
+        "mean-look",
+        "Mean Look",
+        "黑色目光"
+      ]
+    },
+    {
+      "id": 213,
+      "identifier": "attract",
+      "names": [
+        "attract",
+        "Attract",
+        "迷人"
+      ]
+    },
+    {
+      "id": 214,
+      "identifier": "sleep-talk",
+      "names": [
+        "sleep-talk",
+        "Sleep Talk",
+        "梦话",
+        "夢話"
+      ]
+    },
+    {
+      "id": 215,
+      "identifier": "heal-bell",
+      "names": [
+        "heal-bell",
+        "Heal Bell",
+        "治愈铃声",
+        "治癒鈴聲"
+      ]
+    },
+    {
+      "id": 216,
+      "identifier": "return",
+      "names": [
+        "return",
+        "Return",
+        "报恩",
+        "報恩"
+      ]
+    },
+    {
+      "id": 217,
+      "identifier": "present",
+      "names": [
+        "present",
+        "Present",
+        "礼物",
+        "禮物"
+      ]
+    },
+    {
+      "id": 218,
+      "identifier": "frustration",
+      "names": [
+        "frustration",
+        "Frustration",
+        "迁怒",
+        "遷怒"
+      ]
+    },
+    {
+      "id": 219,
+      "identifier": "safeguard",
+      "names": [
+        "safeguard",
+        "Safeguard",
+        "神秘守护",
+        "神秘守護"
+      ]
+    },
+    {
+      "id": 220,
+      "identifier": "pain-split",
+      "names": [
+        "pain-split",
+        "Pain Split",
+        "分担痛楚",
+        "分擔痛楚"
+      ]
+    },
+    {
+      "id": 221,
+      "identifier": "sacred-fire",
+      "names": [
+        "sacred-fire",
+        "Sacred Fire",
+        "神圣之火",
+        "神聖之火"
+      ]
+    },
+    {
+      "id": 222,
+      "identifier": "magnitude",
+      "names": [
+        "magnitude",
+        "Magnitude",
+        "震级",
+        "震級"
+      ]
+    },
+    {
+      "id": 223,
+      "identifier": "dynamic-punch",
+      "names": [
+        "dynamic-punch",
+        "Dynamic Punch",
+        "爆裂拳"
+      ]
+    },
+    {
+      "id": 224,
+      "identifier": "megahorn",
+      "names": [
+        "megahorn",
+        "Megahorn",
+        "超级角击",
+        "超級角擊"
+      ]
+    },
+    {
+      "id": 225,
+      "identifier": "dragon-breath",
+      "names": [
+        "dragon-breath",
+        "Dragon Breath",
+        "龙息",
+        "龍息"
+      ]
+    },
+    {
+      "id": 226,
+      "identifier": "baton-pass",
+      "names": [
+        "baton-pass",
+        "Baton Pass",
+        "接棒"
+      ]
+    },
+    {
+      "id": 227,
+      "identifier": "encore",
+      "names": [
+        "encore",
+        "Encore",
+        "再来一次",
+        "再來一次"
+      ]
+    },
+    {
+      "id": 228,
+      "identifier": "pursuit",
+      "names": [
+        "pursuit",
+        "Pursuit",
+        "追打"
+      ]
+    },
+    {
+      "id": 229,
+      "identifier": "rapid-spin",
+      "names": [
+        "rapid-spin",
+        "Rapid Spin",
+        "高速旋转",
+        "高速旋轉"
+      ]
+    },
+    {
+      "id": 230,
+      "identifier": "sweet-scent",
+      "names": [
+        "sweet-scent",
+        "Sweet Scent",
+        "甜甜香气",
+        "甜甜香氣"
+      ]
+    },
+    {
+      "id": 231,
+      "identifier": "iron-tail",
+      "names": [
+        "iron-tail",
+        "Iron Tail",
+        "铁尾",
+        "鐵尾"
+      ]
+    },
+    {
+      "id": 232,
+      "identifier": "metal-claw",
+      "names": [
+        "metal-claw",
+        "Metal Claw",
+        "金属爪",
+        "金屬爪"
+      ]
+    },
+    {
+      "id": 233,
+      "identifier": "vital-throw",
+      "names": [
+        "vital-throw",
+        "Vital Throw",
+        "借力摔"
+      ]
+    },
+    {
+      "id": 234,
+      "identifier": "morning-sun",
+      "names": [
+        "morning-sun",
+        "Morning Sun",
+        "晨光"
+      ]
+    },
+    {
+      "id": 235,
+      "identifier": "synthesis",
+      "names": [
+        "synthesis",
+        "Synthesis",
+        "光合作用"
+      ]
+    },
+    {
+      "id": 236,
+      "identifier": "moonlight",
+      "names": [
+        "moonlight",
+        "Moonlight",
+        "月光"
+      ]
+    },
+    {
+      "id": 237,
+      "identifier": "hidden-power",
+      "names": [
+        "hidden-power",
+        "Hidden Power",
+        "觉醒力量",
+        "覺醒力量"
+      ]
+    },
+    {
+      "id": 238,
+      "identifier": "cross-chop",
+      "names": [
+        "cross-chop",
+        "Cross Chop",
+        "十字劈"
+      ]
+    },
+    {
+      "id": 239,
+      "identifier": "twister",
+      "names": [
+        "twister",
+        "Twister",
+        "龙卷风",
+        "龍捲風"
+      ]
+    },
+    {
+      "id": 240,
+      "identifier": "rain-dance",
+      "names": [
+        "rain-dance",
+        "Rain Dance",
+        "求雨"
+      ]
+    },
+    {
+      "id": 241,
+      "identifier": "sunny-day",
+      "names": [
+        "sunny-day",
+        "Sunny Day",
+        "大晴天"
+      ]
+    },
+    {
+      "id": 242,
+      "identifier": "crunch",
+      "names": [
+        "crunch",
+        "Crunch",
+        "咬碎"
+      ]
+    },
+    {
+      "id": 243,
+      "identifier": "mirror-coat",
+      "names": [
+        "mirror-coat",
+        "Mirror Coat",
+        "镜面反射",
+        "鏡面反射"
+      ]
+    },
+    {
+      "id": 244,
+      "identifier": "psych-up",
+      "names": [
+        "psych-up",
+        "Psych Up",
+        "自我暗示"
+      ]
+    },
+    {
+      "id": 245,
+      "identifier": "extreme-speed",
+      "names": [
+        "extreme-speed",
+        "Extreme Speed",
+        "神速"
+      ]
+    },
+    {
+      "id": 246,
+      "identifier": "ancient-power",
+      "names": [
+        "ancient-power",
+        "Ancient Power",
+        "原始之力"
+      ]
+    },
+    {
+      "id": 247,
+      "identifier": "shadow-ball",
+      "names": [
+        "shadow-ball",
+        "Shadow Ball",
+        "暗影球"
+      ]
+    },
+    {
+      "id": 248,
+      "identifier": "future-sight",
+      "names": [
+        "future-sight",
+        "Future Sight",
+        "预知未来",
+        "預知未來"
+      ]
+    },
+    {
+      "id": 249,
+      "identifier": "rock-smash",
+      "names": [
+        "rock-smash",
+        "Rock Smash",
+        "碎岩"
+      ]
+    },
+    {
+      "id": 250,
+      "identifier": "whirlpool",
+      "names": [
+        "whirlpool",
+        "Whirlpool",
+        "潮旋"
+      ]
+    },
+    {
+      "id": 251,
+      "identifier": "beat-up",
+      "names": [
+        "beat-up",
+        "Beat Up",
+        "围攻",
+        "圍攻"
+      ]
+    },
+    {
+      "id": 252,
+      "identifier": "fake-out",
+      "names": [
+        "fake-out",
+        "Fake Out",
+        "击掌奇袭",
+        "擊掌奇襲"
+      ]
+    },
+    {
+      "id": 253,
+      "identifier": "uproar",
+      "names": [
+        "uproar",
+        "Uproar",
+        "吵闹",
+        "吵鬧"
+      ]
+    },
+    {
+      "id": 254,
+      "identifier": "stockpile",
+      "names": [
+        "stockpile",
+        "Stockpile",
+        "蓄力"
+      ]
+    },
+    {
+      "id": 255,
+      "identifier": "spit-up",
+      "names": [
+        "spit-up",
+        "Spit Up",
+        "喷出",
+        "噴出"
+      ]
+    },
+    {
+      "id": 256,
+      "identifier": "swallow",
+      "names": [
+        "swallow",
+        "Swallow",
+        "吞下"
+      ]
+    },
+    {
+      "id": 257,
+      "identifier": "heat-wave",
+      "names": [
+        "heat-wave",
+        "Heat Wave",
+        "热风",
+        "熱風"
+      ]
+    },
+    {
+      "id": 258,
+      "identifier": "hail",
+      "names": [
+        "hail",
+        "Hail",
+        "冰雹"
+      ]
+    },
+    {
+      "id": 259,
+      "identifier": "torment",
+      "names": [
+        "torment",
+        "Torment",
+        "无理取闹",
+        "無理取鬧"
+      ]
+    },
+    {
+      "id": 260,
+      "identifier": "flatter",
+      "names": [
+        "flatter",
+        "Flatter",
+        "吹捧"
+      ]
+    },
+    {
+      "id": 261,
+      "identifier": "will-o-wisp",
+      "names": [
+        "will-o-wisp",
+        "Will-O-Wisp",
+        "鬼火"
+      ]
+    },
+    {
+      "id": 262,
+      "identifier": "memento",
+      "names": [
+        "memento",
+        "Memento",
+        "临别礼物",
+        "臨別禮物"
+      ]
+    },
+    {
+      "id": 263,
+      "identifier": "facade",
+      "names": [
+        "facade",
+        "Facade",
+        "硬撑",
+        "硬撐"
+      ]
+    },
+    {
+      "id": 264,
+      "identifier": "focus-punch",
+      "names": [
+        "focus-punch",
+        "Focus Punch",
+        "真气拳",
+        "真氣拳"
+      ]
+    },
+    {
+      "id": 265,
+      "identifier": "smelling-salts",
+      "names": [
+        "smelling-salts",
+        "Smelling Salts",
+        "清醒"
+      ]
+    },
+    {
+      "id": 266,
+      "identifier": "follow-me",
+      "names": [
+        "follow-me",
+        "Follow Me",
+        "看我嘛"
+      ]
+    },
+    {
+      "id": 267,
+      "identifier": "nature-power",
+      "names": [
+        "nature-power",
+        "Nature Power",
+        "自然之力"
+      ]
+    },
+    {
+      "id": 268,
+      "identifier": "charge",
+      "names": [
+        "charge",
+        "Charge",
+        "充电",
+        "充電"
+      ]
+    },
+    {
+      "id": 269,
+      "identifier": "taunt",
+      "names": [
+        "taunt",
+        "Taunt",
+        "挑衅",
+        "挑釁"
+      ]
+    },
+    {
+      "id": 270,
+      "identifier": "helping-hand",
+      "names": [
+        "helping-hand",
+        "Helping Hand",
+        "帮助",
+        "幫助"
+      ]
+    },
+    {
+      "id": 271,
+      "identifier": "trick",
+      "names": [
+        "trick",
+        "Trick",
+        "戏法",
+        "戲法"
+      ]
+    },
+    {
+      "id": 272,
+      "identifier": "role-play",
+      "names": [
+        "role-play",
+        "Role Play",
+        "扮演"
+      ]
+    },
+    {
+      "id": 273,
+      "identifier": "wish",
+      "names": [
+        "wish",
+        "Wish",
+        "祈愿",
+        "祈願"
+      ]
+    },
+    {
+      "id": 274,
+      "identifier": "assist",
+      "names": [
+        "assist",
+        "Assist",
+        "借助"
+      ]
+    },
+    {
+      "id": 275,
+      "identifier": "ingrain",
+      "names": [
+        "ingrain",
+        "Ingrain",
+        "扎根"
+      ]
+    },
+    {
+      "id": 276,
+      "identifier": "superpower",
+      "names": [
+        "superpower",
+        "Superpower",
+        "蛮力",
+        "蠻力"
+      ]
+    },
+    {
+      "id": 277,
+      "identifier": "magic-coat",
+      "names": [
+        "magic-coat",
+        "Magic Coat",
+        "魔法反射"
+      ]
+    },
+    {
+      "id": 278,
+      "identifier": "recycle",
+      "names": [
+        "recycle",
+        "Recycle",
+        "回收利用"
+      ]
+    },
+    {
+      "id": 279,
+      "identifier": "revenge",
+      "names": [
+        "revenge",
+        "Revenge",
+        "报复",
+        "報復"
+      ]
+    },
+    {
+      "id": 280,
+      "identifier": "brick-break",
+      "names": [
+        "brick-break",
+        "Brick Break",
+        "劈瓦"
+      ]
+    },
+    {
+      "id": 281,
+      "identifier": "yawn",
+      "names": [
+        "yawn",
+        "Yawn",
+        "哈欠"
+      ]
+    },
+    {
+      "id": 282,
+      "identifier": "knock-off",
+      "names": [
+        "knock-off",
+        "Knock Off",
+        "拍落"
+      ]
+    },
+    {
+      "id": 283,
+      "identifier": "endeavor",
+      "names": [
+        "endeavor",
+        "Endeavor",
+        "蛮干",
+        "蠻幹"
+      ]
+    },
+    {
+      "id": 284,
+      "identifier": "eruption",
+      "names": [
+        "eruption",
+        "Eruption",
+        "喷火",
+        "噴火"
+      ]
+    },
+    {
+      "id": 285,
+      "identifier": "skill-swap",
+      "names": [
+        "skill-swap",
+        "Skill Swap",
+        "特性互换",
+        "特性互換"
+      ]
+    },
+    {
+      "id": 286,
+      "identifier": "imprison",
+      "names": [
+        "imprison",
+        "Imprison",
+        "封印"
+      ]
+    },
+    {
+      "id": 287,
+      "identifier": "refresh",
+      "names": [
+        "refresh",
+        "Refresh",
+        "焕然一新",
+        "煥然一新"
+      ]
+    },
+    {
+      "id": 288,
+      "identifier": "grudge",
+      "names": [
+        "grudge",
+        "Grudge",
+        "怨念"
+      ]
+    },
+    {
+      "id": 289,
+      "identifier": "snatch",
+      "names": [
+        "snatch",
+        "Snatch",
+        "抢夺",
+        "搶奪"
+      ]
+    },
+    {
+      "id": 290,
+      "identifier": "secret-power",
+      "names": [
+        "secret-power",
+        "Secret Power",
+        "秘密之力"
+      ]
+    },
+    {
+      "id": 291,
+      "identifier": "dive",
+      "names": [
+        "dive",
+        "Dive",
+        "潜水",
+        "潛水"
+      ]
+    },
+    {
+      "id": 292,
+      "identifier": "arm-thrust",
+      "names": [
+        "arm-thrust",
+        "Arm Thrust",
+        "猛推"
+      ]
+    },
+    {
+      "id": 293,
+      "identifier": "camouflage",
+      "names": [
+        "camouflage",
+        "Camouflage",
+        "保护色",
+        "保護色"
+      ]
+    },
+    {
+      "id": 294,
+      "identifier": "tail-glow",
+      "names": [
+        "tail-glow",
+        "Tail Glow",
+        "萤火",
+        "螢火"
+      ]
+    },
+    {
+      "id": 295,
+      "identifier": "luster-purge",
+      "names": [
+        "luster-purge",
+        "Luster Purge",
+        "洁净光芒",
+        "潔淨光芒"
+      ]
+    },
+    {
+      "id": 296,
+      "identifier": "mist-ball",
+      "names": [
+        "mist-ball",
+        "Mist Ball",
+        "薄雾球",
+        "薄霧球"
+      ]
+    },
+    {
+      "id": 297,
+      "identifier": "feather-dance",
+      "names": [
+        "feather-dance",
+        "Feather Dance",
+        "羽毛舞"
+      ]
+    },
+    {
+      "id": 298,
+      "identifier": "teeter-dance",
+      "names": [
+        "teeter-dance",
+        "Teeter Dance",
+        "摇晃舞",
+        "搖晃舞"
+      ]
+    },
+    {
+      "id": 299,
+      "identifier": "blaze-kick",
+      "names": [
+        "blaze-kick",
+        "Blaze Kick",
+        "火焰踢"
+      ]
+    },
+    {
+      "id": 300,
+      "identifier": "mud-sport",
+      "names": [
+        "mud-sport",
+        "Mud Sport",
+        "玩泥巴"
+      ]
+    },
+    {
+      "id": 301,
+      "identifier": "ice-ball",
+      "names": [
+        "ice-ball",
+        "Ice Ball",
+        "冰球"
+      ]
+    },
+    {
+      "id": 302,
+      "identifier": "needle-arm",
+      "names": [
+        "needle-arm",
+        "Needle Arm",
+        "尖刺臂"
+      ]
+    },
+    {
+      "id": 303,
+      "identifier": "slack-off",
+      "names": [
+        "slack-off",
+        "Slack Off",
+        "偷懒",
+        "偷懶"
+      ]
+    },
+    {
+      "id": 304,
+      "identifier": "hyper-voice",
+      "names": [
+        "hyper-voice",
+        "Hyper Voice",
+        "巨声",
+        "巨聲"
+      ]
+    },
+    {
+      "id": 305,
+      "identifier": "poison-fang",
+      "names": [
+        "poison-fang",
+        "Poison Fang",
+        "剧毒牙",
+        "劇毒牙"
+      ]
+    },
+    {
+      "id": 306,
+      "identifier": "crush-claw",
+      "names": [
+        "crush-claw",
+        "Crush Claw",
+        "撕裂爪"
+      ]
+    },
+    {
+      "id": 307,
+      "identifier": "blast-burn",
+      "names": [
+        "blast-burn",
+        "Blast Burn",
+        "爆炸烈焰"
+      ]
+    },
+    {
+      "id": 308,
+      "identifier": "hydro-cannon",
+      "names": [
+        "hydro-cannon",
+        "Hydro Cannon",
+        "加农水炮",
+        "加農水炮"
+      ]
+    },
+    {
+      "id": 309,
+      "identifier": "meteor-mash",
+      "names": [
+        "meteor-mash",
+        "Meteor Mash",
+        "彗星拳"
+      ]
+    },
+    {
+      "id": 310,
+      "identifier": "astonish",
+      "names": [
+        "astonish",
+        "Astonish",
+        "惊吓",
+        "驚嚇"
+      ]
+    },
+    {
+      "id": 311,
+      "identifier": "weather-ball",
+      "names": [
+        "weather-ball",
+        "Weather Ball",
+        "气象球",
+        "氣象球"
+      ]
+    },
+    {
+      "id": 312,
+      "identifier": "aromatherapy",
+      "names": [
+        "aromatherapy",
+        "Aromatherapy",
+        "芳香治疗",
+        "芳香治療"
+      ]
+    },
+    {
+      "id": 313,
+      "identifier": "fake-tears",
+      "names": [
+        "fake-tears",
+        "Fake Tears",
+        "假哭"
+      ]
+    },
+    {
+      "id": 314,
+      "identifier": "air-cutter",
+      "names": [
+        "air-cutter",
+        "Air Cutter",
+        "空气利刃",
+        "空氣利刃"
+      ]
+    },
+    {
+      "id": 315,
+      "identifier": "overheat",
+      "names": [
+        "overheat",
+        "Overheat",
+        "过热",
+        "過熱"
+      ]
+    },
+    {
+      "id": 316,
+      "identifier": "odor-sleuth",
+      "names": [
+        "odor-sleuth",
+        "Odor Sleuth",
+        "气味侦测",
+        "氣味偵測"
+      ]
+    },
+    {
+      "id": 317,
+      "identifier": "rock-tomb",
+      "names": [
+        "rock-tomb",
+        "Rock Tomb",
+        "岩石封锁",
+        "岩石封鎖"
+      ]
+    },
+    {
+      "id": 318,
+      "identifier": "silver-wind",
+      "names": [
+        "silver-wind",
+        "Silver Wind",
+        "银色旋风",
+        "銀色旋風"
+      ]
+    },
+    {
+      "id": 319,
+      "identifier": "metal-sound",
+      "names": [
+        "metal-sound",
+        "Metal Sound",
+        "金属音",
+        "金屬音"
+      ]
+    },
+    {
+      "id": 320,
+      "identifier": "grass-whistle",
+      "names": [
+        "grass-whistle",
+        "Grass Whistle",
+        "草笛"
+      ]
+    },
+    {
+      "id": 321,
+      "identifier": "tickle",
+      "names": [
+        "tickle",
+        "Tickle",
+        "挠痒",
+        "搔癢"
+      ]
+    },
+    {
+      "id": 322,
+      "identifier": "cosmic-power",
+      "names": [
+        "cosmic-power",
+        "Cosmic Power",
+        "宇宙力量"
+      ]
+    },
+    {
+      "id": 323,
+      "identifier": "water-spout",
+      "names": [
+        "water-spout",
+        "Water Spout",
+        "喷水",
+        "噴水"
+      ]
+    },
+    {
+      "id": 324,
+      "identifier": "signal-beam",
+      "names": [
+        "signal-beam",
+        "Signal Beam",
+        "信号光束",
+        "信號光束"
+      ]
+    },
+    {
+      "id": 325,
+      "identifier": "shadow-punch",
+      "names": [
+        "shadow-punch",
+        "Shadow Punch",
+        "暗影拳"
+      ]
+    },
+    {
+      "id": 326,
+      "identifier": "extrasensory",
+      "names": [
+        "extrasensory",
+        "Extrasensory",
+        "神通力"
+      ]
+    },
+    {
+      "id": 327,
+      "identifier": "sky-uppercut",
+      "names": [
+        "sky-uppercut",
+        "Sky Uppercut",
+        "冲天拳",
+        "衝天拳"
+      ]
+    },
+    {
+      "id": 328,
+      "identifier": "sand-tomb",
+      "names": [
+        "sand-tomb",
+        "Sand Tomb",
+        "流沙地狱",
+        "流沙地獄"
+      ]
+    },
+    {
+      "id": 329,
+      "identifier": "sheer-cold",
+      "names": [
+        "sheer-cold",
+        "Sheer Cold",
+        "绝对零度",
+        "絕對零度"
+      ]
+    },
+    {
+      "id": 330,
+      "identifier": "muddy-water",
+      "names": [
+        "muddy-water",
+        "Muddy Water",
+        "浊流",
+        "濁流"
+      ]
+    },
+    {
+      "id": 331,
+      "identifier": "bullet-seed",
+      "names": [
+        "bullet-seed",
+        "Bullet Seed",
+        "种子机关枪",
+        "種子機關槍"
+      ]
+    },
+    {
+      "id": 332,
+      "identifier": "aerial-ace",
+      "names": [
+        "aerial-ace",
+        "Aerial Ace",
+        "燕返"
+      ]
+    },
+    {
+      "id": 333,
+      "identifier": "icicle-spear",
+      "names": [
+        "icicle-spear",
+        "Icicle Spear",
+        "冰锥",
+        "冰錐"
+      ]
+    },
+    {
+      "id": 334,
+      "identifier": "iron-defense",
+      "names": [
+        "iron-defense",
+        "Iron Defense",
+        "铁壁",
+        "鐵壁"
+      ]
+    },
+    {
+      "id": 335,
+      "identifier": "block",
+      "names": [
+        "block",
+        "Block",
+        "挡路",
+        "擋路"
+      ]
+    },
+    {
+      "id": 336,
+      "identifier": "howl",
+      "names": [
+        "howl",
+        "Howl",
+        "长嚎",
+        "長嚎"
+      ]
+    },
+    {
+      "id": 337,
+      "identifier": "dragon-claw",
+      "names": [
+        "dragon-claw",
+        "Dragon Claw",
+        "龙爪",
+        "龍爪"
+      ]
+    },
+    {
+      "id": 338,
+      "identifier": "frenzy-plant",
+      "names": [
+        "frenzy-plant",
+        "Frenzy Plant",
+        "疯狂植物",
+        "瘋狂植物"
+      ]
+    },
+    {
+      "id": 339,
+      "identifier": "bulk-up",
+      "names": [
+        "bulk-up",
+        "Bulk Up",
+        "健美"
+      ]
+    },
+    {
+      "id": 340,
+      "identifier": "bounce",
+      "names": [
+        "bounce",
+        "Bounce",
+        "弹跳",
+        "彈跳"
+      ]
+    },
+    {
+      "id": 341,
+      "identifier": "mud-shot",
+      "names": [
+        "mud-shot",
+        "Mud Shot",
+        "泥巴射击",
+        "泥巴射擊"
+      ]
+    },
+    {
+      "id": 342,
+      "identifier": "poison-tail",
+      "names": [
+        "poison-tail",
+        "Poison Tail",
+        "毒尾"
+      ]
+    },
+    {
+      "id": 343,
+      "identifier": "covet",
+      "names": [
+        "covet",
+        "Covet",
+        "渴望"
+      ]
+    },
+    {
+      "id": 344,
+      "identifier": "volt-tackle",
+      "names": [
+        "volt-tackle",
+        "Volt Tackle",
+        "伏特攻击",
+        "伏特攻擊"
+      ]
+    },
+    {
+      "id": 345,
+      "identifier": "magical-leaf",
+      "names": [
+        "magical-leaf",
+        "Magical Leaf",
+        "魔法叶",
+        "魔法葉"
+      ]
+    },
+    {
+      "id": 346,
+      "identifier": "water-sport",
+      "names": [
+        "water-sport",
+        "Water Sport",
+        "玩水"
+      ]
+    },
+    {
+      "id": 347,
+      "identifier": "calm-mind",
+      "names": [
+        "calm-mind",
+        "Calm Mind",
+        "冥想"
+      ]
+    },
+    {
+      "id": 348,
+      "identifier": "leaf-blade",
+      "names": [
+        "leaf-blade",
+        "Leaf Blade",
+        "叶刃",
+        "葉刃"
+      ]
+    },
+    {
+      "id": 349,
+      "identifier": "dragon-dance",
+      "names": [
+        "dragon-dance",
+        "Dragon Dance",
+        "龙之舞",
+        "龍之舞"
+      ]
+    },
+    {
+      "id": 350,
+      "identifier": "rock-blast",
+      "names": [
+        "rock-blast",
+        "Rock Blast",
+        "岩石爆击",
+        "岩石爆擊"
+      ]
+    },
+    {
+      "id": 351,
+      "identifier": "shock-wave",
+      "names": [
+        "shock-wave",
+        "Shock Wave",
+        "电击波",
+        "電擊波"
+      ]
+    },
+    {
+      "id": 352,
+      "identifier": "water-pulse",
+      "names": [
+        "water-pulse",
+        "Water Pulse",
+        "水之波动",
+        "水之波動"
+      ]
+    },
+    {
+      "id": 353,
+      "identifier": "doom-desire",
+      "names": [
+        "doom-desire",
+        "Doom Desire",
+        "破灭之愿",
+        "破滅之願"
+      ]
+    },
+    {
+      "id": 354,
+      "identifier": "psycho-boost",
+      "names": [
+        "psycho-boost",
+        "Psycho Boost",
+        "精神突进",
+        "精神突進"
+      ]
+    },
+    {
+      "id": 355,
+      "identifier": "roost",
+      "names": [
+        "roost",
+        "Roost",
+        "羽栖",
+        "羽棲"
+      ]
+    },
+    {
+      "id": 356,
+      "identifier": "gravity",
+      "names": [
+        "gravity",
+        "Gravity",
+        "重力"
+      ]
+    },
+    {
+      "id": 357,
+      "identifier": "miracle-eye",
+      "names": [
+        "miracle-eye",
+        "Miracle Eye",
+        "奇迹之眼",
+        "奇跡之眼"
+      ]
+    },
+    {
+      "id": 358,
+      "identifier": "wake-up-slap",
+      "names": [
+        "wake-up-slap",
+        "Wake-Up Slap",
+        "唤醒巴掌",
+        "喚醒巴掌"
+      ]
+    },
+    {
+      "id": 359,
+      "identifier": "hammer-arm",
+      "names": [
+        "hammer-arm",
+        "Hammer Arm",
+        "臂锤",
+        "臂錘"
+      ]
+    },
+    {
+      "id": 360,
+      "identifier": "gyro-ball",
+      "names": [
+        "gyro-ball",
+        "Gyro Ball",
+        "陀螺球"
+      ]
+    },
+    {
+      "id": 361,
+      "identifier": "healing-wish",
+      "names": [
+        "healing-wish",
+        "Healing Wish",
+        "治愈之愿",
+        "治癒之願"
+      ]
+    },
+    {
+      "id": 362,
+      "identifier": "brine",
+      "names": [
+        "brine",
+        "Brine",
+        "盐水",
+        "鹽水"
+      ]
+    },
+    {
+      "id": 363,
+      "identifier": "natural-gift",
+      "names": [
+        "natural-gift",
+        "Natural Gift",
+        "自然之恩"
+      ]
+    },
+    {
+      "id": 364,
+      "identifier": "feint",
+      "names": [
+        "feint",
+        "Feint",
+        "佯攻"
+      ]
+    },
+    {
+      "id": 365,
+      "identifier": "pluck",
+      "names": [
+        "pluck",
+        "Pluck",
+        "啄食"
+      ]
+    },
+    {
+      "id": 366,
+      "identifier": "tailwind",
+      "names": [
+        "tailwind",
+        "Tailwind",
+        "顺风",
+        "順風"
+      ]
+    },
+    {
+      "id": 367,
+      "identifier": "acupressure",
+      "names": [
+        "acupressure",
+        "Acupressure",
+        "点穴",
+        "點穴"
+      ]
+    },
+    {
+      "id": 368,
+      "identifier": "metal-burst",
+      "names": [
+        "metal-burst",
+        "Metal Burst",
+        "金属爆炸",
+        "金屬爆炸"
+      ]
+    },
+    {
+      "id": 369,
+      "identifier": "u-turn",
+      "names": [
+        "u-turn",
+        "U-turn",
+        "急速折返"
+      ]
+    },
+    {
+      "id": 370,
+      "identifier": "close-combat",
+      "names": [
+        "close-combat",
+        "Close Combat",
+        "近身战",
+        "近身戰"
+      ]
+    },
+    {
+      "id": 371,
+      "identifier": "payback",
+      "names": [
+        "payback",
+        "Payback",
+        "以牙还牙",
+        "以牙還牙"
+      ]
+    },
+    {
+      "id": 372,
+      "identifier": "assurance",
+      "names": [
+        "assurance",
+        "Assurance",
+        "恶意追击",
+        "惡意追擊"
+      ]
+    },
+    {
+      "id": 373,
+      "identifier": "embargo",
+      "names": [
+        "embargo",
+        "Embargo",
+        "查封"
+      ]
+    },
+    {
+      "id": 374,
+      "identifier": "fling",
+      "names": [
+        "fling",
+        "Fling",
+        "投掷",
+        "投擲"
+      ]
+    },
+    {
+      "id": 375,
+      "identifier": "psycho-shift",
+      "names": [
+        "psycho-shift",
+        "Psycho Shift",
+        "精神转移",
+        "精神轉移"
+      ]
+    },
+    {
+      "id": 376,
+      "identifier": "trump-card",
+      "names": [
+        "trump-card",
+        "Trump Card",
+        "王牌"
+      ]
+    },
+    {
+      "id": 377,
+      "identifier": "heal-block",
+      "names": [
+        "heal-block",
+        "Heal Block",
+        "回复封锁",
+        "回復封鎖"
+      ]
+    },
+    {
+      "id": 378,
+      "identifier": "wring-out",
+      "names": [
+        "wring-out",
+        "Wring Out",
+        "绞紧",
+        "絞緊"
+      ]
+    },
+    {
+      "id": 379,
+      "identifier": "power-trick",
+      "names": [
+        "power-trick",
+        "Power Trick",
+        "力量戏法",
+        "力量戲法"
+      ]
+    },
+    {
+      "id": 380,
+      "identifier": "gastro-acid",
+      "names": [
+        "gastro-acid",
+        "Gastro Acid",
+        "胃液"
+      ]
+    },
+    {
+      "id": 381,
+      "identifier": "lucky-chant",
+      "names": [
+        "lucky-chant",
+        "Lucky Chant",
+        "幸运咒语",
+        "幸運咒語"
+      ]
+    },
+    {
+      "id": 382,
+      "identifier": "me-first",
+      "names": [
+        "me-first",
+        "Me First",
+        "抢先一步",
+        "搶先一步"
+      ]
+    },
+    {
+      "id": 383,
+      "identifier": "copycat",
+      "names": [
+        "copycat",
+        "Copycat",
+        "仿效"
+      ]
+    },
+    {
+      "id": 384,
+      "identifier": "power-swap",
+      "names": [
+        "power-swap",
+        "Power Swap",
+        "力量互换",
+        "力量互換"
+      ]
+    },
+    {
+      "id": 385,
+      "identifier": "guard-swap",
+      "names": [
+        "guard-swap",
+        "Guard Swap",
+        "防守互换",
+        "防守互換"
+      ]
+    },
+    {
+      "id": 386,
+      "identifier": "punishment",
+      "names": [
+        "punishment",
+        "Punishment",
+        "惩罚",
+        "懲罰"
+      ]
+    },
+    {
+      "id": 387,
+      "identifier": "last-resort",
+      "names": [
+        "last-resort",
+        "Last Resort",
+        "珍藏"
+      ]
+    },
+    {
+      "id": 388,
+      "identifier": "worry-seed",
+      "names": [
+        "worry-seed",
+        "Worry Seed",
+        "烦恼种子",
+        "煩惱種子"
+      ]
+    },
+    {
+      "id": 389,
+      "identifier": "sucker-punch",
+      "names": [
+        "sucker-punch",
+        "Sucker Punch",
+        "突袭",
+        "突襲"
+      ]
+    },
+    {
+      "id": 390,
+      "identifier": "toxic-spikes",
+      "names": [
+        "toxic-spikes",
+        "Toxic Spikes",
+        "毒菱"
+      ]
+    },
+    {
+      "id": 391,
+      "identifier": "heart-swap",
+      "names": [
+        "heart-swap",
+        "Heart Swap",
+        "心灵互换",
+        "心靈互換"
+      ]
+    },
+    {
+      "id": 392,
+      "identifier": "aqua-ring",
+      "names": [
+        "aqua-ring",
+        "Aqua Ring",
+        "水流环",
+        "水流環"
+      ]
+    },
+    {
+      "id": 393,
+      "identifier": "magnet-rise",
+      "names": [
+        "magnet-rise",
+        "Magnet Rise",
+        "电磁飘浮",
+        "電磁飄浮"
+      ]
+    },
+    {
+      "id": 394,
+      "identifier": "flare-blitz",
+      "names": [
+        "flare-blitz",
+        "Flare Blitz",
+        "闪焰冲锋",
+        "閃焰衝鋒"
+      ]
+    },
+    {
+      "id": 395,
+      "identifier": "force-palm",
+      "names": [
+        "force-palm",
+        "Force Palm",
+        "发劲",
+        "發勁"
+      ]
+    },
+    {
+      "id": 396,
+      "identifier": "aura-sphere",
+      "names": [
+        "aura-sphere",
+        "Aura Sphere",
+        "波导弹",
+        "波導彈"
+      ]
+    },
+    {
+      "id": 397,
+      "identifier": "rock-polish",
+      "names": [
+        "rock-polish",
+        "Rock Polish",
+        "岩石打磨"
+      ]
+    },
+    {
+      "id": 398,
+      "identifier": "poison-jab",
+      "names": [
+        "poison-jab",
+        "Poison Jab",
+        "毒击",
+        "毒擊"
+      ]
+    },
+    {
+      "id": 399,
+      "identifier": "dark-pulse",
+      "names": [
+        "dark-pulse",
+        "Dark Pulse",
+        "恶之波动",
+        "惡之波動"
+      ]
+    },
+    {
+      "id": 400,
+      "identifier": "night-slash",
+      "names": [
+        "night-slash",
+        "Night Slash",
+        "暗袭要害",
+        "暗襲要害"
+      ]
+    },
+    {
+      "id": 401,
+      "identifier": "aqua-tail",
+      "names": [
+        "aqua-tail",
+        "Aqua Tail",
+        "水流尾"
+      ]
+    },
+    {
+      "id": 402,
+      "identifier": "seed-bomb",
+      "names": [
+        "seed-bomb",
+        "Seed Bomb",
+        "种子炸弹",
+        "種子炸彈"
+      ]
+    },
+    {
+      "id": 403,
+      "identifier": "air-slash",
+      "names": [
+        "air-slash",
+        "Air Slash",
+        "空气斩",
+        "空氣斬"
+      ]
+    },
+    {
+      "id": 404,
+      "identifier": "x-scissor",
+      "names": [
+        "x-scissor",
+        "X-Scissor",
+        "十字剪"
+      ]
+    },
+    {
+      "id": 405,
+      "identifier": "bug-buzz",
+      "names": [
+        "bug-buzz",
+        "Bug Buzz",
+        "虫鸣",
+        "蟲鳴"
+      ]
+    },
+    {
+      "id": 406,
+      "identifier": "dragon-pulse",
+      "names": [
+        "dragon-pulse",
+        "Dragon Pulse",
+        "龙之波动",
+        "龍之波動"
+      ]
+    },
+    {
+      "id": 407,
+      "identifier": "dragon-rush",
+      "names": [
+        "dragon-rush",
+        "Dragon Rush",
+        "龙之俯冲",
+        "龍之俯衝"
+      ]
+    },
+    {
+      "id": 408,
+      "identifier": "power-gem",
+      "names": [
+        "power-gem",
+        "Power Gem",
+        "力量宝石",
+        "力量寶石"
+      ]
+    },
+    {
+      "id": 409,
+      "identifier": "drain-punch",
+      "names": [
+        "drain-punch",
+        "Drain Punch",
+        "吸取拳"
+      ]
+    },
+    {
+      "id": 410,
+      "identifier": "vacuum-wave",
+      "names": [
+        "vacuum-wave",
+        "Vacuum Wave",
+        "真空波"
+      ]
+    },
+    {
+      "id": 411,
+      "identifier": "focus-blast",
+      "names": [
+        "focus-blast",
+        "Focus Blast",
+        "真气弹",
+        "真氣彈"
+      ]
+    },
+    {
+      "id": 412,
+      "identifier": "energy-ball",
+      "names": [
+        "energy-ball",
+        "Energy Ball",
+        "能量球"
+      ]
+    },
+    {
+      "id": 413,
+      "identifier": "brave-bird",
+      "names": [
+        "brave-bird",
+        "Brave Bird",
+        "勇鸟猛攻",
+        "勇鳥猛攻"
+      ]
+    },
+    {
+      "id": 414,
+      "identifier": "earth-power",
+      "names": [
+        "earth-power",
+        "Earth Power",
+        "大地之力"
+      ]
+    },
+    {
+      "id": 415,
+      "identifier": "switcheroo",
+      "names": [
+        "switcheroo",
+        "Switcheroo",
+        "掉包"
+      ]
+    },
+    {
+      "id": 416,
+      "identifier": "giga-impact",
+      "names": [
+        "giga-impact",
+        "Giga Impact",
+        "终极冲击",
+        "終極衝擊"
+      ]
+    },
+    {
+      "id": 417,
+      "identifier": "nasty-plot",
+      "names": [
+        "nasty-plot",
+        "Nasty Plot",
+        "诡计",
+        "詭計"
+      ]
+    },
+    {
+      "id": 418,
+      "identifier": "bullet-punch",
+      "names": [
+        "bullet-punch",
+        "Bullet Punch",
+        "子弹拳",
+        "子彈拳"
+      ]
+    },
+    {
+      "id": 419,
+      "identifier": "avalanche",
+      "names": [
+        "avalanche",
+        "Avalanche",
+        "雪崩"
+      ]
+    },
+    {
+      "id": 420,
+      "identifier": "ice-shard",
+      "names": [
+        "ice-shard",
+        "Ice Shard",
+        "冰砾",
+        "冰礫"
+      ]
+    },
+    {
+      "id": 421,
+      "identifier": "shadow-claw",
+      "names": [
+        "shadow-claw",
+        "Shadow Claw",
+        "暗影爪"
+      ]
+    },
+    {
+      "id": 422,
+      "identifier": "thunder-fang",
+      "names": [
+        "thunder-fang",
+        "Thunder Fang",
+        "雷电牙",
+        "雷電牙"
+      ]
+    },
+    {
+      "id": 423,
+      "identifier": "ice-fang",
+      "names": [
+        "ice-fang",
+        "Ice Fang",
+        "冰冻牙",
+        "冰凍牙"
+      ]
+    },
+    {
+      "id": 424,
+      "identifier": "fire-fang",
+      "names": [
+        "fire-fang",
+        "Fire Fang",
+        "火焰牙"
+      ]
+    },
+    {
+      "id": 425,
+      "identifier": "shadow-sneak",
+      "names": [
+        "shadow-sneak",
+        "Shadow Sneak",
+        "影子偷袭",
+        "影子偷襲"
+      ]
+    },
+    {
+      "id": 426,
+      "identifier": "mud-bomb",
+      "names": [
+        "mud-bomb",
+        "Mud Bomb",
+        "泥巴炸弹",
+        "泥巴炸彈"
+      ]
+    },
+    {
+      "id": 427,
+      "identifier": "psycho-cut",
+      "names": [
+        "psycho-cut",
+        "Psycho Cut",
+        "精神利刃"
+      ]
+    },
+    {
+      "id": 428,
+      "identifier": "zen-headbutt",
+      "names": [
+        "zen-headbutt",
+        "Zen Headbutt",
+        "意念头锤",
+        "意念頭錘"
+      ]
+    },
+    {
+      "id": 429,
+      "identifier": "mirror-shot",
+      "names": [
+        "mirror-shot",
+        "Mirror Shot",
+        "镜光射击",
+        "鏡光射擊"
+      ]
+    },
+    {
+      "id": 430,
+      "identifier": "flash-cannon",
+      "names": [
+        "flash-cannon",
+        "Flash Cannon",
+        "加农光炮",
+        "加農光炮"
+      ]
+    },
+    {
+      "id": 431,
+      "identifier": "rock-climb",
+      "names": [
+        "rock-climb",
+        "Rock Climb",
+        "攀岩"
+      ]
+    },
+    {
+      "id": 432,
+      "identifier": "defog",
+      "names": [
+        "defog",
+        "Defog",
+        "清除浓雾",
+        "清除濃霧"
+      ]
+    },
+    {
+      "id": 433,
+      "identifier": "trick-room",
+      "names": [
+        "trick-room",
+        "Trick Room",
+        "戏法空间",
+        "戲法空間"
+      ]
+    },
+    {
+      "id": 434,
+      "identifier": "draco-meteor",
+      "names": [
+        "draco-meteor",
+        "Draco Meteor",
+        "流星群"
+      ]
+    },
+    {
+      "id": 435,
+      "identifier": "discharge",
+      "names": [
+        "discharge",
+        "Discharge",
+        "放电",
+        "放電"
+      ]
+    },
+    {
+      "id": 436,
+      "identifier": "lava-plume",
+      "names": [
+        "lava-plume",
+        "Lava Plume",
+        "喷烟",
+        "噴煙"
+      ]
+    },
+    {
+      "id": 437,
+      "identifier": "leaf-storm",
+      "names": [
+        "leaf-storm",
+        "Leaf Storm",
+        "飞叶风暴",
+        "飛葉風暴"
+      ]
+    },
+    {
+      "id": 438,
+      "identifier": "power-whip",
+      "names": [
+        "power-whip",
+        "Power Whip",
+        "强力鞭打",
+        "強力鞭打"
+      ]
+    },
+    {
+      "id": 439,
+      "identifier": "rock-wrecker",
+      "names": [
+        "rock-wrecker",
+        "Rock Wrecker",
+        "岩石炮"
+      ]
+    },
+    {
+      "id": 440,
+      "identifier": "cross-poison",
+      "names": [
+        "cross-poison",
+        "Cross Poison",
+        "十字毒刃"
+      ]
+    },
+    {
+      "id": 441,
+      "identifier": "gunk-shot",
+      "names": [
+        "gunk-shot",
+        "Gunk Shot",
+        "垃圾射击",
+        "垃圾射擊"
+      ]
+    },
+    {
+      "id": 442,
+      "identifier": "iron-head",
+      "names": [
+        "iron-head",
+        "Iron Head",
+        "铁头",
+        "鐵頭"
+      ]
+    },
+    {
+      "id": 443,
+      "identifier": "magnet-bomb",
+      "names": [
+        "magnet-bomb",
+        "Magnet Bomb",
+        "磁铁炸弹",
+        "磁鐵炸彈"
+      ]
+    },
+    {
+      "id": 444,
+      "identifier": "stone-edge",
+      "names": [
+        "stone-edge",
+        "Stone Edge",
+        "尖石攻击",
+        "尖石攻擊"
+      ]
+    },
+    {
+      "id": 445,
+      "identifier": "captivate",
+      "names": [
+        "captivate",
+        "Captivate",
+        "诱惑",
+        "誘惑"
+      ]
+    },
+    {
+      "id": 446,
+      "identifier": "stealth-rock",
+      "names": [
+        "stealth-rock",
+        "Stealth Rock",
+        "隐形岩",
+        "隱形岩"
+      ]
+    },
+    {
+      "id": 447,
+      "identifier": "grass-knot",
+      "names": [
+        "grass-knot",
+        "Grass Knot",
+        "打草结",
+        "打草結"
+      ]
+    },
+    {
+      "id": 448,
+      "identifier": "chatter",
+      "names": [
+        "chatter",
+        "Chatter",
+        "喋喋不休"
+      ]
+    },
+    {
+      "id": 449,
+      "identifier": "judgment",
+      "names": [
+        "judgment",
+        "Judgment",
+        "制裁光砾",
+        "制裁光礫"
+      ]
+    },
+    {
+      "id": 450,
+      "identifier": "bug-bite",
+      "names": [
+        "bug-bite",
+        "Bug Bite",
+        "虫咬",
+        "蟲咬"
+      ]
+    },
+    {
+      "id": 451,
+      "identifier": "charge-beam",
+      "names": [
+        "charge-beam",
+        "Charge Beam",
+        "充电光束",
+        "充電光束"
+      ]
+    },
+    {
+      "id": 452,
+      "identifier": "wood-hammer",
+      "names": [
+        "wood-hammer",
+        "Wood Hammer",
+        "木槌"
+      ]
+    },
+    {
+      "id": 453,
+      "identifier": "aqua-jet",
+      "names": [
+        "aqua-jet",
+        "Aqua Jet",
+        "水流喷射",
+        "水流噴射"
+      ]
+    },
+    {
+      "id": 454,
+      "identifier": "attack-order",
+      "names": [
+        "attack-order",
+        "Attack Order",
+        "攻击指令",
+        "攻擊指令"
+      ]
+    },
+    {
+      "id": 455,
+      "identifier": "defend-order",
+      "names": [
+        "defend-order",
+        "Defend Order",
+        "防御指令",
+        "防禦指令"
+      ]
+    },
+    {
+      "id": 456,
+      "identifier": "heal-order",
+      "names": [
+        "heal-order",
+        "Heal Order",
+        "回复指令",
+        "回復指令"
+      ]
+    },
+    {
+      "id": 457,
+      "identifier": "head-smash",
+      "names": [
+        "head-smash",
+        "Head Smash",
+        "双刃头锤",
+        "雙刃頭錘"
+      ]
+    },
+    {
+      "id": 458,
+      "identifier": "double-hit",
+      "names": [
+        "double-hit",
+        "Double Hit",
+        "二连击",
+        "二連擊"
+      ]
+    },
+    {
+      "id": 459,
+      "identifier": "roar-of-time",
+      "names": [
+        "roar-of-time",
+        "Roar of Time",
+        "时光咆哮",
+        "時光咆哮"
+      ]
+    },
+    {
+      "id": 460,
+      "identifier": "spacial-rend",
+      "names": [
+        "spacial-rend",
+        "Spacial Rend",
+        "亚空裂斩",
+        "亞空裂斬"
+      ]
+    },
+    {
+      "id": 461,
+      "identifier": "lunar-dance",
+      "names": [
+        "lunar-dance",
+        "Lunar Dance",
+        "新月舞"
+      ]
+    },
+    {
+      "id": 462,
+      "identifier": "crush-grip",
+      "names": [
+        "crush-grip",
+        "Crush Grip",
+        "捏碎"
+      ]
+    },
+    {
+      "id": 463,
+      "identifier": "magma-storm",
+      "names": [
+        "magma-storm",
+        "Magma Storm",
+        "熔岩风暴",
+        "熔岩風暴"
+      ]
+    },
+    {
+      "id": 464,
+      "identifier": "dark-void",
+      "names": [
+        "dark-void",
+        "Dark Void",
+        "暗黑洞"
+      ]
+    },
+    {
+      "id": 465,
+      "identifier": "seed-flare",
+      "names": [
+        "seed-flare",
+        "Seed Flare",
+        "种子闪光",
+        "種子閃光"
+      ]
+    },
+    {
+      "id": 466,
+      "identifier": "ominous-wind",
+      "names": [
+        "ominous-wind",
+        "Ominous Wind",
+        "奇异之风",
+        "奇異之風"
+      ]
+    },
+    {
+      "id": 467,
+      "identifier": "shadow-force",
+      "names": [
+        "shadow-force",
+        "Shadow Force",
+        "暗影潜袭",
+        "暗影潛襲"
+      ]
+    },
+    {
+      "id": 468,
+      "identifier": "hone-claws",
+      "names": [
+        "hone-claws",
+        "Hone Claws",
+        "磨爪"
+      ]
+    },
+    {
+      "id": 469,
+      "identifier": "wide-guard",
+      "names": [
+        "wide-guard",
+        "Wide Guard",
+        "广域防守",
+        "廣域防守"
+      ]
+    },
+    {
+      "id": 470,
+      "identifier": "guard-split",
+      "names": [
+        "guard-split",
+        "Guard Split",
+        "防守平分"
+      ]
+    },
+    {
+      "id": 471,
+      "identifier": "power-split",
+      "names": [
+        "power-split",
+        "Power Split",
+        "力量平分"
+      ]
+    },
+    {
+      "id": 472,
+      "identifier": "wonder-room",
+      "names": [
+        "wonder-room",
+        "Wonder Room",
+        "奇妙空间",
+        "奇妙空間"
+      ]
+    },
+    {
+      "id": 473,
+      "identifier": "psyshock",
+      "names": [
+        "psyshock",
+        "Psyshock",
+        "精神冲击",
+        "精神衝擊"
+      ]
+    },
+    {
+      "id": 474,
+      "identifier": "venoshock",
+      "names": [
+        "venoshock",
+        "Venoshock",
+        "毒液冲击",
+        "毒液衝擊"
+      ]
+    },
+    {
+      "id": 475,
+      "identifier": "autotomize",
+      "names": [
+        "autotomize",
+        "Autotomize",
+        "身体轻量化",
+        "身體輕量化"
+      ]
+    },
+    {
+      "id": 476,
+      "identifier": "rage-powder",
+      "names": [
+        "rage-powder",
+        "Rage Powder",
+        "愤怒粉",
+        "憤怒粉"
+      ]
+    },
+    {
+      "id": 477,
+      "identifier": "telekinesis",
+      "names": [
+        "telekinesis",
+        "Telekinesis",
+        "意念移物"
+      ]
+    },
+    {
+      "id": 478,
+      "identifier": "magic-room",
+      "names": [
+        "magic-room",
+        "Magic Room",
+        "魔法空间",
+        "魔法空間"
+      ]
+    },
+    {
+      "id": 479,
+      "identifier": "smack-down",
+      "names": [
+        "smack-down",
+        "Smack Down",
+        "击落",
+        "擊落"
+      ]
+    },
+    {
+      "id": 480,
+      "identifier": "storm-throw",
+      "names": [
+        "storm-throw",
+        "Storm Throw",
+        "山岚摔",
+        "山嵐摔"
+      ]
+    },
+    {
+      "id": 481,
+      "identifier": "flame-burst",
+      "names": [
+        "flame-burst",
+        "Flame Burst",
+        "烈焰溅射",
+        "烈焰濺射"
+      ]
+    },
+    {
+      "id": 482,
+      "identifier": "sludge-wave",
+      "names": [
+        "sludge-wave",
+        "Sludge Wave",
+        "污泥波"
+      ]
+    },
+    {
+      "id": 483,
+      "identifier": "quiver-dance",
+      "names": [
+        "quiver-dance",
+        "Quiver Dance",
+        "蝶舞"
+      ]
+    },
+    {
+      "id": 484,
+      "identifier": "heavy-slam",
+      "names": [
+        "heavy-slam",
+        "Heavy Slam",
+        "重磅冲撞",
+        "重磅衝撞"
+      ]
+    },
+    {
+      "id": 485,
+      "identifier": "synchronoise",
+      "names": [
+        "synchronoise",
+        "Synchronoise",
+        "同步干扰",
+        "同步干擾"
+      ]
+    },
+    {
+      "id": 486,
+      "identifier": "electro-ball",
+      "names": [
+        "electro-ball",
+        "Electro Ball",
+        "电球",
+        "電球"
+      ]
+    },
+    {
+      "id": 487,
+      "identifier": "soak",
+      "names": [
+        "soak",
+        "Soak",
+        "浸水"
+      ]
+    },
+    {
+      "id": 488,
+      "identifier": "flame-charge",
+      "names": [
+        "flame-charge",
+        "Flame Charge",
+        "蓄能焰袭",
+        "蓄能焰襲"
+      ]
+    },
+    {
+      "id": 489,
+      "identifier": "coil",
+      "names": [
+        "coil",
+        "Coil",
+        "盘蜷",
+        "盤蜷"
+      ]
+    },
+    {
+      "id": 490,
+      "identifier": "low-sweep",
+      "names": [
+        "low-sweep",
+        "Low Sweep",
+        "下盘踢",
+        "下盤踢"
+      ]
+    },
+    {
+      "id": 491,
+      "identifier": "acid-spray",
+      "names": [
+        "acid-spray",
+        "Acid Spray",
+        "酸液炸弹",
+        "酸液炸彈"
+      ]
+    },
+    {
+      "id": 492,
+      "identifier": "foul-play",
+      "names": [
+        "foul-play",
+        "Foul Play",
+        "欺诈",
+        "欺詐"
+      ]
+    },
+    {
+      "id": 493,
+      "identifier": "simple-beam",
+      "names": [
+        "simple-beam",
+        "Simple Beam",
+        "单纯光束",
+        "單純光束"
+      ]
+    },
+    {
+      "id": 494,
+      "identifier": "entrainment",
+      "names": [
+        "entrainment",
+        "Entrainment",
+        "找伙伴",
+        "找夥伴"
+      ]
+    },
+    {
+      "id": 495,
+      "identifier": "after-you",
+      "names": [
+        "after-you",
+        "After You",
+        "您先请",
+        "您先請"
+      ]
+    },
+    {
+      "id": 496,
+      "identifier": "round",
+      "names": [
+        "round",
+        "Round",
+        "轮唱",
+        "輪唱"
+      ]
+    },
+    {
+      "id": 497,
+      "identifier": "echoed-voice",
+      "names": [
+        "echoed-voice",
+        "Echoed Voice",
+        "回声",
+        "回聲"
+      ]
+    },
+    {
+      "id": 498,
+      "identifier": "chip-away",
+      "names": [
+        "chip-away",
+        "Chip Away",
+        "逐步击破",
+        "逐步擊破"
+      ]
+    },
+    {
+      "id": 499,
+      "identifier": "clear-smog",
+      "names": [
+        "clear-smog",
+        "Clear Smog",
+        "清除之烟",
+        "清除之煙"
+      ]
+    },
+    {
+      "id": 500,
+      "identifier": "stored-power",
+      "names": [
+        "stored-power",
+        "Stored Power",
+        "辅助力量",
+        "輔助力量"
+      ]
+    },
+    {
+      "id": 501,
+      "identifier": "quick-guard",
+      "names": [
+        "quick-guard",
+        "Quick Guard",
+        "快速防守"
+      ]
+    },
+    {
+      "id": 502,
+      "identifier": "ally-switch",
+      "names": [
+        "ally-switch",
+        "Ally Switch",
+        "交换场地",
+        "交換場地"
+      ]
+    },
+    {
+      "id": 503,
+      "identifier": "scald",
+      "names": [
+        "scald",
+        "Scald",
+        "热水",
+        "熱水"
+      ]
+    },
+    {
+      "id": 504,
+      "identifier": "shell-smash",
+      "names": [
+        "shell-smash",
+        "Shell Smash",
+        "破壳",
+        "破殼"
+      ]
+    },
+    {
+      "id": 505,
+      "identifier": "heal-pulse",
+      "names": [
+        "heal-pulse",
+        "Heal Pulse",
+        "治愈波动",
+        "治癒波動"
+      ]
+    },
+    {
+      "id": 506,
+      "identifier": "hex",
+      "names": [
+        "hex",
+        "Hex",
+        "祸不单行",
+        "禍不單行"
+      ]
+    },
+    {
+      "id": 507,
+      "identifier": "sky-drop",
+      "names": [
+        "sky-drop",
+        "Sky Drop",
+        "自由落体",
+        "自由落體"
+      ]
+    },
+    {
+      "id": 508,
+      "identifier": "shift-gear",
+      "names": [
+        "shift-gear",
+        "Shift Gear",
+        "换档",
+        "換檔"
+      ]
+    },
+    {
+      "id": 509,
+      "identifier": "circle-throw",
+      "names": [
+        "circle-throw",
+        "Circle Throw",
+        "巴投"
+      ]
+    },
+    {
+      "id": 510,
+      "identifier": "incinerate",
+      "names": [
+        "incinerate",
+        "Incinerate",
+        "烧尽",
+        "燒盡"
+      ]
+    },
+    {
+      "id": 511,
+      "identifier": "quash",
+      "names": [
+        "quash",
+        "Quash",
+        "延后",
+        "延後"
+      ]
+    },
+    {
+      "id": 512,
+      "identifier": "acrobatics",
+      "names": [
+        "acrobatics",
+        "Acrobatics",
+        "杂技",
+        "雜技"
+      ]
+    },
+    {
+      "id": 513,
+      "identifier": "reflect-type",
+      "names": [
+        "reflect-type",
+        "Reflect Type",
+        "镜面属性",
+        "鏡面屬性"
+      ]
+    },
+    {
+      "id": 514,
+      "identifier": "retaliate",
+      "names": [
+        "retaliate",
+        "Retaliate",
+        "报仇",
+        "報仇"
+      ]
+    },
+    {
+      "id": 515,
+      "identifier": "final-gambit",
+      "names": [
+        "final-gambit",
+        "Final Gambit",
+        "搏命"
+      ]
+    },
+    {
+      "id": 516,
+      "identifier": "bestow",
+      "names": [
+        "bestow",
+        "Bestow",
+        "传递礼物",
+        "傳遞禮物"
+      ]
+    },
+    {
+      "id": 517,
+      "identifier": "inferno",
+      "names": [
+        "inferno",
+        "Inferno",
+        "炼狱",
+        "煉獄"
+      ]
+    },
+    {
+      "id": 518,
+      "identifier": "water-pledge",
+      "names": [
+        "water-pledge",
+        "Water Pledge",
+        "水之誓约",
+        "水之誓約"
+      ]
+    },
+    {
+      "id": 519,
+      "identifier": "fire-pledge",
+      "names": [
+        "fire-pledge",
+        "Fire Pledge",
+        "火之誓约",
+        "火之誓約"
+      ]
+    },
+    {
+      "id": 520,
+      "identifier": "grass-pledge",
+      "names": [
+        "grass-pledge",
+        "Grass Pledge",
+        "草之誓约",
+        "草之誓約"
+      ]
+    },
+    {
+      "id": 521,
+      "identifier": "volt-switch",
+      "names": [
+        "volt-switch",
+        "Volt Switch",
+        "伏特替换",
+        "伏特替換"
+      ]
+    },
+    {
+      "id": 522,
+      "identifier": "struggle-bug",
+      "names": [
+        "struggle-bug",
+        "Struggle Bug",
+        "虫之抵抗",
+        "蟲之抵抗"
+      ]
+    },
+    {
+      "id": 523,
+      "identifier": "bulldoze",
+      "names": [
+        "bulldoze",
+        "Bulldoze",
+        "重踏"
+      ]
+    },
+    {
+      "id": 524,
+      "identifier": "frost-breath",
+      "names": [
+        "frost-breath",
+        "Frost Breath",
+        "冰息"
+      ]
+    },
+    {
+      "id": 525,
+      "identifier": "dragon-tail",
+      "names": [
+        "dragon-tail",
+        "Dragon Tail",
+        "龙尾",
+        "龍尾"
+      ]
+    },
+    {
+      "id": 526,
+      "identifier": "work-up",
+      "names": [
+        "work-up",
+        "Work Up",
+        "自我激励",
+        "自我激勵"
+      ]
+    },
+    {
+      "id": 527,
+      "identifier": "electroweb",
+      "names": [
+        "electroweb",
+        "Electroweb",
+        "电网",
+        "電網"
+      ]
+    },
+    {
+      "id": 528,
+      "identifier": "wild-charge",
+      "names": [
+        "wild-charge",
+        "Wild Charge",
+        "疯狂伏特",
+        "瘋狂伏特"
+      ]
+    },
+    {
+      "id": 529,
+      "identifier": "drill-run",
+      "names": [
+        "drill-run",
+        "Drill Run",
+        "直冲钻",
+        "直衝鑽"
+      ]
+    },
+    {
+      "id": 530,
+      "identifier": "dual-chop",
+      "names": [
+        "dual-chop",
+        "Dual Chop",
+        "二连劈",
+        "二連劈"
+      ]
+    },
+    {
+      "id": 531,
+      "identifier": "heart-stamp",
+      "names": [
+        "heart-stamp",
+        "Heart Stamp",
+        "爱心印章",
+        "愛心印章"
+      ]
+    },
+    {
+      "id": 532,
+      "identifier": "horn-leech",
+      "names": [
+        "horn-leech",
+        "Horn Leech",
+        "木角"
+      ]
+    },
+    {
+      "id": 533,
+      "identifier": "sacred-sword",
+      "names": [
+        "sacred-sword",
+        "Sacred Sword",
+        "圣剑",
+        "聖劍"
+      ]
+    },
+    {
+      "id": 534,
+      "identifier": "razor-shell",
+      "names": [
+        "razor-shell",
+        "Razor Shell",
+        "贝壳刃",
+        "貝殼刃"
+      ]
+    },
+    {
+      "id": 535,
+      "identifier": "heat-crash",
+      "names": [
+        "heat-crash",
+        "Heat Crash",
+        "高温重压",
+        "高溫重壓"
+      ]
+    },
+    {
+      "id": 536,
+      "identifier": "leaf-tornado",
+      "names": [
+        "leaf-tornado",
+        "Leaf Tornado",
+        "青草搅拌器",
+        "青草攪拌器"
+      ]
+    },
+    {
+      "id": 537,
+      "identifier": "steamroller",
+      "names": [
+        "steamroller",
+        "Steamroller",
+        "疯狂滚压",
+        "瘋狂滾壓"
+      ]
+    },
+    {
+      "id": 538,
+      "identifier": "cotton-guard",
+      "names": [
+        "cotton-guard",
+        "Cotton Guard",
+        "棉花防守"
+      ]
+    },
+    {
+      "id": 539,
+      "identifier": "night-daze",
+      "names": [
+        "night-daze",
+        "Night Daze",
+        "暗黑爆破"
+      ]
+    },
+    {
+      "id": 540,
+      "identifier": "psystrike",
+      "names": [
+        "psystrike",
+        "Psystrike",
+        "精神击破",
+        "精神擊破"
+      ]
+    },
+    {
+      "id": 541,
+      "identifier": "tail-slap",
+      "names": [
+        "tail-slap",
+        "Tail Slap",
+        "扫尾拍打",
+        "掃尾拍打"
+      ]
+    },
+    {
+      "id": 542,
+      "identifier": "hurricane",
+      "names": [
+        "hurricane",
+        "Hurricane",
+        "暴风",
+        "暴風"
+      ]
+    },
+    {
+      "id": 543,
+      "identifier": "head-charge",
+      "names": [
+        "head-charge",
+        "Head Charge",
+        "爆炸头突击",
+        "爆炸頭突擊"
+      ]
+    },
+    {
+      "id": 544,
+      "identifier": "gear-grind",
+      "names": [
+        "gear-grind",
+        "Gear Grind",
+        "齿轮飞盘",
+        "齒輪飛盤"
+      ]
+    },
+    {
+      "id": 545,
+      "identifier": "searing-shot",
+      "names": [
+        "searing-shot",
+        "Searing Shot",
+        "火焰弹",
+        "火焰彈"
+      ]
+    },
+    {
+      "id": 546,
+      "identifier": "techno-blast",
+      "names": [
+        "techno-blast",
+        "Techno Blast",
+        "高科技光炮"
+      ]
+    },
+    {
+      "id": 547,
+      "identifier": "relic-song",
+      "names": [
+        "relic-song",
+        "Relic Song",
+        "古老之歌"
+      ]
+    },
+    {
+      "id": 548,
+      "identifier": "secret-sword",
+      "names": [
+        "secret-sword",
+        "Secret Sword",
+        "神秘之剑",
+        "神秘之劍"
+      ]
+    },
+    {
+      "id": 549,
+      "identifier": "glaciate",
+      "names": [
+        "glaciate",
+        "Glaciate",
+        "冰封世界"
+      ]
+    },
+    {
+      "id": 550,
+      "identifier": "bolt-strike",
+      "names": [
+        "bolt-strike",
+        "Bolt Strike",
+        "雷击",
+        "雷擊"
+      ]
+    },
+    {
+      "id": 551,
+      "identifier": "blue-flare",
+      "names": [
+        "blue-flare",
+        "Blue Flare",
+        "青焰"
+      ]
+    },
+    {
+      "id": 552,
+      "identifier": "fiery-dance",
+      "names": [
+        "fiery-dance",
+        "Fiery Dance",
+        "火之舞"
+      ]
+    },
+    {
+      "id": 553,
+      "identifier": "freeze-shock",
+      "names": [
+        "freeze-shock",
+        "Freeze Shock",
+        "冰冻伏特",
+        "冰凍伏特"
+      ]
+    },
+    {
+      "id": 554,
+      "identifier": "ice-burn",
+      "names": [
+        "ice-burn",
+        "Ice Burn",
+        "极寒冷焰",
+        "極寒冷焰"
+      ]
+    },
+    {
+      "id": 555,
+      "identifier": "snarl",
+      "names": [
+        "snarl",
+        "Snarl",
+        "大声咆哮",
+        "大聲咆哮"
+      ]
+    },
+    {
+      "id": 556,
+      "identifier": "icicle-crash",
+      "names": [
+        "icicle-crash",
+        "Icicle Crash",
+        "冰柱坠击",
+        "冰柱墜擊"
+      ]
+    },
+    {
+      "id": 557,
+      "identifier": "v-create",
+      "names": [
+        "v-create",
+        "V-create",
+        "Ｖ热焰",
+        "Ｖ熱焰"
+      ]
+    },
+    {
+      "id": 558,
+      "identifier": "fusion-flare",
+      "names": [
+        "fusion-flare",
+        "Fusion Flare",
+        "交错火焰",
+        "交錯火焰"
+      ]
+    },
+    {
+      "id": 559,
+      "identifier": "fusion-bolt",
+      "names": [
+        "fusion-bolt",
+        "Fusion Bolt",
+        "交错闪电",
+        "交錯閃電"
+      ]
+    },
+    {
+      "id": 10001,
+      "identifier": "shadow-rush",
+      "names": [
+        "shadow-rush",
+        "Shadow Rush"
+      ]
+    },
+    {
+      "id": 10002,
+      "identifier": "shadow-blast",
+      "names": [
+        "shadow-blast",
+        "Shadow Blast"
+      ]
+    },
+    {
+      "id": 10003,
+      "identifier": "shadow-blitz",
+      "names": [
+        "shadow-blitz",
+        "Shadow Blitz"
+      ]
+    },
+    {
+      "id": 10004,
+      "identifier": "shadow-bolt",
+      "names": [
+        "shadow-bolt",
+        "Shadow Bolt"
+      ]
+    },
+    {
+      "id": 10005,
+      "identifier": "shadow-break",
+      "names": [
+        "shadow-break",
+        "Shadow Break"
+      ]
+    },
+    {
+      "id": 10006,
+      "identifier": "shadow-chill",
+      "names": [
+        "shadow-chill",
+        "Shadow Chill"
+      ]
+    },
+    {
+      "id": 10007,
+      "identifier": "shadow-end",
+      "names": [
+        "shadow-end",
+        "Shadow End"
+      ]
+    },
+    {
+      "id": 10008,
+      "identifier": "shadow-fire",
+      "names": [
+        "shadow-fire",
+        "Shadow Fire"
+      ]
+    },
+    {
+      "id": 10009,
+      "identifier": "shadow-rave",
+      "names": [
+        "shadow-rave",
+        "Shadow Rave"
+      ]
+    },
+    {
+      "id": 10010,
+      "identifier": "shadow-storm",
+      "names": [
+        "shadow-storm",
+        "Shadow Storm"
+      ]
+    },
+    {
+      "id": 10011,
+      "identifier": "shadow-wave",
+      "names": [
+        "shadow-wave",
+        "Shadow Wave"
+      ]
+    },
+    {
+      "id": 10012,
+      "identifier": "shadow-down",
+      "names": [
+        "shadow-down",
+        "Shadow Down"
+      ]
+    },
+    {
+      "id": 10013,
+      "identifier": "shadow-half",
+      "names": [
+        "shadow-half",
+        "Shadow Half"
+      ]
+    },
+    {
+      "id": 10014,
+      "identifier": "shadow-hold",
+      "names": [
+        "shadow-hold",
+        "Shadow Hold"
+      ]
+    },
+    {
+      "id": 10015,
+      "identifier": "shadow-mist",
+      "names": [
+        "shadow-mist",
+        "Shadow Mist"
+      ]
+    },
+    {
+      "id": 10016,
+      "identifier": "shadow-panic",
+      "names": [
+        "shadow-panic",
+        "Shadow Panic"
+      ]
+    },
+    {
+      "id": 10017,
+      "identifier": "shadow-shed",
+      "names": [
+        "shadow-shed",
+        "Shadow Shed"
+      ]
+    },
+    {
+      "id": 10018,
+      "identifier": "shadow-sky",
+      "names": [
+        "shadow-sky",
+        "Shadow Sky"
+      ]
+    }
+  ]
+}

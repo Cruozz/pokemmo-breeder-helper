@@ -61,7 +61,22 @@ def list_windows() -> list[WindowInfo]:
 
 def capture_window(window: WindowInfo):
     """Capture the visible client area of a selected window without sending input."""
-    bbox = (max(0, window.left), max(0, window.top), window.right, window.bottom)
+    if not user32.IsWindow(window.hwnd):
+        raise RuntimeError("选中的窗口已经关闭，请重新刷新窗口列表。")
+    if user32.IsIconic(window.hwnd):
+        raise RuntimeError("选中的窗口已最小化，请先恢复窗口。")
+    rect = wintypes.RECT()
+    if not user32.GetWindowRect(window.hwnd, ctypes.byref(rect)):
+        raise RuntimeError("无法读取选中窗口的当前位置。")
+    if rect.right - rect.left < 1 or rect.bottom - rect.top < 1:
+        raise RuntimeError("选中的窗口当前没有可截取区域。")
+    # Refresh the cached metadata on every frame. The window can move or resize
+    # after the user selected it, while its HWND remains stable.
+    window.left = rect.left
+    window.top = rect.top
+    window.right = rect.right
+    window.bottom = rect.bottom
+    bbox = (rect.left, rect.top, rect.right, rect.bottom)
     try:
         return ImageGrab.grab(bbox=bbox, all_screens=True, include_layered_windows=True).convert("RGB")
     except TypeError:

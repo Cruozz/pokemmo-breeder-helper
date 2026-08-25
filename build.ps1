@@ -1,6 +1,8 @@
 param(
     [switch]$Console,
-    [string]$Python = ""
+    [string]$Python = "",
+    [switch]$OneFile,
+    [string]$OutputDirectory = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,26 +13,55 @@ function Resolve-Python([string]$requested) {
     if ($requested) {
         $command = Get-Command $requested -ErrorAction SilentlyContinue
         if ($command) {
-            return $command.Source
+            $candidate = $command.Source
+        } elseif (Test-Path $requested) {
+            $candidate = (Resolve-Path $requested).Path
+        } else {
+            throw "Python executable not found: $requested"
         }
-        if (Test-Path $requested) {
-            return (Resolve-Path $requested).Path
+        $version = (& $candidate -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+        if ($LASTEXITCODE -ne 0 -or $version -notin @('3.10', '3.11', '3.12')) {
+            throw "Python $version is incompatible. rapidocr_onnxruntime 1.4.4 requires Python 3.10-3.12."
         }
-        throw "找不到指定的 Python：$requested"
+        return $candidate
     }
 
-    foreach ($name in @('py', 'python')) {
-        $command = Get-Command $name -ErrorAction SilentlyContinue
-        if ($command) {
+    $projectPython = Join-Path $project '.runtime\python312\python.exe'
+    if (Test-Path $projectPython) {
+        return (Resolve-Path $projectPython).Path
+    }
+
+    $launcher = Get-Command 'py' -ErrorAction SilentlyContinue
+    if ($launcher) {
+        foreach ($selector in @('-3.12', '-3.11', '-3.10')) {
+            try {
+            $candidate = (& $launcher.Source $selector -c "import sys; print(sys.executable)" 2>$null)
+            } catch {
+                continue
+            }
+            if ($LASTEXITCODE -eq 0 -and $candidate) {
+                $candidate = $candidate.Trim()
+                $version = (& $candidate -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+                if ($LASTEXITCODE -eq 0 -and $version -in @('3.10', '3.11', '3.12')) {
+                    return $candidate
+                }
+            }
+        }
+    }
+
+    $command = Get-Command 'python' -ErrorAction SilentlyContinue
+    if ($command) {
+        $version = (& $command.Source -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+        if ($LASTEXITCODE -eq 0 -and $version -in @('3.10', '3.11', '3.12')) {
             return $command.Source
         }
     }
-    throw "找不到 Python。请安装 Python 3.10+，或使用 -Python 指定 python.exe。"
+    throw "Compatible Python not found. Install Python 3.10-3.12 or pass -Python."
 }
 
 $python = Resolve-Python $Python
 if (-not (Test-Path (Join-Path $vendor 'PyInstaller'))) {
-    throw "未找到本地依赖目录：$vendor。请先运行 .\setup.ps1。"
+    throw "Local dependency directory not found: $vendor. Run .\setup.ps1 first."
 }
 
 $pythonRoot = (& $python -c "import sys; print(sys.prefix)").Trim()
@@ -39,11 +70,30 @@ $tclBinary = Join-Path $pythonRoot 'DLLs\tcl86t.dll'
 $tkBinary = Join-Path $pythonRoot 'DLLs\tk86t.dll'
 $tclData = Join-Path $pythonRoot 'tcl\tcl8.6'
 $tkData = Join-Path $pythonRoot 'tcl\tk8.6'
+$speciesData = Join-Path $project 'data'
+$uiAssets = Join-Path $project 'assets'
+$versionFile = Join-Path $project 'version_info.txt'
 foreach ($required in @($tkinterBinary, $tclBinary, $tkBinary, $tclData, $tkData)) {
     if (-not (Test-Path $required)) {
-        throw "当前 Python 缺少 Tk 运行文件：$required。请安装带 Tcl/Tk 的 Python。"
+        throw "The selected Python is missing a Tk runtime file: $required"
     }
 }
+if (-not (Test-Path $versionFile)) {
+    throw "Windows version metadata not found: $versionFile"
+}
+
+if ($OutputDirectory) {
+    if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
+        $distPath = $OutputDirectory
+    } else {
+        $distPath = Join-Path $project $OutputDirectory
+    }
+} else {
+    $distPath = Join-Path $project 'dist'
+}
+$bundleMode = if ($OneFile) { '--onefile' } else { '--onedir' }
+$bundleName = if ($OneFile) { 'Pokemmo孵蛋助手-晨若' } else { 'PokeMMO-Breeder-Helper' }
+$workPath = Join-Path $project $(if ($OneFile) { 'build-onefile' } else { 'build' })
 
 $runner = "import sys, runpy; sys.path.insert(0, r'$vendor'); runpy.run_module('PyInstaller', run_name='__main__')"
 $windowMode = if ($Console) { '--console' } else { '--windowed' }
@@ -51,19 +101,21 @@ $pyinstallerArgs = @(
     '--noconfirm',
     '--clean',
     $windowMode,
-    '--onedir',
+    $bundleMode,
     '--name',
-    'PokeMMO-Breeder-Helper',
+    $bundleName,
+    '--distpath',
+    $distPath,
+    '--workpath',
+    $workPath,
+    '--version-file',
+    $versionFile,
     '--paths',
     $vendor,
     '--additional-hooks-dir',
     (Join-Path $project 'hooks'),
     '--collect-all',
     'rapidocr_onnxruntime',
-    '--collect-all',
-    'onnxruntime',
-    '--collect-all',
-    'cv2',
     '--hidden-import',
     'tkinter',
     '--hidden-import',
@@ -84,12 +136,21 @@ $pyinstallerArgs = @(
     "${tclData};tcl\tcl8.6",
     '--add-data',
     "${tkData};tcl\tk8.6",
+    '--add-data',
+    "${speciesData};data",
+    '--add-data',
+    "${uiAssets};assets",
     (Join-Path $project 'app.py')
 )
 
 & $python -c $runner @pyinstallerArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "PyInstaller 打包失败，退出码：$LASTEXITCODE"
+    throw "PyInstaller failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "Build output: $(Join-Path $project 'dist\PokeMMO-Breeder-Helper')"
+$outputPath = if ($OneFile) {
+    Join-Path $distPath "$bundleName.exe"
+} else {
+    Join-Path $distPath $bundleName
+}
+Write-Host "Build output: $outputPath"
