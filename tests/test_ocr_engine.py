@@ -49,6 +49,8 @@ class OCRParserTests(unittest.TestCase):
             OCRItem("0/0/0/0/0/0", 0.97, box(100, 210, 220, 232)),
             OCRItem("性格：", 0.92, box(20, 250, 80, 272)),
             OCRItem("坦率Docile", 0.96, box(100, 250, 200, 272)),
+            OCRItem("特性：", 0.94, box(20, 275, 80, 287)),
+            OCRItem("孢子", 0.97, box(100, 275, 150, 287)),
             OCRItem("标记：", 0.90, box(20, 290, 80, 312)),
             OCRItem("一般", 0.98, box(20, 330, 78, 352)),
             OCRItem("撞击", 0.94, box(100, 330, 150, 352)),
@@ -67,6 +69,7 @@ class OCRParserTests(unittest.TestCase):
         self.assertEqual(parsed["gender"], "F")
         self.assertEqual(parsed["ivs"], [26, 2, 19, 0, 16, 6])
         self.assertEqual(parsed["nature"], "坦率")
+        self.assertEqual(parsed["ability"], "孢子")
         self.assertEqual(parsed["moves"], ["撞击", "吸取", "麻痹粉", "寄生种子"])
         self.assertNotIn("12/5/6/5/6/5", parsed["recognized_text"])
         self.assertIn("性别：母", parsed["recognized_text"])
@@ -111,6 +114,50 @@ class OCRParserTests(unittest.TestCase):
         self.assertTrue(parsed["is_alpha"])
         self.assertGreaterEqual(parsed["alpha_confidence"], 0.65)
         self.assertFalse(OCRProcessor.parse(items, FakeImage(240, 260))["is_alpha"])
+
+    def test_detects_cyan_hidden_ability_diamond_without_requiring_gold_text(self) -> None:
+        image = FakeImage(260, 180)
+        for y in range(93, 103):
+            for x in range(139, 149):
+                if abs(x - 144) + abs(y - 98) <= 6:
+                    image.set_pixel(x, y, (45, 190, 235))
+        items = [
+            OCRItem("特性：", 0.96, box(20, 88, 80, 108)),
+            OCRItem("食草", 0.94, box(92, 88, 128, 108)),
+        ]
+
+        parsed = OCRProcessor.parse(items, image)
+
+        self.assertTrue(parsed["has_hidden_ability"])
+        self.assertGreaterEqual(parsed["hidden_ability_confidence"], 0.70)
+        self.assertFalse(OCRProcessor.parse(items, FakeImage(260, 180))["has_hidden_ability"])
+
+    def test_gold_ability_text_without_cyan_diamond_is_not_hidden_ability(self) -> None:
+        image = FakeImage(260, 180)
+        for y in range(92, 105):
+            for x in range(92, 128):
+                if (x + y) % 3:
+                    image.set_pixel(x, y, (205, 170, 85))
+        items = [
+            OCRItem("特性：", 0.96, box(20, 88, 80, 108)),
+            OCRItem("食草", 0.94, box(92, 88, 128, 108)),
+        ]
+
+        parsed = OCRProcessor.parse(items, image)
+
+        self.assertFalse(parsed["has_hidden_ability"])
+        self.assertEqual(parsed["hidden_ability_confidence"], 0.0)
+
+    def test_thin_cyan_ui_accent_is_not_mistaken_for_diamond(self) -> None:
+        image = FakeImage(260, 180)
+        for x in range(139, 151):
+            image.set_pixel(x, 98, (45, 190, 235))
+        items = [
+            OCRItem("特性：", 0.96, box(20, 88, 80, 108)),
+            OCRItem("食草", 0.94, box(92, 88, 128, 108)),
+        ]
+
+        self.assertFalse(OCRProcessor.parse(items, image)["has_hidden_ability"])
 
 
 if __name__ == "__main__":

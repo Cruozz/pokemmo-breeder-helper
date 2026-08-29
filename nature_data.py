@@ -53,7 +53,42 @@ NATURE_BY_CHINESE = {nature.chinese: nature for nature in NATURES}
 
 NEUTRAL_TARGET_NAME = "无修正（任一）"
 NEUTRAL_NATURES = tuple(nature for nature in NATURES if not nature.increased and not nature.decreased)
-PLANNER_NATURES = tuple(nature for nature in NATURES if nature.increased and nature.decreased)
+FEATURED_NATURE_NAMES = ("固执", "内敛", "爽朗", "胆小")
+PLANNER_NATURES = tuple(
+    nature
+    for name in FEATURED_NATURE_NAMES
+    for nature in NATURES
+    if nature.chinese == name
+) + tuple(
+    nature
+    for nature in NATURES
+    if nature.increased and nature.decreased and nature.chinese not in FEATURED_NATURE_NAMES
+)
+
+
+def planner_nature_display_name(nature: NatureInfo) -> str:
+    """Return the picker label without changing the stored nature value."""
+    return f"★ {nature.chinese}" if nature.chinese in FEATURED_NATURE_NAMES else nature.chinese
+
+
+def filter_planner_natures(query: str) -> tuple[NatureInfo, ...]:
+    """Return planner natures matching a live Chinese/English/effect query."""
+    needle = "".join((query or "").strip().lower().split())
+    if not needle:
+        return PLANNER_NATURES
+    return tuple(
+        nature
+        for nature in PLANNER_NATURES
+        if needle in "".join(
+            (
+                nature.chinese,
+                nature.english.lower(),
+                nature.increased,
+                nature.decreased,
+                nature.effect,
+            )
+        ).lower().replace(" ", "")
+    )
 
 
 def find_nature(value: str) -> NatureInfo | None:

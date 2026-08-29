@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from chain_planner import find_chain_candidates
 from models import Monster, normalize_gender
+from reference_data import get_reference_database
 from species_data import get_species_database
 
 
@@ -213,6 +214,10 @@ def make_report_with_candidates(
     allow_alpha_materials: bool = False,
     excluded_ids: set[str] | frozenset[str] | None = None,
     intermediate_gender_strategy: str = "lock_all",
+    need_hidden_ability: bool = False,
+    target_moves: tuple[str, ...] | list[str] | None = None,
+    convert_maternal_with_ditto: bool = False,
+    preferred_material_ids: set[str] | frozenset[str] | None = None,
 ) -> tuple[str, list]:
     if not species.strip():
         return "请先填写目标种类。", []
@@ -221,9 +226,17 @@ def make_report_with_candidates(
     resolved_species = target_record.display_name if target_record else species.strip()
     target_line = species_db.evolution_line(target_record) if target_record else ()
     target_ancestry = species_db.ancestry(target_record) if target_record else ()
-    breeding_family = tuple(record for record in target_line if "未发现" not in record.egg_groups)
+    linked_breeding_family = species_db.linked_breeding_family(target_record) if target_record else ()
+    breeding_family = linked_breeding_family or tuple(
+        record for record in target_line if "未发现" not in record.egg_groups
+    )
     breeding_parent = species_db.breeding_parent(target_record) if target_record else None
     offspring_record = species_db.breeding_offspring(target_record) if target_record else None
+    linked_gender_offspring = (
+        species_db.breeding_offspring_by_gender(target_record)
+        if linked_breeding_family and target_record
+        else ()
+    )
 
     if normalize_text(resolved_species) in {"百变怪", "ditto"}:
         return "百变怪不能通过孵蛋获得；它只能作为其他精灵的孵化素材。", []
@@ -255,8 +268,64 @@ def make_report_with_candidates(
         if not monster.gender and record.allowed_genders == ("N",):
             monster.gender = "N"
 
+    family_keys = {
+        normalize_text(record.display_name)
+        for record in breeding_family
+    } or {normalize_text(resolved_species)}
+    target_inventory_genders = {
+        normalize_gender(monster.gender)
+        for monster in planning_inventory
+        if monster.verified and normalize_text(monster.species) in family_keys
+    }
+    resolved_group_keys = {normalize_text(group) for group in resolved_groups if normalize_text(group)}
+    protected_alpha_materials = [
+        monster
+        for monster in planning_inventory
+        if (
+            monster.verified
+            and monster.is_alpha
+            and not target_alpha
+            and not allow_alpha_materials
+            and (
+                normalize_text(monster.species) in family_keys
+                or (
+                    allow_ditto
+                    and normalize_text(monster.species) in {"百变怪", "ditto"}
+                )
+                or bool(resolved_group_keys & {normalize_text(group) for group in monster.egg_groups})
+            )
+        )
+    ]
+    eligible_inventory_dittos = [
+        monster
+        for monster in planning_inventory
+        if (
+            allow_ditto
+            and monster.verified
+            and normalize_text(monster.species) in {"百变怪", "ditto"}
+            and (
+                monster.is_alpha
+                if target_alpha
+                else allow_alpha_materials or not monster.is_alpha
+            )
+        )
+    ]
+
     target_ivs = parse_iv_requirements(iv_string)
     nature_key = normalize_nature(nature)
+    selected_moves = tuple(str(move).strip() for move in (target_moves or ()) if str(move).strip())
+    egg_move_donors: dict[str, tuple[str, ...]] = {}
+    if selected_moves and offspring_record is not None:
+        routes_by_move = get_reference_database().egg_moves_for_species(offspring_record.id)
+        for move in selected_moves:
+            donors: list[str] = []
+            for route in routes_by_move.get(move, ()):
+                direct_name = re.split(r"<=|←", route, maxsplit=1)[0]
+                direct_name = re.sub(r"\s*[（(].*$", "", direct_name).strip()
+                donor = species_db.get(direct_name, fuzzy=True)
+                if donor is not None:
+                    donors.append(donor.display_name)
+            egg_move_donors[move] = tuple(dict.fromkeys(donors))
     candidates, missing = find_chain_candidates(
         planning_inventory,
         resolved_species,
@@ -265,7 +334,15 @@ def make_report_with_candidates(
         target_ivs,
         resolved_groups,
         nature,
-        target_allowed_genders=(offspring_record or target_record).allowed_genders if target_record else None,
+        target_allowed_genders=(
+            tuple(gender for gender, _record in linked_gender_offspring)
+            if linked_gender_offspring
+            else (offspring_record or target_record).allowed_genders if target_record else None
+        ),
+        target_gender_species=tuple(
+            (gender, record.display_name)
+            for gender, record in linked_gender_offspring
+        ) or None,
         target_alpha=target_alpha,
         allow_ditto=allow_ditto,
         strategy=strategy,
@@ -276,6 +353,12 @@ def make_report_with_candidates(
         nature_strategy=nature_strategy,
         allow_alpha_materials=allow_alpha_materials,
         intermediate_gender_strategy=intermediate_gender_strategy,
+        need_hidden_ability=need_hidden_ability,
+        target_moves=selected_moves,
+        egg_move_donors=egg_move_donors,
+        prefer_ditto=allow_ditto,
+        convert_maternal_with_ditto=convert_maternal_with_ditto,
+        preferred_material_ids=frozenset(preferred_material_ids or ()),
     )
     strategy_key = "steps" if str(strategy).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
     strategy_title = "步骤优先" if strategy_key == "steps" else "库存优先"
@@ -284,7 +367,15 @@ def make_report_with_candidates(
         lines.append(f"本次规划已排除 {excluded_count} 只受保护库存素材；记录仍保留在素材库存中。")
         lines.append("")
     if target_record:
-        ratio = "无性别" if target_record.female_percent is None else f"雌性 {target_record.female_percent:g}%"
+        ratio = (
+            "尼多家族特殊规则：中间代锁母，最终成品锁公"
+            if linked_gender_offspring and target_gender == "M"
+            else "尼多家族特殊规则：中间代与成品均锁母"
+            if linked_gender_offspring and target_gender == "F"
+            else "无性别"
+            if target_record.female_percent is None
+            else f"雌性 {target_record.female_percent:g}%"
+        )
         hatch_name = offspring_record.display_name if offspring_record else resolved_species
         selected_form_text = f"｜所选形态 {resolved_species}（孵化后进化）" if hatch_name != resolved_species else ""
         reuse_text = (
@@ -302,11 +393,76 @@ def make_report_with_candidates(
             lines.append("素材范围：普通与头目库存均可参与；最终子代仍严格为普通。")
         else:
             lines.append("素材范围：仅使用普通素材；头目库存已保护。")
+            if protected_alpha_materials:
+                protected_ditto_count = sum(
+                    normalize_text(monster.species) in {"百变怪", "ditto"}
+                    for monster in protected_alpha_materials
+                )
+                ditto_text = f"，其中百变怪 {protected_ditto_count} 只" if protected_ditto_count else ""
+                lines.append(
+                    f"库存保护提示：检测到 {len(protected_alpha_materials)} 只可关联本路线的头目素材"
+                    f"{ditto_text}，本次不会使用。若确实要消耗它们，请勾选“普通目标允许使用头目素材”。"
+                )
+        if allow_ditto:
+            used_dittos = [
+                monster
+                for monster in eligible_inventory_dittos
+                if candidates and monster.id in candidates[0].root.used_ids
+            ]
+            if used_dittos:
+                used_text = "；".join(
+                    f"{monster.account or '账号未记录'} {monster.position_label or '未定位'} "
+                    f"{monster.iv_string}"
+                    for monster in used_dittos
+                )
+                lines.append(
+                    f"百变怪策略：已把消耗库存百变怪作为优先约束，并在这些路线中继续优化采购与孵化次数；"
+                    f"本方案使用 {used_text}。"
+                )
+            elif eligible_inventory_dittos:
+                lines.append(
+                    "百变怪策略：已检查符合素材类别的库存百变怪，但当前 IV 重叠无法在不降级素材、"
+                    "不放弃目标保底的前提下接入最佳路线。"
+                )
+            else:
+                lines.append("百变怪策略：已启用，但当前素材类别内没有已确认的库存百变怪可供规划。")
+        else:
+            lines.append(
+                "百变怪支线策略：除一次性母体转换外，其他支线不使用百变怪。"
+                if convert_maternal_with_ditto
+                else "百变怪策略：本次不使用百变怪。"
+            )
+        if convert_maternal_with_ditto:
+            if candidates and candidates[0].root.maternal_conversion:
+                lines.append(
+                    "母体转换：库存没有目标母体，已单独使用目标公体＋百变怪锁母建立母系；"
+                    "该权限独立于其他支线的百变怪开关。"
+                )
+            elif candidates and not target_inventory_genders.intersection({"F", "M"}):
+                lines.append(
+                    "母体来源：库存没有目标公体或母体，因此不绕行购买公体＋百变怪；"
+                    + (
+                        "步骤优先已直接采购较高档目标母体。"
+                        if strategy_key == "steps"
+                        else "库存优先会从最低实用档目标母体开始采购。"
+                    )
+                )
+            elif candidates:
+                lines.append(
+                    "母体转换：当前已有可用目标母体，或库存没有可转换的目标公体；未额外消耗百变怪。"
+                )
+        if need_hidden_ability:
+            lines.append("梦特约束：成品必须保留梦特潜力；仅同进化线的梦特父母可以向该子代传递。")
+        if selected_moves:
+            lines.append(f"遗传技能：{'、'.join(selected_moves)}（库存携带者优先，缺失时按内置遗传链补购）")
         lines.append("")
     if candidates:
         lines.append(f"库存预检：{candidates[0].inventory_audit_text()}")
         if candidates[0].root.purchases:
-            lines.append("仅用库存无法严格完成目标；以下路线先最大化使用库存，走到缺料节点时再采购。")
+            lines.append(
+                "仅用库存无法严格完成目标；以下路线先最大化使用库存。"
+                "交易行素材购买后可直接执行对应步骤，无需 OCR 扫描入库。"
+            )
         else:
             lines.append("库存预检通过：该路线可以完全使用现有已确认素材完成。")
         lines.append("")
@@ -327,7 +483,7 @@ def make_report_with_candidates(
         lines.append("没有发现额外缺口。")
 
     lines.append("")
-    lines.append("提示：当前规划覆盖种类、普通/头目、性别、IV、性格和蛋组；蛋招式、隐藏特性与特殊性别比例费用仍需人工确认。")
+    lines.append("提示：当前规划覆盖种类、普通/头目、性别、IV、性格、蛋组、梦特潜力与所选遗传技能；特殊性别比例费用仍需人工确认。")
     return "\n".join(lines), candidates
 
 
@@ -345,6 +501,10 @@ def make_report(
     allow_alpha_materials: bool = False,
     excluded_ids: set[str] | frozenset[str] | None = None,
     intermediate_gender_strategy: str = "lock_all",
+    need_hidden_ability: bool = False,
+    target_moves: tuple[str, ...] | list[str] | None = None,
+    convert_maternal_with_ditto: bool = False,
+    preferred_material_ids: set[str] | frozenset[str] | None = None,
 ) -> str:
     report, _candidates = make_report_with_candidates(
         inventory,
@@ -360,5 +520,9 @@ def make_report(
         allow_alpha_materials,
         excluded_ids,
         intermediate_gender_strategy,
+        need_hidden_ability,
+        target_moves,
+        convert_maternal_with_ditto,
+        preferred_material_ids,
     )
     return report

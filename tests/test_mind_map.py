@@ -32,12 +32,53 @@ class FakeCanvas:
         self.calls.append(("drag", x, y, gain))
 
 
+class TaggedCanvas(FakeCanvas):
+    def find_withtag(self, _tag: str):
+        return (1,)
+
+    def gettags(self, _item: int):
+        return ("node:done",)
+
+
 class MindMapInteractionTests(unittest.TestCase):
+    def test_node_detail_uses_numeric_v_badge_instead_of_roman_iv_label(self) -> None:
+        view = BreedingMindMap.__new__(BreedingMindMap)
+        captured: list[str] = []
+        view.detail_var = SimpleNamespace(set=captured.append)
+
+        BreedingMindMap._show_node_detail(
+            view,
+            MindMapNode(
+                key="four-v",
+                title="性格手",
+                iv_text="4V",
+                iv_values=("31", "31", "X", "31", "31", "X"),
+            ),
+        )
+
+        self.assertIn("4V 31/31/X/31/31/X", captured[0])
+        self.assertNotIn("IV ", captured[0])
+
     def test_iv_cells_distinguish_perfect_any_and_custom_exact_values(self) -> None:
         self.assertEqual(BreedingMindMap._iv_value_kind("31"), "perfect")
         self.assertEqual(BreedingMindMap._iv_value_kind("X"), "any")
         self.assertEqual(BreedingMindMap._iv_value_kind("0"), "exact")
         self.assertEqual(BreedingMindMap._iv_value_kind("16"), "exact")
+
+    def test_zoomed_out_status_and_nature_chips_fit_without_overlap(self) -> None:
+        view = BreedingMindMap.__new__(BreedingMindMap)
+        view.zoom = 0.6
+        status_width = view._chip_width("启用后执行", 7)
+        nature_width = view._chip_width("爆性格：待确认", 7)
+        left = view._scaled(12)
+        gap = view._scaled(6)
+        media_left = view._scaled(view.BASE_NODE_WIDTH - 72)
+
+        self.assertLess(left + status_width + gap + nature_width, media_left)
+        self.assertLess(
+            view._scaled(120 + 16),
+            view._scaled(view.BASE_NODE_HEIGHT),
+        )
 
     def test_offline_sprite_atlases_cover_supported_species_and_items(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -46,6 +87,13 @@ class MindMapInteractionTests(unittest.TestCase):
             self.assertGreaterEqual(pokemon_atlas.height, 41 * POKEMON_ATLAS_CELL)
         with Image.open(root / "assets" / "item_atlas.png") as item_atlas:
             self.assertEqual(item_atlas.size, (len(ITEM_ATLAS_KEYS) * ITEM_ATLAS_CELL, ITEM_ATLAS_CELL))
+
+    def test_author_payment_qr_assets_are_packaged_as_readable_images(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for name in ("donation-alipay.jpg", "donation-wechat.png"):
+            with Image.open(root / "assets" / name) as payment_image:
+                self.assertGreater(payment_image.width, 800)
+                self.assertGreater(payment_image.height, 1000)
 
     def test_plain_mouse_wheel_zooms_around_pointer(self) -> None:
         view = BreedingMindMap.__new__(BreedingMindMap)
@@ -92,6 +140,45 @@ class MindMapInteractionTests(unittest.TestCase):
 
         self.assertEqual(BreedingMindMap._exclude_key(view, "leaf"), "break")
         self.assertEqual(excluded, ["rare-alpha-id"])
+
+    def test_selected_ready_node_can_toggle_non_destructive_progress(self) -> None:
+        view = BreedingMindMap.__new__(BreedingMindMap)
+        view.selected_key = "step-2"
+        view.nodes_by_key = {
+            "step-2": MindMapNode(
+                key="step-2",
+                title="步骤 2",
+                step_number=2,
+                actionable=True,
+            )
+        }
+        toggled: list[int] = []
+        view.on_step_progress_toggle = toggled.append
+
+        self.assertEqual(BreedingMindMap._toggle_progress_selected(view), "break")
+        self.assertEqual(toggled, [2])
+
+    def test_double_click_completed_node_toggles_collapsed_sources(self) -> None:
+        view = BreedingMindMap.__new__(BreedingMindMap)
+        view.canvas = TaggedCanvas()
+        view.selected_key = ""
+        view.nodes_by_key = {
+            "done": MindMapNode(
+                key="done",
+                title="已完成步骤",
+                step_number=3,
+                completed=True,
+                history_toggleable=True,
+                sources_collapsed=True,
+            )
+        }
+        view.detail_var = SimpleNamespace(set=lambda _value: None)
+        toggled: list[int] = []
+        view.on_completed_sources_toggle = toggled.append
+        view.on_step_progress_toggle = None
+
+        self.assertEqual(BreedingMindMap._on_double_click(view), "break")
+        self.assertEqual(toggled, [3])
 
 
 if __name__ == "__main__":

@@ -71,6 +71,16 @@ GENDER_SENSITIVE_EVOLUTION_IDS = {
     478: "F",  # Froslass
 }
 
+# PokeMMO treats the two Nidoran evolution lines as one gender-linked
+# breeding family. A female child is Nidoran♀ while a male child is Nidoran♂,
+# regardless of which side of the family supplied the parent.
+GENDER_LINKED_BREEDING_FAMILIES = (
+    (
+        frozenset({29, 30, 31, 32, 33, 34}),
+        (("F", 29), ("M", 32)),
+    ),
+)
+
 
 def normalize_name(value: str) -> str:
     return re.sub(r"[^0-9a-z\u3400-\u9fff♀♂]", "", (value or "").strip().lower())
@@ -280,6 +290,47 @@ class SpeciesDatabase:
         if root.id not in INCENSE_BABY_IDS:
             return root
         return self.breeding_parent(root)
+
+    def linked_breeding_family(self, value: SpeciesRecord | str | int) -> tuple[SpeciesRecord, ...]:
+        """Return every evolution form in a gender-linked breeding family."""
+        record = value if isinstance(value, SpeciesRecord) else (
+            self.get_by_id(value) if isinstance(value, int) or str(value).isdigit() else self.get(str(value), fuzzy=True)
+        )
+        if record is None:
+            return ()
+        for member_ids, _gender_offspring_ids in GENDER_LINKED_BREEDING_FAMILIES:
+            if record.id in member_ids:
+                return tuple(
+                    member
+                    for member_id in sorted(member_ids)
+                    if (member := self.get_by_id(member_id)) is not None
+                )
+        return ()
+
+    def breeding_offspring_by_gender(
+        self,
+        value: SpeciesRecord | str | int,
+    ) -> tuple[tuple[str, SpeciesRecord], ...]:
+        """Return the hatch species associated with each selectable gender."""
+        record = value if isinstance(value, SpeciesRecord) else (
+            self.get_by_id(value) if isinstance(value, int) or str(value).isdigit() else self.get(str(value), fuzzy=True)
+        )
+        if record is None:
+            return ()
+        for member_ids, gender_offspring_ids in GENDER_LINKED_BREEDING_FAMILIES:
+            if record.id in member_ids:
+                return tuple(
+                    (gender, offspring)
+                    for gender, offspring_id in gender_offspring_ids
+                    if (offspring := self.get_by_id(offspring_id)) is not None
+                )
+        offspring = self.breeding_offspring(record)
+        if offspring is None:
+            return ()
+        return tuple((gender, offspring) for gender in offspring.allowed_genders)
+
+    def breeding_output_genders(self, value: SpeciesRecord | str | int) -> tuple[str, ...]:
+        return tuple(gender for gender, _record in self.breeding_offspring_by_gender(value))
 
     def requires_incense_for_target(self, value: SpeciesRecord | str | int) -> bool:
         record = value if isinstance(value, SpeciesRecord) else (

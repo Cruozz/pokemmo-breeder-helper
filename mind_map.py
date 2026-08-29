@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from tkinter import BOTH, LEFT, RIGHT, X, Y, Canvas
+from tkinter import BOTH, LEFT, RIGHT, X, Y, Canvas, StringVar
 from tkinter import ttk
 from typing import Callable
 
@@ -41,20 +41,24 @@ class MindMapNode:
     kind: str = "pending"
     step_number: int | None = None
     completed: bool = False
+    in_progress: bool = False
     actionable: bool = False
     show_checkbox: bool = False
     species_id: int | None = None
     item_keys: tuple[str, ...] = ()
     iv_values: tuple[str, ...] = ()
     exclude_material_id: str = ""
+    egg_move_highlight: bool = False
+    history_toggleable: bool = False
+    sources_collapsed: bool = False
     children: list["MindMapNode"] = field(default_factory=list)
 
 
 class BreedingMindMap(ttk.Frame):
     """Scrollable, zoomable dependency map built with native Tk Canvas items."""
 
-    BASE_NODE_WIDTH = 300
-    BASE_NODE_HEIGHT = 140
+    BASE_NODE_WIDTH = 340
+    BASE_NODE_HEIGHT = 152
     BASE_HORIZONTAL_GAP = 28
     BASE_VERTICAL_GAP = 78
     BASE_MARGIN = 34
@@ -66,6 +70,9 @@ class BreedingMindMap(ttk.Frame):
         colors: dict[str, str],
         font_family: str,
         on_step_activate: Callable[[int], object],
+        on_step_select: Callable[[int], object] | None = None,
+        on_step_progress_toggle: Callable[[int], object] | None = None,
+        on_completed_sources_toggle: Callable[[int], object] | None = None,
         on_material_exclude: Callable[[str], object] | None = None,
         asset_root: Path | None = None,
     ) -> None:
@@ -73,6 +80,9 @@ class BreedingMindMap(ttk.Frame):
         self.colors = colors
         self.font_family = font_family
         self.on_step_activate = on_step_activate
+        self.on_step_select = on_step_select
+        self.on_step_progress_toggle = on_step_progress_toggle
+        self.on_completed_sources_toggle = on_completed_sources_toggle
         self.on_material_exclude = on_material_exclude
         self.root_node: MindMapNode | None = None
         self.nodes_by_key: dict[str, MindMapNode] = {}
@@ -86,17 +96,35 @@ class BreedingMindMap(ttk.Frame):
         self._pokemon_atlas = self._load_atlas(self.asset_root / "pokemon_atlas.png")
         self._item_atlas = self._load_atlas(self.asset_root / "item_atlas.png")
         self._photo_images: list[ImageTk.PhotoImage] = []
+        self._pokemon_photo_cache: dict[tuple[int, int], ImageTk.PhotoImage] = {}
+        self._item_photo_cache: dict[tuple[str, int], ImageTk.PhotoImage] = {}
 
         toolbar = ttk.Frame(self, style="Toolbar.TFrame", padding=(8, 5))
         toolbar.pack(fill=X)
         ttk.Label(
             toolbar,
-            text="路线思维导图 · 滚轮缩放 · 中键拖动 · 库存叶节点可本次禁用",
+            text="路线思维导图 · 滚轮缩放 · 中键拖动 · 双击孵化中/展开已完成来源",
             style="Muted.TLabel",
         ).pack(side=LEFT)
         ttk.Button(toolbar, text="−", width=3, style="Compact.TButton", command=lambda: self.set_zoom(self.zoom - 0.1)).pack(side=RIGHT, padx=(3, 0))
         ttk.Button(toolbar, text="100%", width=6, style="Compact.TButton", command=lambda: self.set_zoom(1.0)).pack(side=RIGHT, padx=(3, 0))
         ttk.Button(toolbar, text="+", width=3, style="Compact.TButton", command=lambda: self.set_zoom(self.zoom + 0.1)).pack(side=RIGHT, padx=(3, 0))
+
+        self.detail_var = StringVar(value="单击节点可在这里查看未截断的完整信息。")
+        self.detail_label = ttk.Label(
+            self,
+            textvariable=self.detail_var,
+            style="Muted.TLabel",
+            padding=(8, 4),
+            anchor="w",
+            justify="left",
+        )
+        self.detail_label.pack(fill=X)
+        self.bind(
+            "<Configure>",
+            lambda event: self.detail_label.configure(wraplength=max(260, event.width - 24)),
+            add="+",
+        )
 
         surface = ttk.Frame(self)
         surface.pack(fill=BOTH, expand=True)
@@ -117,6 +145,7 @@ class BreedingMindMap(ttk.Frame):
         surface.columnconfigure(0, weight=1)
 
         self.canvas.bind("<Button-1>", self._on_click)
+        self.canvas.bind("<Double-Button-1>", self._on_double_click)
         self.canvas.bind("<MouseWheel>", self._on_mousewheel)
         self.canvas.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
         self.canvas.bind("<Control-MouseWheel>", self._on_ctrl_mousewheel)
@@ -129,6 +158,7 @@ class BreedingMindMap(ttk.Frame):
         self.canvas.bind("<space>", self._activate_selected)
         self.canvas.bind("<Return>", self._activate_selected)
         self.canvas.bind("<e>", self._exclude_selected)
+        self.canvas.bind("<m>", self._toggle_progress_selected)
 
     @property
     def node_count(self) -> int:
@@ -141,6 +171,7 @@ class BreedingMindMap(ttk.Frame):
         self.root_node = root
         if not same_tree:
             self.selected_key = ""
+            self.detail_var.set("单击节点可在这里查看未截断的完整信息。")
         self.nodes_by_key.clear()
         if root is not None:
             self._index(root)
@@ -212,7 +243,6 @@ class BreedingMindMap(ttk.Frame):
 
     def render(self, empty_message: str = "暂无可显示的路线", *, center: bool = True) -> None:
         self.canvas.delete("all")
-        self._photo_images.clear()
         self.positions.clear()
         self.subtree_widths.clear()
         root = self.root_node
@@ -278,6 +308,7 @@ class BreedingMindMap(ttk.Frame):
             "target": (self.colors["selected"], self.colors["accent"], self.colors["ink_blue"]),
             "current": (self.colors["accent_soft"], self.colors["action"], self.colors["ink_blue"]),
             "completed": (self.colors["success_soft"], self.colors["success"], self.colors["success_text"]),
+            "in_progress": (self.colors["warning_soft"], self.colors["warning"], self.colors["warning_text"]),
             "purchase": (self.colors["warning_soft"], self.colors["warning"], self.colors["warning_text"]),
             "inventory": (self.colors["surface"], self.colors["success"], self.colors["ink"]),
             "pending": (self.colors["surface"], self.colors["border_blue"], self.colors["ink"]),
@@ -294,8 +325,12 @@ class BreedingMindMap(ttk.Frame):
         width = self._scaled(self.BASE_NODE_WIDTH)
         height = self._scaled(self.BASE_NODE_HEIGHT)
         fill, border, text_color = self._node_palette(node)
-        outline = self.colors["accent"] if node.key == self.selected_key else border
-        outline_width = 3 if node.key == self.selected_key else 2
+        if node.egg_move_highlight:
+            outline = self.colors["danger"]
+            outline_width = 4
+        else:
+            outline = self.colors["accent"] if node.key == self.selected_key else border
+            outline_width = 3 if node.key == self.selected_key else 2
         common_tags = (f"node:{node.key}", "mind-node")
         self.canvas.create_rectangle(
             x,
@@ -348,47 +383,85 @@ class BreedingMindMap(ttk.Frame):
                 )
             title_left += self._scaled(28)
 
+        media_left = x + width - self._scaled(78)
+        title_font_size = max(8, round(9 * self.zoom))
+        body_font_size = max(7, round(8 * self.zoom))
+        title_limit = self._text_limit(media_left - title_left, title_font_size, maximum=24)
+        body_limit = self._text_limit(media_left - left, body_font_size, maximum=32)
+
         self.canvas.create_text(
             title_left,
             y + self._scaled(11),
             anchor="nw",
-            text=self._short(node.title, 21),
+            text=self._short(node.title, title_limit),
             fill=text_color,
-            font=(self.font_family, max(8, round(9 * self.zoom)), "bold"),
-            tags=common_tags,
+            font=(self.font_family, title_font_size, "bold"),
+            tags=common_tags + ("mind-title",),
         )
         self._draw_iv_row(node, left, y + self._scaled(39), common_tags)
         self.canvas.create_text(
             left,
             y + self._scaled(66),
             anchor="nw",
-            text=self._short(node.detail, 29),
+            text=self._short(node.detail, body_limit),
             fill=self.colors["muted"],
-            font=(self.font_family, max(7, round(8 * self.zoom))),
+            font=(self.font_family, body_font_size),
             tags=common_tags,
         )
         self.canvas.create_text(
             left,
             y + self._scaled(86),
             anchor="nw",
-            text=self._short(node.item_text, 29),
+            text=self._short(node.item_text, body_limit),
             fill=self.colors["muted"],
-            font=(self.font_family, max(7, round(8 * self.zoom))),
+            font=(self.font_family, body_font_size),
             tags=common_tags,
         )
         self._draw_node_media(node, x, y, width, common_tags)
-        self._draw_chip(node, left, y + self._scaled(116), node.status_text, border, fill)
-        if node.nature_text:
-            nature_width = min(self._scaled(104), max(self._scaled(58), self._scaled(10 + len(node.nature_text) * 7)))
+        chip_y = y + self._scaled(120)
+        chip_gap = self._scaled(6)
+        available_chip_width = max(self._scaled(70), media_left - left - self._scaled(4))
+        status_natural_width = self._chip_width(node.status_text, max(7, round(7 * self.zoom)))
+        nature_natural_width = self._chip_width(node.nature_text, max(7, round(7 * self.zoom))) if node.nature_text else 0
+        if node.nature_text and status_natural_width + chip_gap + nature_natural_width > available_chip_width:
             self._draw_chip(
                 node,
-                left + self._scaled(54),
-                y + self._scaled(116),
+                left,
+                y + self._scaled(112),
+                node.status_text,
+                border,
+                fill,
+                forced_width=min(status_natural_width, available_chip_width),
+            )
+            self._draw_chip(
+                node,
+                left,
+                y + self._scaled(133),
                 node.nature_text,
                 self.colors["action"],
                 self.colors["accent_soft"],
-                forced_width=nature_width,
+                forced_width=min(nature_natural_width, available_chip_width),
             )
+        else:
+            status_width = self._draw_chip(
+                node,
+                left,
+                chip_y,
+                node.status_text,
+                border,
+                fill,
+                forced_width=min(status_natural_width, available_chip_width),
+            )
+            if node.nature_text:
+                self._draw_chip(
+                    node,
+                    left + status_width + chip_gap,
+                    chip_y,
+                    node.nature_text,
+                    self.colors["action"],
+                    self.colors["accent_soft"],
+                    forced_width=min(nature_natural_width, max(self._scaled(42), available_chip_width - status_width - chip_gap)),
+                )
         if node.exclude_material_id:
             self._draw_exclude_action(node, x, y, width)
 
@@ -497,7 +570,7 @@ class BreedingMindMap(ttk.Frame):
                 fill=self.colors["surface_alt"],
                 outline=self.colors["border_blue"],
                 width=1,
-                tags=tags,
+                tags=tags + ("mind-media",),
             )
             photo = self._pokemon_photo(node.species_id, max(24, round(62 * self.zoom)))
             if photo is not None:
@@ -509,7 +582,10 @@ class BreedingMindMap(ttk.Frame):
                     tags=tags,
                 )
 
-        item_keys = tuple(key for key in node.item_keys if key in ITEM_ATLAS_KEYS)[:2]
+        # A PokeMMO parent can hold exactly one breeding item. Each card
+        # therefore renders only the item carried by that specific Pokemon;
+        # the sibling parent shows its own item on its own card.
+        item_keys = tuple(key for key in node.item_keys if key in ITEM_ATLAS_KEYS)[:1]
         if item_keys and self._item_atlas is not None:
             item_top = y + self._scaled(84)
             item_bottom = y + self._scaled(113)
@@ -521,7 +597,7 @@ class BreedingMindMap(ttk.Frame):
                 fill=self.colors["accent_soft"],
                 outline=self.colors["action"],
                 width=1,
-                tags=tags,
+                tags=tags + ("mind-media",),
             )
             icon_size = max(14, round(24 * self.zoom))
             spacing = self._scaled(26)
@@ -540,6 +616,10 @@ class BreedingMindMap(ttk.Frame):
     def _pokemon_photo(self, species_id: int, size: int) -> ImageTk.PhotoImage | None:
         if self._pokemon_atlas is None or not 1 <= species_id <= 649:
             return None
+        cache_key = (species_id, size)
+        cached = self._pokemon_photo_cache.get(cache_key)
+        if cached is not None:
+            return cached
         column = (species_id - 1) % POKEMON_ATLAS_COLUMNS
         row = (species_id - 1) // POKEMON_ATLAS_COLUMNS
         box = (
@@ -551,16 +631,22 @@ class BreedingMindMap(ttk.Frame):
         source = self._pokemon_atlas.crop(box).resize((size, size), Image.Resampling.NEAREST)
         photo = ImageTk.PhotoImage(source)
         self._photo_images.append(photo)
+        self._pokemon_photo_cache[cache_key] = photo
         return photo
 
     def _item_photo(self, key: str, size: int) -> ImageTk.PhotoImage | None:
         if self._item_atlas is None or key not in ITEM_ATLAS_KEYS:
             return None
+        cache_key = (key, size)
+        cached = self._item_photo_cache.get(cache_key)
+        if cached is not None:
+            return cached
         index = ITEM_ATLAS_KEYS.index(key)
         box = (index * ITEM_ATLAS_CELL, 0, (index + 1) * ITEM_ATLAS_CELL, ITEM_ATLAS_CELL)
         source = self._item_atlas.crop(box).resize((size, size), Image.Resampling.NEAREST)
         photo = ImageTk.PhotoImage(source)
         self._photo_images.append(photo)
+        self._item_photo_cache[cache_key] = photo
         return photo
 
     def _draw_chip(
@@ -573,27 +659,39 @@ class BreedingMindMap(ttk.Frame):
         fill: str,
         *,
         forced_width: float | None = None,
-    ) -> None:
+    ) -> float:
         if not text:
-            return
-        width = forced_width or min(self._scaled(94), max(self._scaled(46), self._scaled(12 + len(text) * 7)))
+            return 0.0
+        font_size = max(7, round(7 * self.zoom))
+        width = forced_width or self._chip_width(text, font_size)
         height = self._scaled(16)
         tags = (f"node:{node.key}", "mind-chip")
         self.canvas.create_rectangle(x, y, x + width, y + height, fill=fill, outline=border, width=1, tags=tags)
         self.canvas.create_text(
             x + width / 2,
             y + height / 2,
-            text=self._short(text, 12),
+            text=self._short(
+                text,
+                max(3, min(12, int(max(self._scaled(12), width - self._scaled(8)) / max(5.0, font_size * 1.2)))),
+            ),
             fill=border,
-            font=(self.font_family, max(7, round(7 * self.zoom)), "bold"),
+            font=(self.font_family, font_size, "bold"),
             tags=tags,
         )
+        return width
+
+    def _chip_width(self, text: str, font_size: int) -> float:
+        # Tk font sizes use points while Canvas coordinates use pixels. This
+        # estimate keeps CJK status labels whole even when geometry is zoomed
+        # down but the readable font-size floor remains active.
+        text_width = len(text) * font_size * 1.35
+        return max(self._scaled(46), text_width + self._scaled(12))
 
     def _draw_exclude_action(self, node: MindMapNode, x: float, y: float, width: float) -> None:
         button_width = self._scaled(64)
         button_height = self._scaled(18)
         button_x = x + width - self._scaled(72)
-        button_y = y + self._scaled(116)
+        button_y = y + self._scaled(120)
         tags = (
             f"node:{node.key}",
             f"exclude:{node.key}",
@@ -601,9 +699,9 @@ class BreedingMindMap(ttk.Frame):
         )
         self.canvas.create_rectangle(
             button_x,
-            y + self._scaled(112),
+            y + self._scaled(116),
             button_x + button_width,
-            y + self._scaled(138),
+            y + self._scaled(150),
             fill="",
             outline="",
             tags=tags,
@@ -632,6 +730,12 @@ class BreedingMindMap(ttk.Frame):
         value = (value or "").strip()
         return value if len(value) <= length else value[: max(1, length - 1)] + "…"
 
+    @staticmethod
+    def _text_limit(available_width: float, font_size: int, *, maximum: int) -> int:
+        """Estimate a safe single-line CJK label length before the media column."""
+        average_character_width = max(6.0, font_size * 1.25)
+        return max(5, min(maximum, int(max(1.0, available_width) / average_character_width)))
+
     def _on_click(self, _event=None):
         current = self.canvas.find_withtag("current")
         if not current:
@@ -649,7 +753,47 @@ class BreedingMindMap(ttk.Frame):
             return self._exclude_key(key)
         if any(tag.startswith("check:") for tag in tags):
             return self._activate_key(key)
+        node = self.nodes_by_key.get(key)
+        if node is not None and node.step_number is not None and self.on_step_select is not None:
+            self.on_step_select(node.step_number)
+        if node is not None:
+            self._show_node_detail(node)
         self._refresh_selection()
+        return "break"
+
+    def _show_node_detail(self, node: MindMapNode) -> None:
+        values = [node.title]
+        if node.iv_values:
+            values.append(f"{node.iv_text or '个体值'} " + "/".join(node.iv_values))
+        elif node.iv_text:
+            values.append(node.iv_text)
+        values.extend(value for value in (node.detail, node.item_text, node.status_text, node.nature_text) if value)
+        self.detail_var.set(" ｜ ".join(values))
+
+    def _on_double_click(self, _event=None):
+        current = self.canvas.find_withtag("current")
+        if not current:
+            return None
+        tags = self.canvas.gettags(current[0])
+        node_tag = next((tag for tag in tags if tag.startswith("node:")), "")
+        if not node_tag:
+            return None
+        key = node_tag.split(":", 1)[1]
+        self.selected_key = key
+        node = self.nodes_by_key.get(key)
+        if node is None:
+            return "break"
+        self._show_node_detail(node)
+        if (
+            node.step_number is not None
+            and node.completed
+            and node.history_toggleable
+            and self.on_completed_sources_toggle is not None
+        ):
+            self.on_completed_sources_toggle(node.step_number)
+            return "break"
+        if node.step_number is not None and node.actionable and self.on_step_progress_toggle is not None:
+            self.on_step_progress_toggle(node.step_number)
         return "break"
 
     def _refresh_selection(self) -> None:
@@ -667,6 +811,12 @@ class BreedingMindMap(ttk.Frame):
 
     def _exclude_selected(self, _event=None):
         return self._exclude_key(self.selected_key)
+
+    def _toggle_progress_selected(self, _event=None):
+        node = self.nodes_by_key.get(self.selected_key)
+        if node is not None and node.step_number is not None and node.actionable and self.on_step_progress_toggle is not None:
+            self.on_step_progress_toggle(node.step_number)
+        return "break"
 
     def _exclude_key(self, key: str):
         node = self.nodes_by_key.get(key)

@@ -30,12 +30,18 @@ class OCRProcessor:
     the row geometrically paired with the ``个体值`` label.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, performance_profile: str = "balanced") -> None:
         try:
             from rapidocr_onnxruntime import RapidOCR
         except ImportError as exc:
             raise RuntimeError("缺少 rapidocr_onnxruntime，请重新运行构建脚本。") from exc
-        self.engine = RapidOCR()
+        profile = (performance_profile or "balanced").strip().lower()
+        threads = {"low": 1, "balanced": 2, "fast": 4}.get(profile, 2)
+        # ONNX Runtime otherwise uses a machine-wide default thread pool, which
+        # can momentarily saturate older office PCs. The models and image stay
+        # identical; only parallelism changes, so recognition quality does not.
+        self.engine = RapidOCR(intra_op_num_threads=threads, inter_op_num_threads=1)
+        self.performance_profile = profile
 
     def recognize(self, image) -> list[OCRItem]:
         # Keep NumPy lazy so parser-only tests do not need the OCR runtime.
@@ -304,6 +310,120 @@ class OCRProcessor:
         return "", labels
 
     @classmethod
+    def _find_ability(cls, items: list[OCRItem]) -> tuple[str, list[OCRItem]]:
+        labels = [
+            item for item in items
+            if "特性" in cls._compact(item.text) or "ability" in cls._compact(item.text)
+        ]
+        for label in labels:
+            compact_label = cls._compact(label.text)
+            merged = re.split(r"特性|ability", compact_label, maxsplit=1, flags=re.IGNORECASE)
+            if len(merged) > 1 and merged[1].strip("：:"):
+                return merged[1].strip("：:"), [label]
+            ranked: list[tuple[float, OCRItem]] = []
+            for candidate in items:
+                if candidate is label:
+                    continue
+                difference = abs(cls._center_y(label.box) - cls._center_y(candidate.box))
+                tolerance = max(10.0, cls._height(label.box) * 0.8, cls._height(candidate.box) * 0.8)
+                if difference > tolerance or cls._left(candidate.box) < cls._right(label.box) - 4:
+                    continue
+                text = candidate.text.strip(" ：:|/")
+                if not text or not re.search(r"[a-z\u3400-\u9fff]", text, re.IGNORECASE):
+                    continue
+                gap = max(0.0, cls._left(candidate.box) - cls._right(label.box))
+                ranked.append((difference + gap * 0.01, candidate))
+            if ranked:
+                _rank, candidate = min(ranked, key=lambda entry: entry[0])
+                return candidate.text.strip(" ：:|/"), [label, candidate]
+        return "", labels
+
+    @classmethod
+    def _hidden_ability_from_image(
+        cls,
+        image: Any,
+        ability_items: list[OCRItem],
+    ) -> tuple[bool, float]:
+        """Detect PokeMMO's cyan hidden-ability diamond beside the ability.
+
+        Ability text color is not authoritative: some hidden abilities use
+        ordinary white text.  The diamond is therefore the only positive
+        signal, constrained to a small component immediately after the OCR'd
+        ability value so unrelated blue UI accents do not count.
+        """
+        if image is None or not ability_items:
+            return False, 0.0
+        label = ability_items[0]
+        value = ability_items[-1]
+        height = max(9.0, cls._height(label.box), cls._height(value.box))
+        has_value_item = len(ability_items) > 1
+        anchor_right = cls._right(value.box)
+        left = max(0, int(anchor_right - height * (0.35 if has_value_item else 0.20)))
+        top = max(0, int(min(cls._top(label.box), cls._top(value.box)) - height * 0.45))
+        right = int(anchor_right + height * (2.8 if has_value_item else 5.0))
+        bottom = int(max(cls._bottom(label.box), cls._bottom(value.box)) + height * 0.45)
+        try:
+            rgb = image.convert("RGB")
+            right = min(rgb.width, right)
+            bottom = min(rgb.height, bottom)
+            region = rgb.crop((left, top, right, bottom))
+        except Exception:
+            return False, 0.0
+        if region.width < 8 or region.height < 5:
+            return False, 0.0
+
+        cyan_points: set[tuple[int, int]] = set()
+        for index, pixel in enumerate(region.getdata()):
+            red, green, blue = (int(pixel[0]), int(pixel[1]), int(pixel[2]))
+            if blue >= 135 and green >= 105 and blue - red >= 30 and green - red >= 20:
+                cyan_points.add((index % region.width, index // region.width))
+        if not cyan_points:
+            return False, 0.0
+
+        minimum_pixels = max(4, int(round(height * 0.18)))
+        maximum_dimension = max(8, int(round(height * 1.25)))
+        best_score = 0.0
+        remaining = set(cyan_points)
+        while remaining:
+            start = remaining.pop()
+            component = {start}
+            pending = [start]
+            while pending:
+                x, y = pending.pop()
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        if dx == 0 and dy == 0:
+                            continue
+                        neighbour = (x + dx, y + dy)
+                        if neighbour in remaining:
+                            remaining.remove(neighbour)
+                            component.add(neighbour)
+                            pending.append(neighbour)
+            if len(component) < minimum_pixels:
+                continue
+            xs = [point[0] for point in component]
+            ys = [point[1] for point in component]
+            width = max(xs) - min(xs) + 1
+            component_height = max(ys) - min(ys) + 1
+            if (
+                min(width, component_height) < 3
+                or max(width, component_height) > maximum_dimension
+            ):
+                continue
+            aspect = width / max(1, component_height)
+            density = len(component) / max(1, width * component_height)
+            if not 0.5 <= aspect <= 2.0 or density < 0.24:
+                continue
+            size_score = min(1.0, len(component) / max(1, minimum_pixels * 4))
+            shape_score = 1.0 - min(1.0, abs(1.0 - aspect))
+            density_score = min(1.0, density / 0.45)
+            best_score = max(best_score, 0.45 * size_score + 0.30 * shape_score + 0.25 * density_score)
+
+        if best_score <= 0.0:
+            return False, 0.0
+        return True, 0.70 + 0.30 * best_score
+
+    @classmethod
     def _find_moves(cls, items: list[OCRItem]) -> tuple[list[str], list[OCRItem]]:
         markers = [item for item in items if any(label in cls._compact(item.text) for label in MARK_LABELS)]
         if not markers:
@@ -482,11 +602,13 @@ class OCRProcessor:
         species, species_item = cls._species_from_level_item(items)
         ivs, iv_items = cls._find_individual_values(items, lines_text, image)
         nature, nature_items = cls._find_nature(items, lines_text)
+        ability, ability_items = cls._find_ability(items)
         moves, move_items = cls._find_moves(items)
 
         level_items = cls._level_items(items)
         gender = cls._gender_from_image(image, level_items)
         is_alpha, alpha_confidence = cls._alpha_from_image(image, level_items)
+        has_hidden_ability, hidden_ability_confidence = cls._hidden_ability_from_image(image, ability_items)
         level_text = " ".join(item.text for item in level_items)
         if not gender:
             if "♀" in level_text or "雌性" in level_text or re.search(r"早\s*$", level_text):
@@ -507,6 +629,8 @@ class OCRProcessor:
                 f"性别：{gender_text}",
                 f"个体值：{'/'.join(str(value) for value in ivs) if ivs else '未识别'}",
                 f"性格：{nature or '未识别'}",
+                f"特性：{ability or '未识别'}",
+                f"梦特：{'已解锁' if has_hidden_ability else '未确认'}",
                 f"技能：{'、'.join(moves) if moves else '未识别'}",
                 f"类别：{'头目' if is_alpha else '普通'}",
             )
@@ -516,16 +640,19 @@ class OCRProcessor:
             "gender": gender,
             "ivs": ivs or [None] * 6,
             "nature": nature,
-            "ability": "",
+            "ability": ability,
             "held_item": "",
             "moves": moves,
             "is_alpha": is_alpha,
+            "has_hidden_ability": has_hidden_ability,
             "raw_text": lines_text,
             "recognized_text": compact_result,
             "items": items,
             "confidence": confidence,
             "minimum_confidence": minimum_confidence,
             "nature_confidence": min((item.score for item in nature_items), default=0.0),
+            "ability_confidence": min((item.score for item in ability_items[1:]), default=0.0),
             "move_confidence": min((item.score for item in move_items[1:]), default=0.0),
             "alpha_confidence": alpha_confidence,
+            "hidden_ability_confidence": hidden_ability_confidence,
         }

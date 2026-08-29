@@ -72,6 +72,7 @@ $tclData = Join-Path $pythonRoot 'tcl\tcl8.6'
 $tkData = Join-Path $pythonRoot 'tcl\tk8.6'
 $speciesData = Join-Path $project 'data'
 $uiAssets = Join-Path $project 'assets'
+$appIcon = Join-Path $uiAssets 'app-icon.ico'
 $versionFile = Join-Path $project 'version_info.txt'
 foreach ($required in @($tkinterBinary, $tclBinary, $tkBinary, $tclData, $tkData)) {
     if (-not (Test-Path $required)) {
@@ -80,6 +81,9 @@ foreach ($required in @($tkinterBinary, $tclBinary, $tkBinary, $tclData, $tkData
 }
 if (-not (Test-Path $versionFile)) {
     throw "Windows version metadata not found: $versionFile"
+}
+if (-not (Test-Path $appIcon)) {
+    throw "Windows application icon not found: $appIcon"
 }
 
 if ($OutputDirectory) {
@@ -110,6 +114,8 @@ $pyinstallerArgs = @(
     $workPath,
     '--version-file',
     $versionFile,
+    '--icon',
+    $appIcon,
     '--paths',
     $vendor,
     '--additional-hooks-dir',

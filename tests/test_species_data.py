@@ -26,6 +26,19 @@ class SpeciesDataTests(unittest.TestCase):
         self.assertEqual(database.required_evolution_gender("蜂女王"), "F")
         self.assertEqual(database.required_evolution_gender("沙奈朵"), "")
 
+    def test_nidoran_lines_share_gender_linked_pokemmo_breeding_family(self) -> None:
+        database = get_species_database()
+        family = database.linked_breeding_family("尼多王")
+        offspring = database.breeding_offspring_by_gender("尼多王")
+
+        self.assertEqual([record.id for record in family], [29, 30, 31, 32, 33, 34])
+        self.assertEqual(
+            [(gender, record.id) for gender, record in offspring],
+            [("F", 29), ("M", 32)],
+        )
+        self.assertEqual(database.breeding_output_genders("尼多后"), ("F", "M"))
+        self.assertEqual(database.get("尼多后").egg_groups, ("怪兽", "陆上"))
+
     def test_finds_species_inside_noisy_level_text(self) -> None:
         record = get_species_database().find_in_text("Lv.1 蘑蘑菇 早")
         self.assertIsNotNone(record)

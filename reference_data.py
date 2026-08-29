@@ -37,6 +37,10 @@ class ReferenceDatabase:
         self.move_aliases: dict[str, str] = {}
         self.location_source: dict[str, Any] = {}
         self.egg_move_source: dict[str, Any] = {}
+        self.abilities_by_species: dict[int, dict[str, tuple[dict[str, Any], ...]]] = {}
+        self.ability_aliases: dict[str, str] = {}
+        self.ability_source: dict[str, Any] = {}
+        self.move_names: set[str] = set()
         self._load()
 
     @staticmethod
@@ -57,8 +61,35 @@ class ReferenceDatabase:
             canonical = canonical or next(iter(names), "")
             if not canonical:
                 continue
+            self.move_names.add(canonical)
             for name in names:
                 self.move_aliases[normalize_move(name)] = canonical
+
+        abilities = self._read_json("abilities.json")
+        self.ability_source = {
+            key: abilities.get(key)
+            for key in ("source", "source_url", "scope")
+            if abilities.get(key)
+        }
+        for key, raw in abilities.get("species", {}).items():
+            try:
+                species_id = int(raw.get("species_id", key))
+            except (TypeError, ValueError):
+                continue
+            record: dict[str, tuple[dict[str, Any], ...]] = {}
+            for ability_type in ("normal", "hidden"):
+                values: list[dict[str, Any]] = []
+                for ability in raw.get(ability_type, []):
+                    names = [str(name).strip() for name in ability.get("names", []) if str(name).strip()]
+                    canonical = next((name for name in names if re.search(r"[\u3400-\u9fff]", name)), "")
+                    canonical = canonical or next(iter(names), "")
+                    if not canonical:
+                        continue
+                    for name in names:
+                        self.ability_aliases[normalize_move(name)] = canonical
+                    values.append({**ability, "canonical": canonical})
+                record[ability_type] = tuple(values)
+            self.abilities_by_species[species_id] = record
 
         locations = self._read_json("locations.json")
         self.location_source = dict(locations.get("source", {}))
@@ -115,6 +146,40 @@ class ReferenceDatabase:
     def egg_moves_for_species(self, species: int | str) -> dict[str, tuple[str, ...]]:
         species_id = self._species_id(species)
         return dict(self.egg_moves_by_species.get(species_id or -1, {}))
+
+    def abilities_for_species(self, species: int | str) -> dict[str, tuple[dict[str, Any], ...]]:
+        species_id = self._species_id(species)
+        raw = self.abilities_by_species.get(species_id or -1, {})
+        return {
+            "normal": tuple(dict(value) for value in raw.get("normal", ())),
+            "hidden": tuple(dict(value) for value in raw.get("hidden", ())),
+        }
+
+    def hidden_ability_names(self, species: int | str) -> tuple[str, ...]:
+        return tuple(
+            str(value.get("canonical", ""))
+            for value in self.abilities_for_species(species).get("hidden", ())
+            if str(value.get("canonical", ""))
+        )
+
+    def canonical_ability(self, raw_text: str) -> str:
+        key = normalize_move(raw_text)
+        if not key:
+            return ""
+        return self.ability_aliases.get(key, raw_text.strip())
+
+    def search_moves(self, query: str, limit: int = 30) -> tuple[str, ...]:
+        key = normalize_move(query)
+        if not key:
+            return ()
+        ranked: list[tuple[int, int, str]] = []
+        for move in self.move_names:
+            normalized = normalize_move(move)
+            if key not in normalized:
+                continue
+            ranked.append((0 if normalized.startswith(key) else 1, len(normalized), move))
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        return tuple(item[2] for item in ranked[: max(1, limit)])
 
     def canonical_move(self, raw_text: str) -> str:
         key = normalize_move(raw_text)

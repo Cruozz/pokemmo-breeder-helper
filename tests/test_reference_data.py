@@ -31,6 +31,10 @@ class ReferenceDataTests(unittest.TestCase):
         self.assertEqual(self.database.canonical_move("长豪"), "长嚎")
         self.assertEqual(self.database.canonical_move("Tackle"), "撞击")
 
+    def test_loads_hidden_ability_names_and_aliases(self) -> None:
+        self.assertIn("叶绿素", self.database.hidden_ability_names("妙蛙种子"))
+        self.assertEqual(self.database.canonical_ability("Chlorophyll"), "叶绿素")
+
 
 if __name__ == "__main__":
     unittest.main()

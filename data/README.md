@@ -12,11 +12,14 @@ The source repository is distributed under the BSD 3-Clause license. See
 Additional bundled files:
 
 - `moves.json`: PokeAPI generation 1–5 move names used as an OCR dictionary.
+- `abilities.json`: PokeAPI normal and hidden ability names for species 1–649,
+  used for OCR normalization, autocomplete and the hidden-ability planning flag.
 - `locations.json`: 4,441 normalized rows imported from the user-provided
   `全地区精灵分布.xlsx`; all rows resolve to an internal species ID.
 - `egg_moves.json`: 11,145 normalized chain rows imported from the
   user-provided `技能遗传链.xlsx`; all rows resolve to an internal species ID.
-- `pokemmo_overrides.json`: reviewed PokeMMO/legacy Chinese species aliases.
+- `pokemmo_overrides.json`: reviewed PokeMMO/legacy Chinese species aliases and
+  explicit game-specific breeding differences such as the Nidoran family.
 - `move_ocr_overrides.json`: reviewed OCR mistakes from supplied screenshots.
 
 The generated JSON metadata records each source workbook name, modified time

@@ -2,9 +2,9 @@
 
 ## PokeAPI data
 
-The generated `data/species.json` and `data/moves.json` files use source data from
+The generated `data/species.json`, `data/moves.json` and `data/abilities.json` files use source data from
 [PokeAPI/pokeapi](https://github.com/PokeAPI/pokeapi), including species names,
-egg groups, gender rates and baby flags. PokeAPI is distributed under the BSD
+egg groups, gender rates, baby flags, move names and ability names. PokeAPI is distributed under the BSD
 3-Clause license. The upstream license is available at:
 
 https://github.com/PokeAPI/pokeapi/blob/master/LICENSE.md
@@ -24,6 +24,14 @@ not read or unpack the PokeMMO client. The upstream notice states that image
 contents are Copyright The Pokémon Company and that the repository is
 distributed under CC0 1.0 Universal. A copy is bundled at
 `assets/POKEAPI_SPRITES_LICENSE.txt`.
+
+## Reviewed PokeMMO-specific mechanics
+
+The explicit Nidoran breeding overrides in `data/pokemmo_overrides.json` were
+reviewed against the public PokeMMO Wiki pages for
+[Nidoran♂](https://pokemmo.shoutwiki.com/wiki/Nidoran%E2%99%82) and
+[Breeding](https://pokemmo.shoutwiki.com/wiki/Breeding). Only short factual
+mechanics are encoded; no page text or media is redistributed.
 
 ## User-provided reference workbooks
 

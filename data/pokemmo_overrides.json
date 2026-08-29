@@ -3,6 +3,8 @@
   "description": "Reviewed PokeMMO-specific differences from the PokeAPI base data. Keep this file explicit and source-reviewed.",
   "species": [
     {"id": 21, "aliases": ["列雀"], "source": "全地区精灵分布.xlsx"},
+    {"id": 30, "egg_groups": ["怪兽", "陆上"], "source": "PokeMMO Wiki：Nidorina 可参与怪兽/陆上组孵化"},
+    {"id": 31, "egg_groups": ["怪兽", "陆上"], "source": "PokeMMO Wiki：Nidoqueen 可参与怪兽/陆上组孵化"},
     {"id": 64, "aliases": ["勇吉拉"], "source": "全地区精灵分布.xlsx"},
     {"id": 101, "aliases": ["顽皮雷球"], "source": "全地区精灵分布.xlsx"},
     {"id": 167, "aliases": ["圆线蛛"], "source": "全地区精灵分布.xlsx"},
