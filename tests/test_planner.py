@@ -199,6 +199,62 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(candidates[0].root.has_hidden_ability)
         self.assertIn("保留梦特", report)
 
+    def test_hidden_ability_male_passes_with_regular_female_from_same_evolution_line(self) -> None:
+        inventory = [
+            monster(
+                "HA-M",
+                "奇鲁莉安",
+                "M",
+                [31, 7, 8, 9, 10, 11],
+                has_hidden_ability=True,
+            ),
+            monster("LINE-F", "拉鲁拉丝", "F", [12, 31, 13, 14, 15, 16]),
+        ]
+
+        _report, candidates = make_report_with_candidates(
+            inventory,
+            "拉鲁拉丝",
+            "F",
+            "",
+            "31/31/x/x/x/x",
+            ["人型", "不定形"],
+            allow_ditto=False,
+            need_hidden_ability=True,
+        )
+
+        self.assertTrue(candidates)
+        self.assertEqual(candidates[0].root.purchases, 0)
+        self.assertEqual(candidates[0].root.used_ids, frozenset({"HA-M", "LINE-F"}))
+        self.assertTrue(candidates[0].root.has_hidden_ability)
+
+    def test_hidden_ability_male_passes_with_ditto(self) -> None:
+        inventory = [
+            monster(
+                "HA-M",
+                "拉鲁拉丝",
+                "M",
+                [31, 7, 8, 9, 10, 11],
+                has_hidden_ability=True,
+            ),
+            monster("DITTO", "百变怪", "N", [12, 31, 13, 14, 15, 16], groups=()),
+        ]
+
+        _report, candidates = make_report_with_candidates(
+            inventory,
+            "拉鲁拉丝",
+            "F",
+            "",
+            "31/31/x/x/x/x",
+            ["人型", "不定形"],
+            allow_ditto=True,
+            need_hidden_ability=True,
+        )
+
+        self.assertTrue(candidates)
+        self.assertEqual(candidates[0].root.purchases, 0)
+        self.assertEqual(candidates[0].root.used_ids, frozenset({"HA-M", "DITTO"}))
+        self.assertTrue(candidates[0].root.has_hidden_ability)
+
     def test_unrelated_hidden_ability_father_cannot_unlock_target_line(self) -> None:
         inventory = [
             monster("NORMAL-F", "拉鲁拉丝", "F", [31, 1, 1, 1, 1, 1]),
@@ -744,6 +800,76 @@ class PlannerTests(unittest.TestCase):
         self.assertGreater(target_internal_females, 0)
         self.assertEqual(child_gender_policy(root, root, "F", "智能锁定"), "locked")
         self.assertNotIn("没有可执行方案", report)
+
+    def test_alpha_hidden_ability_nature_hand_need_not_carry_hidden_ability(self) -> None:
+        body = monster(
+            "ALPHA-HA-BODY",
+            "索罗亚",
+            "F",
+            [31, 12, 31, 31, 31, 31],
+            nature="温顺",
+            groups=("陆上",),
+            is_alpha=True,
+            has_hidden_ability=True,
+        )
+
+        stage_report, stage_candidates = make_report_with_candidates(
+            [body],
+            "索罗亚克",
+            "",
+            "内敛",
+            "31/x/31/31/31/31",
+            ["陆上"],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+        )
+
+        self.assertTrue(stage_candidates, stage_report)
+        stage = stage_candidates[0]
+        self.assertEqual(stage.nature_phase, "gamble_upper")
+        self.assertTrue(stage.root.is_alpha)
+        self.assertFalse(stage.root.has_hidden_ability)
+        self.assertGreater(stage.root.purchases, 0)
+
+        plain_nature_hand = monster(
+            "ALPHA-PLAIN-NATURE-HAND",
+            "长毛狗",
+            "M",
+            [31, 7, 31, 31, 31, 8],
+            nature="内敛",
+            groups=("陆上",),
+            is_alpha=True,
+            has_hidden_ability=False,
+        )
+        finish_report, finish_candidates = make_report_with_candidates(
+            [body, plain_nature_hand],
+            "索罗亚克",
+            "",
+            "内敛",
+            "31/x/31/31/31/31",
+            ["陆上"],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+        )
+
+        self.assertTrue(finish_candidates, finish_report)
+        finish = finish_candidates[0]
+        self.assertEqual(finish.nature_phase, "finish")
+        self.assertTrue(finish.root.is_alpha)
+        self.assertTrue(finish.root.has_hidden_ability)
+        self.assertTrue(finish.root.has_nature)
+        self.assertEqual(
+            finish.root.used_ids,
+            frozenset({"ALPHA-HA-BODY", "ALPHA-PLAIN-NATURE-HAND"}),
+        )
 
     def test_one_shared_iv_between_three_v_parents_cannot_guarantee_four_v(self) -> None:
         inventory = [
@@ -1393,6 +1519,196 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(best.root.gender, "M")
         self.assertTrue(best.root.has_nature)
         self.assertEqual(best.root.used_ids, frozenset({"FIVE-V-MOTHER", "FOUR-V-NATURE"}))
+
+    def test_alpha_hidden_ability_nidoking_miss_replans_to_plain_alpha_nature_hand(self) -> None:
+        body = monster(
+            "ALPHA-HA-NIDORAN-BODY",
+            "尼多兰",
+            "F",
+            [31, 12, 31, 31, 31, 31],
+            nature="温顺",
+            groups=("怪兽", "陆上"),
+            is_alpha=True,
+            has_hidden_ability=True,
+        )
+        body.breeding_target_key = _nature_target_signature(
+            normalize_text("尼多朗"),
+            normalize_nature("内敛"),
+            [31, None, 31, 31, 31, 31],
+            True,
+            True,
+            frozenset(),
+        )
+        body.breeding_role = "maternal"
+        body.nature_attempt_level = 5
+        body.nature_attempt_result = "miss"
+
+        report, candidates = make_report_with_candidates(
+            [body],
+            "尼多王",
+            "M",
+            "内敛",
+            "31/x/31/31/31/31",
+            [],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+            preferred_material_ids={body.id},
+        )
+
+        self.assertTrue(candidates, report)
+        best = candidates[0]
+        self.assertEqual(best.nature_phase, "gamble_upper")
+        self.assertEqual(best.nature_attempt_level, 4)
+        self.assertTrue(best.root.is_alpha)
+        self.assertFalse(best.root.has_hidden_ability)
+        self.assertEqual(best.root.gender, "M")
+        self.assertGreater(best.root.purchases, 0)
+        self.assertNotIn(body.id, best.root.used_ids)
+
+        nature_hand = monster(
+            "ALPHA-NIDOKING-NATURE-HAND",
+            "长毛狗",
+            "M",
+            [31, 7, 31, 31, 31, 8],
+            nature="内敛",
+            groups=("陆上",),
+            is_alpha=True,
+            has_hidden_ability=False,
+        )
+        _finish_report, finish_candidates = make_report_with_candidates(
+            [body, nature_hand],
+            "尼多王",
+            "M",
+            "内敛",
+            "31/x/31/31/31/31",
+            [],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+        )
+
+        self.assertTrue(finish_candidates)
+        finish = finish_candidates[0]
+        self.assertEqual(finish.nature_phase, "finish")
+        self.assertEqual(finish.root.output_species, "尼多朗")
+        self.assertEqual(finish.root.gender, "M")
+        self.assertTrue(finish.root.is_alpha)
+        self.assertTrue(finish.root.has_hidden_ability)
+        self.assertTrue(finish.root.has_nature)
+
+    def test_large_inventory_keeps_market_fallback_for_staged_nature_hand(self) -> None:
+        body = monster(
+            "ALPHA-HA-BODY",
+            "尼多兰",
+            "F",
+            [31, 12, 31, 31, 31, 31],
+            nature="温顺",
+            groups=("怪兽", "陆上"),
+            is_alpha=True,
+            has_hidden_ability=True,
+        )
+        # More than the nature-hand profile beam's inventory allowance.  Every
+        # concrete line is male-only in this snapshot, so none can manufacture
+        # a hand by itself; the generic market line must remain available.
+        unrelated_males = [
+            monster(
+                f"UNRELATED-{index}",
+                species,
+                "M",
+                [31, 31, 7, 8, 9, 10],
+                nature="温顺",
+                groups=("陆上",),
+                is_alpha=True,
+                has_hidden_ability=True,
+            )
+            for index, species in enumerate(
+                (
+                    "伦琴猫",
+                    "双尾怪手",
+                    "叶伊布",
+                    "嘎啦嘎啦",
+                    "圈圈熊",
+                    "大狼犬",
+                    "大舌舔",
+                    "太阳伊布",
+                    "小火马",
+                    "惊角鹿",
+                    "晃晃斑",
+                    "月亮伊布",
+                )
+            )
+        ]
+
+        report, candidates = make_report_with_candidates(
+            [body, *unrelated_males],
+            "尼多王",
+            "M",
+            "内敛",
+            "31/x/31/31/31/31",
+            [],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+            preferred_material_ids={body.id},
+        )
+
+        self.assertTrue(candidates, report)
+        best = candidates[0]
+        self.assertEqual(best.nature_phase, "gamble_upper")
+        self.assertEqual(best.nature_attempt_level, 4)
+        self.assertGreater(best.root.purchases, 0)
+
+    def test_unrelated_high_iv_nature_does_not_skip_staged_gamble(self) -> None:
+        body = monster(
+            "ALPHA-HA-BODY",
+            "尼多兰",
+            "F",
+            [31, 12, 31, 31, 31, 31],
+            nature="温顺",
+            groups=("怪兽", "陆上"),
+            is_alpha=True,
+            has_hidden_ability=True,
+        )
+        incompatible_nature = monster(
+            "INCOMPATIBLE-NATURE",
+            "七夕青鸟",
+            "M",
+            [31, 7, 31, 31, 8, 31],
+            nature="内敛",
+            groups=("飞行", "龙"),
+            is_alpha=True,
+            has_hidden_ability=True,
+        )
+
+        report, candidates = make_report_with_candidates(
+            [body, incompatible_nature],
+            "尼多王",
+            "M",
+            "内敛",
+            "31/x/31/31/31/31",
+            [],
+            target_alpha=True,
+            allow_ditto=False,
+            strategy="inventory",
+            nature_strategy="late",
+            allow_alpha_materials=True,
+            need_hidden_ability=True,
+            preferred_material_ids={body.id},
+        )
+
+        self.assertTrue(candidates, report)
+        self.assertEqual(candidates[0].nature_phase, "gamble_upper")
+        self.assertNotIn(incompatible_nature.id, candidates[0].root.used_ids)
 
     def test_genderless_evolution_line_can_breed_without_ditto(self) -> None:
         inventory = [

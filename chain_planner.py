@@ -773,8 +773,16 @@ def _forced_child(
         ),
         material_v=mask.bit_count(),
         breeding_species=profile.breeding_species_for_gender(output_gender),
-        # HA potential only passes from a parent on the child's evolution line.
-        # A random same-egg-group father carrying HA is not sufficient.
+        # PokeMMO treats HA potential as a species-line attribute, independently
+        # from Alpha status.  States are canonicalized to their hatch species
+        # before reaching this function, so an HA parent passes the attribute
+        # only when it belongs to the child's evolution line.  This covers both
+        # directions of the real rule:
+        #   HA female + regular same-egg-group male -> HA child
+        #   HA male + regular same-line female/Ditto -> HA child
+        # while rejecting an unrelated same-group HA father.  Alpha inheritance
+        # remains the separate ``parent_a.is_alpha and parent_b.is_alpha`` rule
+        # above; a parent does not need both attributes merely to be compatible.
         has_hidden_ability=any(
             parent.has_hidden_ability
             and normalize_text(parent.species) == profile.species_key
@@ -2623,23 +2631,32 @@ def _plain_nature_hand_goals(
         if current is None or priority < current[0]:
             profiles[key] = (priority, profile)
 
-    ordered_profiles = [
-        profile
-        for _priority, profile in sorted(
-            profiles.values(),
-            key=lambda value: (value[0], value[1].species_key, value[1].egg_groups),
-        )[:10]
-    ]
+    ordered_profile_entries = sorted(
+        profiles.values(),
+        key=lambda value: (value[0], value[1].species_key, value[1].egg_groups),
+    )
+    # A large inventory can contain many compatible males from unrelated
+    # concrete species lines.  Those inventory profiles used to occupy the
+    # whole ten-profile beam even when none had a matching female with which to
+    # build this independent nature hand.  The always-available generic market
+    # profiles were then crowded out and a perfectly valid staged route became
+    # "0 routes".  Keep the best inventory opportunities, but reserve part of
+    # the profile beam for virtual fallback lines so every species retains a
+    # purchasable route when its inventory combinations are incomplete.
+    actual_profiles = [entry for entry in ordered_profile_entries if entry[0] < 2]
+    fallback_profiles = [entry for entry in ordered_profile_entries if entry[0] >= 2]
+    selected_profile_entries = [*actual_profiles[:8], *fallback_profiles[:4]]
+    ordered_profiles = [profile for _priority, profile in selected_profile_entries]
     goals: list[ChainState] = []
     for mask in dict.fromkeys(int(value) for value in candidate_masks if int(value)):
         for profile in ordered_profiles:
-            for goal in _structured_search(
+            for goal in _same_species_pyramid(
                 pool,
                 profile,
                 mask,
                 False,
                 output_gender,
-                max(12, min(beam, 32)),
+                max(4, min(beam, 12)),
                 strategy,
                 preferred_ditto_ids,
             ):
@@ -3240,6 +3257,15 @@ def find_chain_candidates(
     # user is deliberately manufacturing a nature hand.
     exact_target_count = target_mask.bit_count()
     nature_checkpoint = max(1, exact_target_count - 1)
+    target_hand_groups = set(_group_key(target_profile.egg_groups))
+
+    def is_target_compatible_hand(state: ChainState) -> bool:
+        """Whether a staged nature hand can ultimately merge with the body."""
+        return (
+            (allow_ditto and is_ditto(state.species))
+            or bool(target_hand_groups & set(_group_key(state.egg_groups)))
+        )
+
     full_body_states = [
         state
         for state in all_leaf_states
@@ -3255,7 +3281,11 @@ def find_chain_candidates(
     checkpoint_nature_states = [
         state
         for state in all_leaf_states
-        if state.has_nature and state.mask.bit_count() >= nature_checkpoint
+        if state.has_nature
+        and state.mask.bit_count() >= nature_checkpoint
+        and state.effective_material_v == state.mask.bit_count()
+        and state.is_alpha == target_alpha
+        and is_target_compatible_hand(state)
     ]
 
     upper_level = max(1, exact_target_count - 1)
@@ -3273,6 +3303,7 @@ def find_chain_candidates(
             and state.gender == gender
             and state.mask.bit_count() == level
             and state.is_alpha == target_alpha
+            and is_target_compatible_hand(state)
         ]
 
     failed_upper_states = attempt_states(upper_level, "miss", "M")
@@ -3287,6 +3318,7 @@ def find_chain_candidates(
         and state.mask.bit_count() == upper_level
         and state.effective_material_v == upper_level
         and state.is_alpha == target_alpha
+        and is_target_compatible_hand(state)
         and state not in available_upper_plain_states
     )
     available_lower_nature_states = list(hit_lower_states)
@@ -3298,6 +3330,7 @@ def find_chain_candidates(
         and state.mask.bit_count() == lower_level
         and state.effective_material_v == lower_level
         and state.is_alpha == target_alpha
+        and is_target_compatible_hand(state)
         and state not in available_lower_nature_states
     )
     available_lower_plain_states = list(failed_lower_states)
@@ -3309,6 +3342,7 @@ def find_chain_candidates(
         and state.mask.bit_count() == lower_level
         and state.effective_material_v == lower_level
         and state.is_alpha == target_alpha
+        and is_target_compatible_hand(state)
         and state not in available_lower_plain_states
     )
     nature_floor_level = max(2 if target_alpha else 1, exact_target_count - 3)
@@ -3646,11 +3680,25 @@ def find_chain_candidates(
         and required_moves.issubset(state.inherited_moves)
     ]
 
+    # A staged random-nature hand is an independent donor branch, not the final
+    # product.  It must satisfy its own IV/gender/Alpha job, but it does not need
+    # to carry species-line features already preserved on the completed mother.
+    # Requiring HA or egg moves here incorrectly rejects every ordinary
+    # same-group hand (and even the market fallback).  The promote/guarantee/
+    # finish phases call ``_forced_child`` with the saved mother, then this same
+    # filter validates those features on the actual merged child.
+    stage_requires_final_features = nature_phase not in {"gamble_upper", "gamble_lower"}
+
     def feature_goals(states: list[ChainState]) -> list[ChainState]:
         return [
             state for state in states
-            if (not need_hidden_ability or state.has_hidden_ability)
-            and required_moves.issubset(state.inherited_moves)
+            if (
+                not stage_requires_final_features
+                or (
+                    (not need_hidden_ability or state.has_hidden_ability)
+                    and required_moves.issubset(state.inherited_moves)
+                )
+            )
         ]
     if custom_goals is not None:
         goals = custom_goals
