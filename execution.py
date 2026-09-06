@@ -55,7 +55,7 @@ class ExecutionStep:
         if policy == "irrelevant":
             return "本路线无需确认性别；下一步与百变怪孵化"
         if policy == "random":
-            return "不锁性别；孵出后记录实际性别并重算"
+            return "不锁性别；记录实际结果，符合原计划则继续"
         if policy == "fixed":
             return f"固定{gender_name(self.expected_gender)}"
         return f"锁定{gender_name(self.expected_gender)}"
@@ -106,6 +106,11 @@ class ExecutionPlan:
     nature_phase: str = ""
     nature_target_key: str = ""
     nature_attempt_level: int = 0
+    candidate_snapshot: dict[str, Any] = field(default_factory=dict)
+    materials: dict[str, dict[str, Any]] = field(default_factory=dict)
+    needs_replan: bool = False
+    replan_reason: str = ""
+    planning_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def required_iv_count(self) -> int:
@@ -152,6 +157,23 @@ class ExecutionPlan:
     def _producer_by_child_id(self) -> dict[str, ExecutionStep]:
         return {step.child.id: step for step in self.steps}
 
+    def lock_known_counterparts(self, inventory) -> None:
+        """Upgrade legacy random policies when the actual mate already exists."""
+        known = {monster.id: monster for monster in inventory}
+        known.update({s.child.id: s.child for s in self.steps if s.completed})
+        for step in self.steps:
+            if step.completed or step.gender_override or step.gender_policy != "random":
+                continue
+            for consumer in self.steps:
+                ids = (consumer.parent_a_id, consumer.parent_b_id)
+                if step.child.id not in ids:
+                    continue
+                mate = known.get(ids[1] if ids[0] == step.child.id else ids[0])
+                if (mate and normalize_text(mate.species) not in {"百变怪", "ditto"}
+                        and not mate.gender_unconfirmed and mate.gender in {"F", "M"}
+                        and step.expected_gender in {"F", "M"} and mate.gender != step.expected_gender):
+                    step.gender_policy = "locked"
+
     def dependencies_completed(self, step: ExecutionStep) -> bool:
         producers = self._producer_by_child_id()
         return all(
@@ -161,6 +183,8 @@ class ExecutionPlan:
 
     def is_step_ready(self, step: ExecutionStep) -> bool:
         return bool(
+            not self.needs_replan
+            and
             step in self.steps
             and not step.completed
             and self.dependencies_completed(step)
@@ -189,7 +213,7 @@ class ExecutionPlan:
     @property
     def ready_steps(self) -> list[ExecutionStep]:
         """All sibling branches that can be executed now, in display order."""
-        return list(self.frontier_steps)
+        return [] if self.needs_replan else list(self.frontier_steps)
 
     @property
     def next_actionable_step(self) -> ExecutionStep | None:
@@ -208,7 +232,7 @@ class ExecutionPlan:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 7,
+            "schema_version": 8,
             "id": self.id,
             "target_species": self.target_species,
             "steps": [step.to_dict() for step in self.steps],
@@ -221,6 +245,11 @@ class ExecutionPlan:
             "nature_phase": self.nature_phase,
             "nature_target_key": self.nature_target_key,
             "nature_attempt_level": self.nature_attempt_level,
+            "candidate_snapshot": self.candidate_snapshot,
+            "materials": self.materials,
+            "needs_replan": self.needs_replan,
+            "replan_reason": self.replan_reason,
+            "planning_options": self.planning_options,
         }
 
     @classmethod
@@ -238,9 +267,16 @@ class ExecutionPlan:
             nature_phase=str(value.get("nature_phase", "")),
             nature_target_key=str(value.get("nature_target_key", "")),
             nature_attempt_level=int(value.get("nature_attempt_level", 0) or 0),
+            candidate_snapshot=dict(value.get("candidate_snapshot") or value.get("_candidate_snapshot") or {}),
+            materials=dict(value.get("materials") or {}),
+            needs_replan=bool(value.get("needs_replan", False)),
+            replan_reason=str(value.get("replan_reason", "")),
+            planning_options=dict(value.get("planning_options") or {}),
         )
 
     def status_text(self) -> str:
+        if self.needs_replan:
+            return f"执行已暂停：{self.replan_reason}。已完成子代和历史保留；请生成建议并确认后再启用。"
         step = self.next_step
         if step is None:
             return "方案已经全部执行完成。"
@@ -256,7 +292,7 @@ class ExecutionPlan:
                 else ""
             )
             random_note = (
-                "\n其中包含不锁性别节点；完成时记录实际性别并重算剩余路线。"
+                "\n其中包含不锁性别节点；完成时记录实际性别，符合原计划则继续。"
                 if any(value.effective_gender_policy == "random" for value in ready)
                 else ""
             )
@@ -324,6 +360,7 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
     purchase_requirements: list[str] = []
     refs: dict[int, tuple[str, str]] = {}
     account_by_id: dict[str, str] = {}
+    materials: dict[str, dict[str, Any]] = {}
 
     def emit(state: ChainState, sibling: ChainState | None = None) -> tuple[str, str]:
         cached = refs.get(id(state))
@@ -337,6 +374,7 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
                 purchase_requirements.append(label)
             result = (state.leaf.id, label)
             account_by_id[state.leaf.id] = state.leaf.account
+            materials[state.leaf.id] = state.leaf.to_dict()
             refs[id(state)] = result
             return result
 
@@ -469,4 +507,6 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
         nature_phase=candidate.nature_phase,
         nature_target_key=candidate.nature_target_key,
         nature_attempt_level=candidate.nature_attempt_level,
+        candidate_snapshot=candidate.to_dict(),
+        materials=materials,
     )

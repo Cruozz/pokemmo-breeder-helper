@@ -251,6 +251,14 @@ def child_gender_policy(
     normalized = normalize_intermediate_gender_strategy(strategy)
     if normalized == GENDER_STRATEGY_LOCK_ALL:
         return "locked"
+    if sibling is not None and sibling.leaf is not None and not sibling.is_virtual:
+        if normalize_gender(sibling.leaf.gender) in {"F", "M"}:
+            return "locked"
+    # The male branch paired with this female is locked above. Do not randomize
+    # its counterpart and invalidate an already determined pair.
+    if (sibling is not None and normalize_gender(sibling.gender) == "M"
+            and normalize_gender(state.gender) == "F" and not is_ditto(sibling.species)):
+        return "locked"
     if normalized == GENDER_STRATEGY_MINIMAL:
         return "random"
 

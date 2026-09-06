@@ -288,6 +288,7 @@ class AppInventoryFlowTests(unittest.TestCase):
         app = App.__new__(App)
         app.active_plan = plan
         app.proposed_plan = plan
+        app.displayed_plan_id = plan.id
         app.selected_plan_step_number = None
         completed: list[int] = []
         app.complete_next_step = lambda selected: completed.append(selected.number)
@@ -313,6 +314,8 @@ class AppInventoryFlowTests(unittest.TestCase):
         app = App.__new__(App)
         app.active_plan = plan
         app.plan_candidate_cache = {}
+        app.displayed_plan_id = plan.id
+        app.expanded_completed_sources = set()
         app.species_db = SimpleNamespace(get=lambda *_args, **_kwargs: None)
         app.selected_plan_step_number = None
         app.status_var = StubVariable()

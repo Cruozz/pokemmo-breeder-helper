@@ -875,13 +875,13 @@ class BreedingMindMap(ttk.Frame):
         if root is None or root.key not in self.positions:
             return
         self.update_idletasks()
-        scrollregion = self.canvas.bbox("all")
+        scrollregion = tuple(float(v) for v in str(self.canvas.cget("scrollregion")).split())
         if not scrollregion:
             return
         total_width = max(1, scrollregion[2] - scrollregion[0])
         viewport = max(1, self.canvas.winfo_width())
         x, _y = self.positions[root.key]
         root_center = x + self._scaled(self.BASE_NODE_WIDTH) / 2
-        fraction = max(0.0, min(1.0, (root_center - viewport / 2) / max(1, total_width - viewport)))
+        fraction = max(0.0, min(1.0, (root_center - viewport / 2 - scrollregion[0]) / total_width))
         self.canvas.xview_moveto(fraction)
         self.canvas.yview_moveto(0.0)

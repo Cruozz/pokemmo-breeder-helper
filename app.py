@@ -70,6 +70,7 @@ from PIL import Image, ImageFilter, ImageGrab, ImageTk
 from capture import WindowInfo, capture_window, list_windows
 from chain_planner import ChainCandidate, ChainState, gender_name, is_ditto
 from execution import ExecutionPlan, ExecutionStep, build_execution_plan
+from execution_view import execution_map
 from mind_map import BreedingMindMap, MindMapNode
 from models import STATS, Monster, format_box_position, normalize_gender
 from autocomplete import AutocompletePopup
@@ -157,6 +158,8 @@ class App:
         self.auto_replan_preferred_material_ids: set[str] = set()
         self.expanded_completed_sources: set[tuple[str, int]] = set()
         self.plan_candidate_cache: dict[str, ChainCandidate] = {}
+        self.plan_view_mode = "active"
+        self.displayed_plan_id: str | None = None
         self.autocomplete_popups: list[AutocompletePopup] = []
         self.windows: list[WindowInfo] = []
         self.inventory = load_inventory()
@@ -243,7 +246,7 @@ class App:
         self.target_strategy_var = StringVar(value="库存优先")
         self.target_intermediate_gender_strategy_var = StringVar(value="智能锁定")
         self.target_gender_strategy_hint_var = StringVar(
-            value="低 V 首支不锁；记录实际性别后，只锁配对所需的另一支。5V 与成品约束保持确定。"
+            value="母体锁母，直接辅助素材锁公；已有配偶或配对性别明确时按下一步需求锁定。"
         )
         self.next_step_gender_var = StringVar(value="自动")
         self.next_step_gender_hint_var = StringVar(value="")
@@ -279,6 +282,8 @@ class App:
             save_inventory(self.inventory)
 
         self.build_ui()
+        if self.active_plan:
+            self._restore_plan_target(self.active_plan)
         self.status_var.trace_add("write", self._update_status_appearance)
         self.plan_status_var.trace_add("write", self._update_plan_status_appearance)
         self.refresh_windows()
@@ -2007,6 +2012,12 @@ class App:
         self.plan_progress = ttk.Progressbar(actions, mode="indeterminate", length=92, style="Blue.Horizontal.TProgressbar")
         self.plan_progress.pack(side=RIGHT, padx=(8, 2))
         self.plan_progress.pack_forget()
+        view_bar = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
+        view_bar.pack(fill=X, pady=(0, 6))
+        ttk.Button(view_bar, text="查看正在执行", command=lambda: self._set_plan_view("active")).pack(side=LEFT)
+        ttk.Button(view_bar, text="预览新建议（只读）", command=lambda: self._set_plan_view("proposal")).pack(side=LEFT, padx=6)
+        self.plan_view_label = ttk.Label(view_bar, text="", style="Warning.TLabel")
+        self.plan_view_label.pack(side=LEFT, padx=8)
         self.next_step_gender_frame = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
         ttk.Label(self.next_step_gender_frame, text="下一步性别", style="Field.TLabel").pack(side=LEFT)
         self.next_step_gender_combo = ttk.Combobox(
@@ -2120,11 +2131,16 @@ class App:
         target = self.target_species_var.get().strip() or "未选择目标"
         iv_text = self.target_iv_var.get().upper()
         nature = self.target_nature_var.get().strip() or "任意性格"
-        plan = self.active_plan or self.proposed_plan
+        plan = self.proposed_plan if self.plan_view_mode == "proposal" else (self.active_plan or self.proposed_plan)
+        if plan and plan.steps:
+            target = plan.target_species
+            nature = plan.target_nature or "任意性格"
+            iv_text = plan.steps[-1].child.iv_string.upper()
         if plan and plan.steps:
             completed = sum(step.completed for step in plan.steps)
             ready = len(plan.ready_steps)
-            state = f"已完成 {completed}/{len(plan.steps)} · 可并行执行 {ready} 个"
+            state = (f"建议共 {len(plan.steps)} 步 · 未启用，只读预览" if self.plan_view_mode == "proposal"
+                     else f"已完成 {completed}/{len(plan.steps)} · 可并行执行 {ready} 个")
         else:
             state = "尚无可执行路线"
         self.plan_compact_summary_var.set(
@@ -2212,11 +2228,13 @@ class App:
             self.proposed_plan
             and self.proposed_plan.steps
             and not self.plan_worker_busy
+            and (self.active_plan is None or self.proposed_plan.id != self.active_plan.id)
         )
         self.activate_plan_button.configure(state="normal" if can_activate else "disabled")
         selected_step = self._selected_ready_step()
         can_complete = bool(selected_step and not self.plan_worker_busy)
         self.complete_step_button.configure(state="normal" if can_complete else "disabled")
+        self.undo_step_button.configure(state="normal" if self._can_execute_displayed_plan() else "disabled")
         if selected_step is not None:
             parallel_count = len(self.active_plan.ready_steps) if self.active_plan else 0
             if selected_step.requires_purchase:
@@ -2236,7 +2254,7 @@ class App:
                 override_labels = {"": "自动", "random": "不锁", "F": "锁母", "M": "锁公"}
                 self.next_step_gender_var.set(override_labels.get(step.gender_override, "自动"))
                 self.next_step_gender_hint_var.set(
-                    f"当前：{step.gender_instruction}。仅覆盖这一节点；随机结果保存后会自动重算剩余路线。"
+                    f"当前：{step.gender_instruction}。结果符合原计划则继续，不符时暂停并询问。"
                 )
                 self.next_step_gender_combo.configure(state="readonly" if can_complete else "disabled")
                 self.mark_step_progress_button.configure(
@@ -2260,7 +2278,7 @@ class App:
 
     def _selected_ready_step(self) -> ExecutionStep | None:
         plan = self.active_plan
-        if plan is None:
+        if plan is None or not self._can_execute_displayed_plan():
             return None
         if self.selected_plan_step_number is not None:
             selected = next(
@@ -2269,7 +2287,47 @@ class App:
             )
             if selected is not None and plan.is_step_ready(selected):
                 return selected
+            return None
         return plan.next_actionable_step
+
+    def _can_execute_displayed_plan(self) -> bool:
+        return bool(
+            self.active_plan
+            and getattr(self, "plan_view_mode", "active") == "active"
+            and getattr(self, "displayed_plan_id", None) == self.active_plan.id
+            and not getattr(self, "plan_worker_busy", False)
+        )
+
+    def _set_plan_view(self, mode: str) -> None:
+        self.plan_view_mode = mode
+        self.selected_plan_step_number = None
+        self.refresh_plan_status()
+
+    def _restore_plan_target(self, plan: ExecutionPlan) -> None:
+        """Continue the saved target, not an unrelated proposal's form fields."""
+        if not plan.steps:
+            return
+        snapshot = plan.candidate_snapshot
+        final = plan.steps[-1].child
+        self.target_species_var.set(plan.target_species)
+        record = self.species_db.get(plan.target_species, fuzzy=True)
+        self.selected_target_species_id = record.id if record else None
+        self.target_nature_var.set(plan.target_nature)
+        self.target_lock_nature_var.set(bool(plan.target_nature and not plan.adaptive_nature))
+        self.target_lock_gender_var.set(bool(plan.target_gender))
+        self.target_gender_var.set("雄性" if plan.target_gender == "M" else "雌性")
+        self.target_alpha_var.set("头目" if snapshot.get("target_alpha", final.is_alpha) else "普通")
+        self.target_hidden_ability_var.set(snapshot.get("target_hidden_ability", final.has_hidden_ability))
+        self.selected_egg_moves = list(snapshot.get("target_moves", []))
+        self.target_egg_moves_var.set("、".join(self.selected_egg_moves) or "不需要遗传技能")
+        ivs = snapshot.get("target_ivs", final.ivs)
+        self.target_iv_var.set("/".join("x" if v is None else str(v) for v in ivs))
+        for var, iv in zip(self.target_iv_vars, ivs):
+            var.set("X" if iv is None else str(iv))
+        self.target_intermediate_gender_strategy_var.set({"smart": "智能锁定", "minimal": "尽量不锁"}.get(plan.gender_strategy, "全程锁定"))
+        for name, value in plan.planning_options.items():
+            if name in {"target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var"}:
+                getattr(self, name).set(value)
 
     def _select_plan_step_number(self, step_number: int) -> None:
         self.selected_plan_step_number = step_number
@@ -2295,7 +2353,7 @@ class App:
 
     def _toggle_plan_step_in_progress(self, step_number: int):
         plan = self.active_plan
-        if plan is None:
+        if plan is None or not self._can_execute_displayed_plan():
             messagebox.showinfo("先启用方案", "请先启用最佳方案，再标记正在孵化的节点。")
             return "break"
         step = next((item for item in plan.steps if item.number == step_number), None)
@@ -2317,7 +2375,7 @@ class App:
 
     def _toggle_completed_step_sources(self, step_number: int):
         plan = self.active_plan or self.proposed_plan
-        if plan is None:
+        if plan is None or not self._can_execute_displayed_plan():
             return "break"
         step = next((item for item in plan.steps if item.number == step_number), None)
         if step is None or not step.completed:
@@ -2327,8 +2385,7 @@ class App:
             self.expanded_completed_sources.remove(key)
         else:
             self.expanded_completed_sources.add(key)
-        if self.current_candidates:
-            self._render_plan_tree(self.current_candidates[0])
+        self.refresh_plan_status()
         return "break"
 
     @staticmethod
@@ -2648,9 +2705,9 @@ class App:
     def _on_intermediate_gender_strategy_changed(self, _event=None) -> None:
         strategy = self.target_intermediate_gender_strategy_var.get()
         hints = {
-            "智能锁定": "低 V 首支不锁；记录实际性别后，只锁配对所需的另一支。5V 与成品约束保持确定。",
+            "智能锁定": "母体锁母，直接辅助素材锁公；已有配偶或配对性别明确时按下一步需求锁定。",
             "全程锁定": "所有可选性别的中间子代都按规划指定，路线稳定，但性别费最高。",
-            "尽量不锁": "中间代尽量随机；每次记录实际性别后重算，性别费最低，但路线变化更多。",
+            "尽量不锁": "不影响确定配对时才随机；实际结果不符时先暂停，不自动替换路线。",
         }
         self.target_gender_strategy_hint_var.set(hints.get(strategy, hints["智能锁定"]))
         if self.selected_target_species_id and self.current_candidates and not self.plan_worker_busy:
@@ -2678,6 +2735,10 @@ class App:
                 return
         if allowed != ("F", "M") and requested == "random":
             messagebox.showinfo("固定性别", f"{step.child.species} 的性别固定，无需设置为随机。")
+            self.next_step_gender_var.set("自动")
+            return
+        if requested and requested != step.expected_gender and step.gender_policy == "locked":
+            messagebox.showwarning("下步配对需要固定性别", f"本节点按下一步配对需要{gender_name(step.planned_gender)}，不能直接覆盖为随机或相反性别。若实际孵错，请先核对库存并另行生成建议。")
             self.next_step_gender_var.set("自动")
             return
         step.gender_override = requested
@@ -3062,6 +3123,7 @@ class App:
                 changed = True
         if changed:
             save_active_plan(self.active_plan.to_dict())
+        self.active_plan.lock_known_counterparts(self.inventory)
 
     def lookup_target_species(self, silent: bool = False) -> SpeciesRecord | None:
         query = self.target_species_var.get().strip().lstrip("#").strip()
@@ -4958,6 +5020,8 @@ class App:
             frozenset(self.auto_replan_preferred_material_ids),
         )
         self._set_planner_busy(True)
+        self.pending_plan_options = {name: getattr(self, name).get() for name in (
+            "target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var")}
         self.plan_status_var.set(
             f"正在从 {sum(item.verified and item.id not in excluded_snapshot for item in snapshot)} 条可用已确认库存中"
             f"按{self.target_strategy_var.get()}搜索最佳路线"
@@ -4992,6 +5056,8 @@ class App:
             return
         self.current_candidates = candidates
         self.proposed_plan = build_execution_plan(candidates[0]) if candidates else None
+        if self.proposed_plan is not None:
+            self.proposed_plan.planning_options = dict(getattr(self, "pending_plan_options", {}))
         if self.proposed_plan is not None and candidates:
             self.plan_candidate_cache[self.proposed_plan.id] = candidates[0]
         auto_activate = self.auto_activate_replan_pending
@@ -5041,6 +5107,9 @@ class App:
         self._update_plan_compact_summary()
         if self.proposed_plan is not None:
             self._set_planner_details_collapsed(True)
+        if self.active_plan is not None and self.plan_view_mode == "active":
+            self.refresh_plan_status()
+            self.status_var.set("新建议已生成，正在执行的路线保持不变。点击“预览新建议（只读）”比较后再决定是否启用。")
 
     @staticmethod
     def _plan_state_iv_text(state: ChainState, candidate: ChainCandidate) -> str:
@@ -5230,6 +5299,27 @@ class App:
     def _render_plan_tree(self, candidate: ChainCandidate | None, fallback_report: str = "") -> None:
         if not hasattr(self, "plan_map"):
             return
+        if self.active_plan is not None and getattr(self, "plan_view_mode", "active") == "active":
+            plan = self.active_plan
+            self.displayed_plan_id = plan.id
+            node = execution_map(plan, self.inventory, self.expanded_completed_sources, self.species_db)
+            if plan.candidate_snapshot:
+                context = ChainCandidate.from_dict(plan.candidate_snapshot)
+                def sprite_id(name):
+                    record = self.species_db.get(name, fuzzy=True)
+                    return record.id if record else None
+                if node is not None:
+                    node = self._wrap_staged_nature_context(context, node, map_key_prefix=plan.id, species_sprite_id=sprite_id)
+            self.plan_summary_var.set(f"正在执行｜{plan.target_species} · {plan.target_nature or '任意性格'} · 方案 {plan.id[:8]}")
+            self.plan_purchase_var.set(plan.status_text())
+            self.plan_purchase_label.configure(style="Warning.TLabel" if plan.needs_replan else "Success.TLabel")
+            if hasattr(self, "plan_view_label"):
+                self.plan_view_label.configure(text=f"正在执行 · {plan.id[:8]}" + (" · 已暂停" if plan.needs_replan else ""))
+            self._set_plan_map_root(node)
+            return
+        self.displayed_plan_id = self.proposed_plan.id if self.proposed_plan else None
+        if hasattr(self, "plan_view_label"):
+            self.plan_view_label.configure(text="新建议预览 · 未启用，不可核销")
         if candidate is None:
             self.plan_summary_var.set("未找到能严格保证目标结果的路线。")
             self.plan_purchase_var.set(fallback_report.strip() or "请检查目标精灵、蛋组、性别、性格与库存素材。")
@@ -5310,7 +5400,7 @@ class App:
                     if root.maternal_conversion
                     else ""
                 )
-                + f"中间性别｜{self.target_intermediate_gender_strategy_var.get()}；随机节点核销后记录实际性别并自动重算。"
+                + f"中间性别｜{self.target_intermediate_gender_strategy_var.get()}；结果符合原计划则继续，不符时先暂停。"
             )
 
         egg_route_note = ""
@@ -5372,12 +5462,9 @@ class App:
             step_numbers[id(state)] = counter
 
         number_steps(root)
-        same_active_plan = bool(
-            self.active_plan
-            and self.proposed_plan
-            and self.active_plan.id == self.proposed_plan.id
-        )
-        display_plan = self.active_plan if same_active_plan else self.proposed_plan
+        # Proposal preview is always read-only, even if it came from this plan.
+        same_active_plan = False
+        display_plan = self.proposed_plan
         map_key_prefix = display_plan.id if display_plan else f"candidate-{id(candidate)}"
         step_by_number = {step.number: step for step in display_plan.steps} if display_plan else {}
         ready_step_numbers = {
@@ -5638,7 +5725,7 @@ class App:
 
     def _activate_plan_step_number(self, step_number: int):
         plan = self.active_plan
-        if plan is None or not self.proposed_plan or plan.id != self.proposed_plan.id:
+        if plan is None or not self._can_execute_displayed_plan():
             messagebox.showinfo("先启用方案", "请先点击“启用最佳方案”，再勾选思维导图中可执行的节点。")
             return "break"
         step = next((item for item in plan.steps if item.number == step_number), None)
@@ -5662,10 +5749,21 @@ class App:
         if not plan.steps:
             messagebox.showinfo("无需执行", "库存中已经有满足目标的成品。")
             return
+        produced = {step.child.id for step in plan.steps}
+        required = {pid for step in plan.steps if not step.completed for pid in (step.parent_a_id, step.parent_b_id)
+                    if pid not in produced and not pid.startswith("buy:")}
+        if required - {monster.id for monster in self.inventory}:
+            messagebox.showwarning("建议已过期", "建议中有素材已不在库存，请重新生成建议。原执行路线保持不变。")
+            return
+        if self.active_plan and self.active_plan.id != plan.id and self.plan_view_mode != "proposal":
+            self._set_plan_view("proposal")
+            messagebox.showinfo("请先核对新建议", "已切换到只读建议预览。核对目标、素材和步骤后，再点击“启用最佳方案”。原路线没有改变。")
+            return
         if self.active_plan and not self.active_plan.completed:
             if not messagebox.askyesno("替换执行中的方案", "当前还有未完成方案。确定用新方案替换吗？已完成的库存核销不会自动撤销。"):
                 return
         self.active_plan = plan
+        self.plan_view_mode = "active"
         self.selected_plan_step_number = None
         save_active_plan(plan.to_dict())
         self.refresh_plan_status()
@@ -5677,20 +5775,23 @@ class App:
     def refresh_plan_status(self) -> None:
         if not hasattr(self, "plan_status_var"):
             return
-        if self.active_plan is None:
-            self._update_plan_action_states()
-            if self.current_candidates:
-                self._render_plan_tree(self.current_candidates[0])
-            return
-        self.plan_status_var.set(self.active_plan.status_text())
+        self._render_plan_tree(self.current_candidates[0] if self.current_candidates else None)
+        if self.active_plan is not None and self.plan_view_mode == "active":
+            self.plan_status_var.set(self.active_plan.status_text())
+        elif self.proposed_plan:
+            self.plan_status_var.set("新建议仅供预览；确认并启用后才能执行，不会影响原路线。")
         self._update_plan_action_states()
-        if self.current_candidates:
-            self._render_plan_tree(self.current_candidates[0])
 
     def complete_next_step(self, requested_step: ExecutionStep | None = None) -> None:
         plan = self.active_plan
         if plan is None:
             messagebox.showwarning("没有执行方案", "请先生成并启用最佳方案。")
+            return
+        if not self._can_execute_displayed_plan():
+            messagebox.showwarning("当前不是执行路线", "请切回“查看正在执行”，确认画面与当前步骤后再核销。预览新建议时不可执行。")
+            return
+        if plan.needs_replan:
+            messagebox.showwarning("执行已暂停", plan.status_text())
             return
         step = requested_step or self._selected_ready_step()
         if step is None:
@@ -5704,7 +5805,7 @@ class App:
             return
         plan_snapshot_before_completion = plan.to_dict()
         snapshot_candidate = self.plan_candidate_cache.get(plan.id)
-        if snapshot_candidate is not None:
+        if snapshot_candidate is not None and not plan_snapshot_before_completion.get("candidate_snapshot"):
             plan_snapshot_before_completion["_candidate_snapshot"] = snapshot_candidate.to_dict()
         parent_pairs = (
             (step.parent_a_id, step.parent_a_label),
@@ -5725,6 +5826,7 @@ class App:
             else ""
         )
         prompt = (
+            f"执行方案 {plan.id[:8]} · 目标 {plan.target_species} {plan.target_nature}\n"
             f"确认游戏中已经完成步骤 {step.number}？\n\n"
             f"{purchase_text}"
             f"{inventory_text}"
@@ -5743,11 +5845,13 @@ class App:
         if step.effective_gender_policy == "random" and allowed_genders == ("F", "M"):
             gender_answer = messagebox.askyesnocancel(
                 "记录实际性别",
+                f"步骤 {step.number}：{step.child.species} {step.child.iv_string}\n"
+                f"原计划需要：{gender_name(step.planned_gender or step.child.gender)}。\n"
                 "本步骤没有锁定子代性别。请记录游戏中实际孵出的性别：\n\n"
                 "是 ＝ 母\n"
                 "否 ＝ 公\n"
                 "取消 ＝ 返回核对，不核销库存\n\n"
-                "保存后，工具会根据实际性别自动重算剩余路线。",
+                "符合原计划则继续；不符时保留实际子代，暂停并询问是否生成调整建议。",
             )
             if gender_answer is None:
                 return
@@ -5827,8 +5931,12 @@ class App:
             and child_to_save.gender != plan.target_gender
         )
         nature_miss_requires_finish = bool(final_step and nature_missed)
+        gender_mismatch = bool(
+            step.effective_gender_policy != "irrelevant"
+            and child_to_save.gender != (step.planned_gender or step.child.gender)
+        )
         should_auto_replan = bool(
-            (step.outcome_changes_plan and not plan_will_complete)
+            (gender_mismatch and not plan_will_complete)
             or (nature_hit and (not plan_will_complete or final_gender_pending))
             or (nature_hit and nature_hand_step)
             or nature_miss_requires_finish
@@ -5850,6 +5958,8 @@ class App:
         step.child = child_to_save
         step.completed = True
         step.in_progress = False
+        self.expanded_completed_sources.discard((plan.id, step.number))
+        plan.lock_known_counterparts([*self.inventory, child_to_save])
         self.selected_plan_step_number = None
         save_active_plan(plan.to_dict())
         self.inventory = load_inventory()
@@ -5864,7 +5974,7 @@ class App:
             )
         if should_auto_replan:
             reasons = []
-            if step.outcome_changes_plan and not plan.completed:
+            if gender_mismatch:
                 reasons.append(f"实际性别为{gender_name(child_to_save.gender)}")
             if nature_hit:
                 reasons.append(
@@ -5881,14 +5991,24 @@ class App:
                     )
                 else:
                     reasons.append(f"满 IV 母体未爆出 {plan.target_nature}，转入性格手阶段")
-            self.auto_activate_replan_pending = True
+            # Keep the old graph/history until the user approves a replacement.
+            plan.needs_replan = True
+            plan.replan_reason = "、".join(reasons)
+            save_active_plan(plan.to_dict())
+            self.refresh_plan_status()
+            if not messagebox.askyesno(
+                "结果已保存，是否生成调整建议？",
+                f"{plan.replan_reason}。\n\n已完成子代和历史已保存；原执行路线已暂停。\n"
+                "生成建议不会自动替换路线，查看并确认启用后才会继续。",
+            ):
+                return
+            self.auto_activate_replan_pending = False
             self.auto_replan_reason = "、".join(reasons)
             self.auto_replan_progress_keys = self._capture_plan_progress_keys(plan)
             self.auto_replan_preferred_material_ids = {child_to_save.id}
-            self.active_plan = None
-            save_active_plan(None)
+            self._restore_plan_target(plan)
             self.status_var.set(
-                f"步骤 {step.number} 已核销，子代已入库（{'、'.join(reasons)}）；正在按最新库存自动重新规划。"
+                f"步骤 {step.number} 已保存；正在生成调整建议，原路线保留，等待确认启用。"
             )
             self.generate_plan()
             return
@@ -5905,6 +6025,9 @@ class App:
             )
 
     def undo_last_step(self) -> None:
+        if not self._can_execute_displayed_plan():
+            messagebox.showwarning("当前不是执行路线", "请切回“查看正在执行”再撤销核销，避免影响另一条路线。")
+            return
         if not messagebox.askyesno(
             "撤销核销",
             "撤销最近一次核销并恢复两只父母；若该步是中间代，也会从素材库存移除其子代。继续吗？",
