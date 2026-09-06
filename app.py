@@ -84,6 +84,7 @@ from nature_data import (
 from ocr_engine import OCRProcessor
 from planner import make_report_with_candidates
 from preview_dialog import PreviewZoomWindow
+from preview_geometry import image_point, normalized_roi, rescale_roi
 from reference_data import get_reference_database
 from species_data import SpeciesRecord, get_species_database
 from storage import (
@@ -4038,14 +4039,7 @@ class App:
         self.current_source = source
         self.source_var.set(source)
         if self.roi and old_size and old_size != image.size:
-            old_width, old_height = old_size
-            left, top, right, bottom = self.roi
-            self.roi = (
-                int(left * image.width / max(1, old_width)),
-                int(top * image.height / max(1, old_height)),
-                int(right * image.width / max(1, old_width)),
-                int(bottom * image.height / max(1, old_height)),
-            )
+            self.roi = rescale_roi(self.roi, old_size, image.size)
         if self._embedded_preview_visible():
             if self.roi:
                 self.draw_roi()
@@ -4076,6 +4070,11 @@ class App:
         self.set_image(image.convert("RGB"), "剪贴板")
 
     def set_image(self, image: Image.Image, source: str) -> None:
+        # A draft belongs to one source; never apply it to another screenshot.
+        preview = getattr(self, "preview_zoom_window", None)
+        if preview is not None:
+            preview.close()
+        self.drag_start = None
         if not source.startswith("实时窗口："):
             self.live_preview_running = False
             self._cancel_live_preview_tick()
@@ -4105,6 +4104,9 @@ class App:
         self.status_var.set(f"已载入画面 {image.width}×{image.height}。可以框选信息区或直接识别。")
 
     def show_preview(self) -> None:
+        # Freeze the bitmap and its coordinate transform until mouse release.
+        if getattr(self, "drag_start", None) is not None:
+            return
         if self.current_image is None:
             self.canvas.delete("all")
             self.preview_image_item = None
@@ -4162,12 +4164,17 @@ class App:
         self.roi = (0, 0, width, self.current_image.height)
         self.draw_roi()
         self.status_var.set(f"已设置左侧信息区：{width}×{self.current_image.height}。")
+        self._update_detached_preview(self.current_image)
 
     def clear_roi(self) -> None:
         self.roi = None
         self.draw_roi()
+        if self.current_image is not None:
+            self._update_detached_preview(self.current_image)
 
     def draw_roi(self) -> None:
+        if getattr(self, "drag_start", None) is not None:
+            return
         self.show_preview()
         if not self.roi:
             if self.preview_roi_item is not None:
@@ -4176,11 +4183,12 @@ class App:
             return
         left, top, right, bottom = self.roi
         ox, oy = self.preview_offset
+        sx, sy = (self.preview_render_size[i] / self.current_image.size[i] for i in (0, 1))
         coords = (
-            ox + left * self.preview_scale,
-            oy + top * self.preview_scale,
-            ox + right * self.preview_scale,
-            oy + bottom * self.preview_scale,
+            ox + left * sx,
+            oy + top * sy,
+            ox + right * sx,
+            oy + bottom * sy,
         )
         if self.preview_roi_item is None:
             self.preview_roi_item = self.canvas.create_rectangle(*coords, outline="#29b6f6", width=2)
@@ -4191,6 +4199,9 @@ class App:
     def open_preview_zoom(self, _event=None) -> str:
         if self.current_image is None:
             return "break"
+        # Double-click contains a first press; do not leave a gesture running.
+        self.drag_start = None
+        self.draw_roi()
         existing = self.preview_zoom_window
         if existing is not None:
             try:
@@ -4234,38 +4245,43 @@ class App:
     def start_roi(self, event) -> None:
         if self.current_image is None:
             return
-        self.drag_start = (event.x, event.y)
+        point = image_point((event.x, event.y), self.preview_offset,
+                            self.preview_render_size, self.current_image.size)
+        if not (0 <= point[0] <= self.current_image.width and 0 <= point[1] <= self.current_image.height):
+            return
+        self.drag_image_size = self.current_image.size
+        self.drag_start = point
+
+    def _main_drag_roi(self, event):
+        end = image_point((event.x, event.y), self.preview_offset,
+                          self.preview_render_size, self.drag_image_size)
+        return normalized_roi(self.drag_start, end, self.drag_image_size)
 
     def drag_roi(self, event) -> None:
-        if not self.drag_start:
+        if self.drag_start is None:
             return
+        left, top, right, bottom = self._main_drag_roi(event)
+        sx, sy = (self.preview_render_size[i] / self.drag_image_size[i] for i in (0, 1))
+        ox, oy = self.preview_offset
+        coords = (ox + left * sx, oy + top * sy, ox + right * sx, oy + bottom * sy)
         if self.preview_roi_item is None:
             self.preview_roi_item = self.canvas.create_rectangle(
-                self.drag_start[0], self.drag_start[1], event.x, event.y, outline="#29b6f6", width=2
+                *coords, outline="#29b6f6", width=2
             )
         else:
-            self.canvas.coords(self.preview_roi_item, self.drag_start[0], self.drag_start[1], event.x, event.y)
+            self.canvas.coords(self.preview_roi_item, *coords)
         self.drag_rectangle = self.preview_roi_item
 
     def finish_roi(self, event) -> None:
-        if not self.drag_start or self.current_image is None:
+        if self.drag_start is None or self.current_image is None:
             return
-        x1, y1 = self.drag_start
-        x2, y2 = event.x, event.y
+        roi = self._main_drag_roi(event)
         self.drag_start = None
-        ox, oy = self.preview_offset
-        left = int(max(0, min(x1, x2) - ox) / self.preview_scale)
-        top = int(max(0, min(y1, y2) - oy) / self.preview_scale)
-        right = int(max(0, max(x1, x2) - ox) / self.preview_scale)
-        bottom = int(max(0, max(y1, y2) - oy) / self.preview_scale)
-        left = min(left, self.current_image.width)
-        right = min(right, self.current_image.width)
-        top = min(top, self.current_image.height)
-        bottom = min(bottom, self.current_image.height)
-        if right - left > 20 and bottom - top > 20:
-            self.roi = (left, top, right, bottom)
-            self.draw_roi()
-            self.status_var.set(f"已框选 OCR 区域：{right-left}×{bottom-top}。")
+        if roi[2] - roi[0] >= 2 and roi[3] - roi[1] >= 2:
+            self.roi = rescale_roi(roi, self.drag_image_size, self.current_image.size)
+            self.status_var.set(f"已框选 OCR 区域：{self.roi[2]-self.roi[0]}×{self.roi[3]-self.roi[1]}。")
+        self.draw_roi()
+        self._update_detached_preview(self.current_image)
 
     def image_for_ocr(self) -> Image.Image:
         if self.current_image is None:

@@ -1,13 +1,13 @@
 param(
     [string]$Python = "",
-    [string]$Version = "0.2"
+    [string]$Version = "0.2.1"
 )
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $MyInvocation.MyCommand.Path
 $releaseRoot = Join-Path $project 'release'
 $buildScript = Join-Path $project 'build.ps1'
-$exeName = 'Pokemmo孵蛋助手-晨若.exe'
+$exeName = 'Pokemmo孵蛋助手.exe'
 $normalizedVersion = $Version.Trim().TrimStart('v', 'V')
 if ($normalizedVersion -notmatch '^\d+(\.\d+){1,2}$') {
     throw "Invalid release version: $Version. Use a value such as 0.1 or 0.2."

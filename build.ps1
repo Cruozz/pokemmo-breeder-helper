@@ -96,7 +96,7 @@ if ($OutputDirectory) {
     $distPath = Join-Path $project 'dist'
 }
 $bundleMode = if ($OneFile) { '--onefile' } else { '--onedir' }
-$bundleName = if ($OneFile) { 'Pokemmo孵蛋助手-晨若' } else { 'PokeMMO-Breeder-Helper' }
+$bundleName = if ($OneFile) { 'Pokemmo孵蛋助手' } else { 'PokeMMO-Breeder-Helper' }
 $workPath = Join-Path $project $(if ($OneFile) { 'build-onefile' } else { 'build' })
 
 $runner = "import sys, runpy; sys.path.insert(0, r'$vendor'); runpy.run_module('PyInstaller', run_name='__main__')"
