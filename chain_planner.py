@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections import Counter
-from itertools import combinations, permutations
+from itertools import combinations, permutations, product
 from typing import Iterable
 
 from models import Monster, normalize_gender
@@ -303,6 +303,23 @@ class ChainCandidate:
     nature_phase: str = ""
     nature_attempt_level: int = 0
     nature_target_key: str = ""
+    # Explicit parked inventory references, separate from consumable root leaves.
+    # None means a legacy snapshot without this metadata.
+    retained_body_id: str | None = None
+    retained_upper_id: str | None = None
+
+    def final_evolution_from(self, species: str, gender: str = "") -> bool:
+        if self.nature_phase in {"maternal", "gamble_upper", "gamble_lower"}:
+            return False
+        db = get_species_database()
+        source = db.get(species, fuzzy=False)
+        target = db.get(self.target_species, fuzzy=False)
+        required_gender = db.required_evolution_gender(self.target_species)
+        return bool(
+            source and target and source.id != target.id
+            and source.id in {record.id for record in db.ancestry(target)}
+            and (not required_gender or not gender or gender == required_gender)
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -329,6 +346,8 @@ class ChainCandidate:
             "nature_phase": self.nature_phase,
             "nature_attempt_level": self.nature_attempt_level,
             "nature_target_key": self.nature_target_key,
+            "retained_body_id": self.retained_body_id,
+            "retained_upper_id": self.retained_upper_id,
         }
 
     @classmethod
@@ -360,6 +379,8 @@ class ChainCandidate:
             nature_phase=str(value.get("nature_phase", "")),
             nature_attempt_level=int(value.get("nature_attempt_level", 0) or 0),
             nature_target_key=str(value.get("nature_target_key", "")),
+            retained_body_id=value.get("retained_body_id"),
+            retained_upper_id=value.get("retained_upper_id"),
         )
 
     def inventory_audit_text(self) -> str:
@@ -425,8 +446,13 @@ class ChainCandidate:
             nature_text = f"，性格 {state.nature}" if state.has_nature and state.nature else ""
             stage_note = ""
             output_species = state.output_species
-            if state is self.root and self.target_species and self.target_species != output_species:
-                stage_note = f"；孵化后进化为最终目标 {self.target_species}"
+            if state is self.root:
+                if self.nature_phase in {"gamble_upper", "gamble_lower"}:
+                    stage_note = "；这是独立性格手，确认性格后再与已保留素材合流"
+                elif self.nature_phase == "maternal":
+                    stage_note = "；这是母体主线，确认性格后决定是否制作性格手"
+                elif self.final_evolution_from(output_species, state.gender):
+                    stage_note = f"；孵化后进化为最终目标 {self.target_species}"
             elif state is not self.root and state.breeding_species and state.breeding_species != output_species:
                 stage_note = f"；再次参与孵化前进化为 {state.breeding_species}"
             gender_policy = child_gender_policy(
@@ -458,7 +484,7 @@ class ChainCandidate:
         final_ref = emit(self.root)
         if self.root.action is None:
             evolution_text = ""
-            if self.root.leaf and self.target_species and self.root.leaf.species != self.target_species:
+            if self.root.leaf and self.final_evolution_from(self.root.leaf.species, self.root.gender):
                 evolution_text = f"\n该素材需进化为最终目标 {self.target_species}。"
             return f"库存中已经有满足目标的精灵：\n{final_ref}{evolution_text}"
 
@@ -470,8 +496,8 @@ class ChainCandidate:
             f"当前路线最多 {gender_locks} 次需要指定子代性别。\n"
             "不变之石市价和不同性别比例的指定费用未计入固定费用。"
         )
-        if self.target_species and self.offspring_species and self.target_species != self.offspring_species:
-            summary += f"\n最终一代实际孵出 {self.offspring_species}，之后进化为 {self.target_species}。"
+        if self.final_evolution_from(self.root.output_species, self.root.gender):
+            summary += f"\n最终一代实际孵出 {self.root.output_species}，之后进化为 {self.target_species}。"
         if self.target_nature:
             target_exact = sum(value is not None for value in self.target_ivs)
             target_v = sum(value == 31 for value in self.target_ivs)
@@ -2598,6 +2624,8 @@ def _plain_nature_hand_goals(
     strategy: str,
     beam: int,
     preferred_ditto_ids: frozenset[str],
+    *,
+    mate_groups: frozenset[str] = frozenset(),
 ) -> list[ChainState]:
     """Build a random-nature compatible hand without consuming a nature hit.
 
@@ -2621,6 +2649,8 @@ def _plain_nature_hand_goals(
         if is_ditto(state.species) or not target_groups & set(_group_key(state.egg_groups)):
             continue
         profile = _profile_for_hand_state(state)
+        if mate_groups and not mate_groups & set(_group_key(profile.egg_groups)):
+            continue
         if output_gender not in profile.allowed_genders or not {"F", "M"}.issubset(profile.allowed_genders):
             continue
         key = (profile.species_key, _group_key(profile.egg_groups))
@@ -2645,10 +2675,45 @@ def _plain_nature_hand_goals(
     # purchasable route when its inventory combinations are incomplete.
     actual_profiles = [entry for entry in ordered_profile_entries if entry[0] < 2]
     fallback_profiles = [entry for entry in ordered_profile_entries if entry[0] >= 2]
-    selected_profile_entries = [*actual_profiles[:8], *fallback_profiles[:4]]
-    ordered_profiles = [profile for _priority, profile in selected_profile_entries]
     goals: list[ChainState] = []
     for mask in dict.fromkeys(int(value) for value in candidate_masks if int(value)):
+        useful = [
+            state for state in pool
+            if not state.is_virtual and state.is_alpha == target_alpha
+            and state.mask and not state.mask & ~mask
+            and state.effective_material_v == state.mask.bit_count()
+        ]
+
+        def opportunity(entry: tuple[int, SpeciesProfile]) -> tuple[object, ...]:
+            priority, profile = entry
+            groups = set(_group_key(profile.egg_groups))
+            mothers = [
+                state for state in useful
+                if normalize_text(state.species) == profile.species_key and state.gender == "F"
+            ]
+            donors = [
+                state for state in useful
+                if (allow_ditto and is_ditto(state.species))
+                or (state.gender == "M" and groups & set(_group_key(state.egg_groups)))
+            ]
+            # A real, directly breedable inventory pair outranks alphabetical
+            # species order. Rank per IV shape, not once for all subproblems.
+            direct = any(
+                mother.mask | donor.mask == mask
+                and (mother.mask ^ donor.mask).bit_count() == 2
+                and mother.mask.bit_count() == donor.mask.bit_count() == mask.bit_count() - 1
+                and not mother.used_ids & donor.used_ids
+                for mother in mothers for donor in donors
+            )
+            return (
+                not direct, not bool(mothers),
+                -max((state.mask.bit_count() for state in mothers), default=0),
+                -len({state.mask for state in mothers + donors}),
+                priority, profile.species_key, profile.egg_groups,
+            )
+
+        selected_entries = [*sorted(actual_profiles, key=opportunity)[:8], *fallback_profiles[:4]]
+        ordered_profiles = [profile for _priority, profile in selected_entries]
         for profile in ordered_profiles:
             for goal in _same_species_pyramid(
                 pool,
@@ -2726,10 +2791,10 @@ def _nature_floor_parents(
         if state.gender == regular_gender and lower_groups & set(_group_key(state.egg_groups)):
             candidates.append(state)
 
-    group = next(iter(lower_state.egg_groups), "兼容")
-    sequence = 0
-    for mask in masks:
-        sequence += 1
+    # A purchased female determines the resulting donor's species/group.
+    # Keep every group option: the first group may not overlap the saved body.
+    groups = tuple(dict.fromkeys(lower_state.egg_groups)) or ("兼容",)
+    for sequence, (mask, group) in enumerate(product(masks, groups), 1):
         ivs = [target_ivs[index] if mask & (1 << index) else None for index in range(6)]
         monster = Monster(
             id=f"buy:nature-floor:{sequence}:{group}:{regular_gender}:{mask}",
@@ -3270,7 +3335,8 @@ def find_chain_candidates(
         state
         for state in all_leaf_states
         if (
-        normalize_text(state.species) == species_key
+        state.leaf is not None and not state.is_virtual
+        and normalize_text(state.species) == species_key
         and state.mask & target_mask == target_mask
         and state.is_alpha == target_alpha
         and (not need_hidden_ability or state.has_hidden_ability)
@@ -3278,6 +3344,10 @@ def find_chain_candidates(
         )
     ]
     female_full_bodies = [state for state in full_body_states if state.gender == "F"]
+    female_full_bodies.sort(key=lambda state: (
+        not bool(state.used_ids & available_preferred_material_ids),
+        not bool(state.leaf and state.leaf.breeding_target_key == nature_target_key),
+    ))
     checkpoint_nature_states = [
         state
         for state in all_leaf_states
@@ -3345,6 +3415,41 @@ def find_chain_candidates(
         and is_target_compatible_hand(state)
         and state not in available_lower_plain_states
     )
+
+    def hand_can_merge_body(hand: ChainState, body: ChainState) -> bool:
+        return bool(
+            hand.gender == "M" and body.gender == "F"
+            and not hand.used_ids & body.used_ids
+            and not hand.mask & ~target_mask
+            and (target_mask & ~hand.mask).bit_count() == 1
+            and set(_group_key(hand.egg_groups)) & set(_group_key(body.egg_groups))
+        )
+
+    def lower_can_merge_upper(lower: ChainState, upper: ChainState) -> bool:
+        return bool(
+            lower.gender == "F" and upper.gender == "M"
+            and not lower.used_ids & upper.used_ids
+            and not lower.mask & ~upper.mask
+            and (upper.mask & ~lower.mask).bit_count() == 1
+            and set(_group_key(lower.egg_groups)) & set(_group_key(upper.egg_groups))
+            and "M" in _profile_for_hand_state(lower).allowed_genders
+        )
+
+    # Existence is not feasibility: an unrelated IV shape must not advance
+    # the state machine into an empty promote/guarantee phase.
+    if female_full_bodies:
+        available_upper_plain_states = [
+            upper for upper in available_upper_plain_states
+            if any(hand_can_merge_body(upper, body) for body in female_full_bodies)
+        ]
+        available_lower_nature_states = [
+            lower for lower in available_lower_nature_states
+            if any(lower_can_merge_upper(lower, upper) for upper in available_upper_plain_states)
+        ]
+        available_lower_plain_states = [
+            lower for lower in available_lower_plain_states
+            if any(lower_can_merge_upper(lower, upper) for upper in available_upper_plain_states)
+        ]
     nature_floor_level = max(2 if target_alpha else 1, exact_target_count - 3)
     upper_can_be_gambled = upper_level > nature_floor_level
     lower_can_be_gambled = lower_level > nature_floor_level
@@ -3411,6 +3516,17 @@ def find_chain_candidates(
         search_target_gender = "F"
 
     required_stats = [index for index in range(6) if target_mask & (1 << index)]
+    parked_context: dict[int, tuple[ChainState, ChainState | None]] = {}
+    parked_body_ids = frozenset(identifier for body in female_full_bodies for identifier in body.used_ids)
+    hand_leaves = [state for state in all_leaf_states if not state.used_ids & parked_body_ids]
+
+    def remember_context(goal: ChainState, upper: ChainState | None = None) -> bool:
+        hand = upper or goal
+        for body in female_full_bodies:
+            if hand_can_merge_body(hand, body) and not goal.used_ids & (body.used_ids | (upper.used_ids if upper else frozenset())):
+                parked_context[id(goal)] = (body, upper)
+                return True
+        return False
 
     if nature_phase == "gamble_upper":
         upper_masks = [
@@ -3418,7 +3534,7 @@ def find_chain_candidates(
             for shape in combinations(required_stats, upper_level)
         ]
         custom_goals = _plain_nature_hand_goals(
-            all_leaf_states,
+            hand_leaves,
             target_profile,
             target_ivs,
             upper_masks,
@@ -3429,27 +3545,33 @@ def find_chain_candidates(
             beam_per_signature,
             preferred_inventory_ditto_ids,
         )
+        custom_goals = [goal for goal in custom_goals if remember_context(goal)]
     elif nature_phase == "gamble_lower":
-        lower_masks = [
-            sum(1 << stat for stat in shape)
-            for upper in available_upper_plain_states
-            for shape in combinations(
-                [index for index in range(6) if upper.mask & (1 << index)],
-                lower_level,
+        custom_goals = []
+        seen_upper_shapes: set[tuple[object, ...]] = set()
+        for upper in sorted(available_upper_plain_states, key=lambda state: (
+            not bool(state.used_ids & available_preferred_material_ids), *_state_rank(state, strategy)
+        )):
+            shape = (upper.mask, _group_key(upper.egg_groups))
+            if shape in seen_upper_shapes:
+                continue
+            seen_upper_shapes.add(shape)
+            lower_masks = [
+                sum(1 << stat for stat in shape)
+                for shape in combinations(
+                    [index for index in range(6) if upper.mask & (1 << index)], lower_level
+                )
+            ]
+            lower_goals = _plain_nature_hand_goals(
+                [state for state in hand_leaves if not state.used_ids & upper.used_ids],
+                target_profile, target_ivs, lower_masks, "F", target_alpha,
+                allow_ditto, strategy, beam_per_signature, preferred_inventory_ditto_ids,
+                mate_groups=frozenset(_group_key(upper.egg_groups)),
             )
-        ]
-        custom_goals = _plain_nature_hand_goals(
-            all_leaf_states,
-            target_profile,
-            target_ivs,
-            lower_masks,
-            "F",
-            target_alpha,
-            allow_ditto,
-            strategy,
-            beam_per_signature,
-            preferred_inventory_ditto_ids,
-        )
+            custom_goals.extend(
+                goal for goal in lower_goals
+                if lower_can_merge_upper(goal, upper) and remember_context(goal, upper)
+            )
 
     desired_final_genders = (
         (target_gender,)
@@ -3866,7 +3988,7 @@ def find_chain_candidates(
                     ))
                     goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
 
-    if allow_ditto:
+    if allow_ditto and stage_requires_final_features:
         goals.extend(_direct_ditto_complements(
             all_leaf_states,
             target_profile,
@@ -3878,6 +4000,14 @@ def find_chain_candidates(
             need_hidden_ability,
         ))
     goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
+
+    def preferred_material_penalty(state: ChainState) -> int:
+        relevant_ids = state.used_ids
+        if id(state) in parked_context:
+            body, upper = parked_context[id(state)]
+            relevant_ids |= body.used_ids | (upper.used_ids if upper else frozenset())
+        return int(bool(available_preferred_material_ids) and not bool(relevant_ids & available_preferred_material_ids))
+
     def final_goal_rank(state: ChainState) -> tuple[object, ...]:
         base = _state_rank(state, strategy)
         # The checkbox is an explicit request to consume an existing Ditto.
@@ -3888,18 +4018,14 @@ def find_chain_candidates(
             and not bool(state.used_ids & preferred_inventory_ditto_ids)
         )
         conversion_penalty = int(conversion_required and not state.maternal_conversion)
-        preferred_material_penalty = int(
-            bool(available_preferred_material_ids)
-            and not bool(state.used_ids & available_preferred_material_ids)
-        )
-        return (conversion_penalty, preferred_material_penalty, ditto_penalty, *base)
+        return (conversion_penalty, preferred_material_penalty(state), ditto_penalty, *base)
 
     goals.sort(key=final_goal_rank)
     if goals:
         if _normalize_strategy(strategy) == "steps":
             best_quality = (
                 int(conversion_required and not goals[0].maternal_conversion),
-                int(bool(available_preferred_material_ids) and not bool(goals[0].used_ids & available_preferred_material_ids)),
+                preferred_material_penalty(goals[0]),
                 int(bool(preferred_inventory_ditto_ids) and not bool(goals[0].used_ids & preferred_inventory_ditto_ids)),
                 goals[0].breeds,
                 goals[0].purchases,
@@ -3908,7 +4034,7 @@ def find_chain_candidates(
                 goal for goal in goals
                 if (
                     int(conversion_required and not goal.maternal_conversion),
-                    int(bool(available_preferred_material_ids) and not bool(goal.used_ids & available_preferred_material_ids)),
+                    preferred_material_penalty(goal),
                     int(bool(preferred_inventory_ditto_ids) and not bool(goal.used_ids & preferred_inventory_ditto_ids)),
                     goal.breeds,
                     goal.purchases,
@@ -3917,7 +4043,7 @@ def find_chain_candidates(
         else:
             best_quality = (
                 int(conversion_required and not goals[0].maternal_conversion),
-                int(bool(available_preferred_material_ids) and not bool(goals[0].used_ids & available_preferred_material_ids)),
+                preferred_material_penalty(goals[0]),
                 int(bool(preferred_inventory_ditto_ids) and not bool(goals[0].used_ids & preferred_inventory_ditto_ids)),
                 goals[0].purchases,
                 goals[0].breeds,
@@ -3926,7 +4052,7 @@ def find_chain_candidates(
                 goal for goal in goals
                 if (
                     int(conversion_required and not goal.maternal_conversion),
-                    int(bool(available_preferred_material_ids) and not bool(goal.used_ids & available_preferred_material_ids)),
+                    preferred_material_penalty(goal),
                     int(bool(preferred_inventory_ditto_ids) and not bool(goal.used_ids & preferred_inventory_ditto_ids)),
                     goal.purchases,
                     goal.breeds,
@@ -4002,6 +4128,13 @@ def find_chain_candidates(
             nature_phase=nature_phase,
             nature_attempt_level=nature_attempt_level,
             nature_target_key=nature_target_key,
+            retained_body_id=(
+                parked_context[id(state)][0].leaf.id if id(state) in parked_context else ""
+            ),
+            retained_upper_id=(
+                parked_context[id(state)][1].leaf.id
+                if id(state) in parked_context and parked_context[id(state)][1] is not None else ""
+            ),
         )
         for state in unique
     ]

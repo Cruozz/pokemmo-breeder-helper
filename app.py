@@ -3707,9 +3707,10 @@ class App:
         self.nature_var.set(nature)
         self.alpha_var.set("头目" if is_alpha else "普通")
         self.ability_var.set(ability)
-        hidden_names = set(self.reference_db.hidden_ability_names(record.id)) if record else set()
+        # Ordinary OCR imports require the blue-diamond detector. An ability
+        # name alone is not visual evidence that HA potential is unlocked.
         self.hidden_ability_var.set(
-            bool(parsed.get("has_hidden_ability", False) or is_alpha or (ability and ability in hidden_names))
+            bool(parsed.get("has_hidden_ability", False) or is_alpha)
         )
         self.iv_var.set("/".join("x" if value is None else str(value) for value in parsed.get("ivs", [None] * 6)))
         self.moves_var.set(", ".join(moves))
@@ -5050,10 +5051,21 @@ class App:
         level: int,
         gender: str,
     ) -> Monster | None:
+        retained_id = candidate.retained_body_id if role == "maternal" else candidate.retained_upper_id
+        excluded = getattr(self, "plan_excluded_ids", set())
+        if retained_id is not None:
+            # Never silently substitute a newer, unrelated record if the
+            # selected parked material was subsequently removed or excluded.
+            return next((
+                monster for monster in self.inventory
+                if monster.id == retained_id and monster.verified
+                and monster.id not in excluded
+            ), None)
         matches = [
             monster
             for monster in self.inventory
             if monster.verified
+            and monster.id not in excluded
             and monster.breeding_target_key == candidate.nature_target_key
             and monster.breeding_role == role
             and monster.nature_attempt_level == level
@@ -5222,7 +5234,7 @@ class App:
         else:
             target_route = (
                 f" · 孵出 {candidate.offspring_species} 后进化为 {candidate.target_species}"
-                if candidate.target_species != candidate.offspring_species
+                if candidate.final_evolution_from(root.output_species, root.gender)
                 else ""
             )
             target_exact = sum(value is not None for value in candidate.target_ivs)

@@ -398,7 +398,9 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
             notes.append(
                 f"主动赌性格手：{state_iv_count} 项精确，孵出后确认是否为 {candidate.target_nature}"
             )
-        elif is_final_step and candidate.target_species and candidate.target_species != output_species:
+        elif is_final_step and candidate.nature_phase == "maternal":
+            notes.append("母体主线：确认性格后决定是否制作性格手")
+        elif is_final_step and candidate.final_evolution_from(output_species, state.gender):
             notes.append(f"孵化后需进化为最终目标 {candidate.target_species}")
         elif not is_final_step:
             next_breeding_species = state.breeding_species or candidate.breeding_species
