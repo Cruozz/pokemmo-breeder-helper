@@ -6,6 +6,17 @@ from species_data import get_species_database
 
 
 class SpeciesDataTests(unittest.TestCase):
+    def test_fuzzy_cache_includes_misses_and_preserves_exact_lookup(self) -> None:
+        database = get_species_database()
+        database._fuzzy_match.cache_clear()
+        for query in ("陆上组兼容素材", "Raltss"):
+            first = database.get(query, fuzzy=True)
+            before = database._fuzzy_match.cache_info()
+            self.assertEqual(database.get(query, fuzzy=True), first)
+            self.assertEqual(database._fuzzy_match.cache_info().hits, before.hits + 1)
+            self.assertEqual(database.get(query, fuzzy=False), None)
+        self.assertEqual(database.get("Ralts").id, 280)
+
     def test_resolves_chinese_and_english_names(self) -> None:
         database = get_species_database()
         chinese = database.get("拉鲁拉丝")

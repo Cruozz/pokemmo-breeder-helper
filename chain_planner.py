@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from collections import Counter
 from itertools import combinations, permutations, product
+from functools import lru_cache
 from typing import Iterable
 
 from models import Monster, normalize_gender
@@ -18,6 +19,7 @@ GENDER_STRATEGY_LOCK_ALL = "lock_all"
 GENDER_STRATEGY_MINIMAL = "minimal"
 
 
+@lru_cache(maxsize=4096)
 def normalize_text(value: str) -> str:
     return "".join((value or "").strip().lower().split())
 
@@ -623,6 +625,11 @@ def _mask_text(mask: int, target_ivs: list[int | None]) -> str:
 
 
 def _group_key(groups: Iterable[str]) -> tuple[str, ...]:
+    return _cached_group_key(tuple(groups))
+
+
+@lru_cache(maxsize=512)
+def _cached_group_key(groups: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted({normalize_text(group) for group in groups if normalize_text(group)}))
 
 
@@ -715,6 +722,7 @@ def _search_rank(
     )
 
 
+@lru_cache(maxsize=8192)
 def _material_usage_signature(used_ids: frozenset[str]) -> tuple[object, ...]:
     """Collapse interchangeable market copies without merging real inventory.
 
@@ -724,6 +732,8 @@ def _material_usage_signature(used_ids: frozenset[str]) -> tuple[object, ...]:
     equivalent purchase permutations crowd out a distinct inventory route.
     """
     actual_ids = tuple(sorted(identifier for identifier in used_ids if not identifier.startswith("buy:")))
+    if len(actual_ids) == len(used_ids):
+        return actual_ids, ()
     virtual_shapes = Counter(
         ":".join(identifier.split(":", 2)[2:])
         for identifier in used_ids
@@ -840,6 +850,9 @@ def _structured_search(
     beam: int,
     strategy: str = "inventory",
     preferred_ditto_ids: frozenset[str] = frozenset(),
+    *,
+    exact: bool = False,
+    independent_hand: bool = False,
 ) -> list[ChainState]:
     species_db = get_species_database()
     profile_map: dict[tuple[object, ...], SpeciesProfile] = {}
@@ -912,10 +925,11 @@ def _structured_search(
             current = unique.get(key)
             if current is None or rank(state, required_mask, require_nature) < rank(current, required_mask, require_nature):
                 unique[key] = state
-        return sorted(
+        ranked = sorted(
             unique.values(),
             key=lambda state: rank(state, required_mask, require_nature),
-        )[:beam]
+        )
+        return ranked if exact else ranked[:beam]
 
     def leaf_candidates(profile: SpeciesProfile, gender: str, required_mask: int, require_nature: bool) -> list[ChainState]:
         return [
@@ -971,7 +985,7 @@ def _structured_search(
         result = ditto_candidates(required_mask, require_nature)
         result.extend(direct_compatible_males(profile, required_mask, require_nature))
         for mate_profile in compatible_profiles(profile):
-            if mate_profile.species_key == target_profile.species_key:
+            if mate_profile.species_key == target_profile.species_key and not independent_hand:
                 continue
             result.extend(build(mate_profile, "M", required_mask, require_nature))
         return trim(result, required_mask, require_nature)
@@ -989,8 +1003,12 @@ def _structured_search(
         results: list[ChainState] = []
         if "F" not in profile.allowed_genders or output_gender not in profile.allowed_genders:
             return results
-        for parent_a in build(profile, "F", req_a, nature_a):
-            for parent_b in mate_candidates(profile, req_b, nature_b):
+        parents_a = build(profile, "F", req_a, nature_a)
+        # Mates do not depend on parent_a. Resolve and trim once per split;
+        # inventory conflicts are still checked by _forced_child for each pair.
+        parents_b = mate_candidates(profile, req_b, nature_b) if parents_a else ()
+        for parent_a in parents_a:
+            for parent_b in parents_b:
                 child = _forced_child(
                     parent_a,
                     parent_b,
@@ -2133,6 +2151,8 @@ def _virtual_materials(
     need_hidden_ability: bool = False,
     target_moves: frozenset[str] = frozenset(),
     egg_move_donors: dict[str, tuple[str, ...]] | None = None,
+    *,
+    purchase_tier: int | None = None,
 ) -> list[ChainState]:
     """Create conservative purchase placeholders.
 
@@ -2150,6 +2170,11 @@ def _virtual_materials(
         if is_alpha and len(required_stats) >= 2
         else [(stat_index,) for stat_index in required_stats]
     )
+    if purchase_tier is not None:
+        if purchase_tier < (2 if is_alpha else 1) or purchase_tier > len(required_stats):
+            return []
+        base_shapes = list(combinations(required_stats, purchase_tier))
+        copies = alpha_copies = 2
     result: list[ChainState] = []
     sequence = 0
 
@@ -2254,7 +2279,7 @@ def _virtual_materials(
                 has_hidden_ability=need_hidden_ability,
             )
         if need_nature:
-            nature_shapes = base_shapes if is_alpha else [()]
+            nature_shapes = base_shapes if is_alpha or purchase_tier is not None else [()]
             for shape in nature_shapes:
                 add_material(
                     target_material_species,
@@ -2290,7 +2315,7 @@ def _virtual_materials(
                         role_suffix="egg-group-branch",
                     )
                 if need_nature:
-                    for shape in (base_shapes if is_alpha else [()]):
+                    for shape in (base_shapes if is_alpha or purchase_tier is not None else [()]):
                         add_material(
                             material_label,
                             gender,
@@ -2355,7 +2380,7 @@ def _virtual_materials(
                 material_copies=alpha_copies if is_alpha else None,
             )
         if need_nature:
-            for shape in (base_shapes if is_alpha else [()]):
+            for shape in (base_shapes if is_alpha or purchase_tier is not None else [()]):
                 add_material(
                     "百变怪", "N", (), shape, True,
                     material_copies=alpha_copies if is_alpha else None,
@@ -2621,6 +2646,68 @@ def _profile_for_hand_state(state: ChainState) -> SpeciesProfile:
     )
 
 
+def _one_breed_market_goals(
+    leaves: list[ChainState], profile: SpeciesProfile, target_ivs: list[int | None],
+    mask: int, gender: str, alpha: bool, allow_ditto: bool,
+    need_nature: bool = False, nature: str = "", hidden: bool = False,
+    moves: frozenset[str] = frozenset(),
+    egg_move_donors: dict[str, tuple[str, ...]] | None = None,
+) -> list[ChainState]:
+    """Steps-first shortcuts are actual eggs, never purchased finished goals.
+
+    Only immediate parent tiers are generated. Index by exact mask, so this
+    does not expand the recursive market search or multiply low-tier copies.
+    """
+    ivs = [value if mask & (1 << index) else None for index, value in enumerate(target_ivs)]
+    level = mask.bit_count()
+    market = _virtual_materials(profile, ivs, need_nature, nature, alpha, allow_ditto,
+                                leaves, hidden, moves, egg_move_donors, purchase_tier=level - 1)
+    if need_nature:
+        market += _virtual_materials(profile, ivs, False, "", alpha, allow_ditto,
+                                     leaves, hidden, moves, egg_move_donors, purchase_tier=level)
+    pool = [state for state in leaves + market if state.is_alpha == alpha]
+    indexed: dict[int, list[ChainState]] = {}
+    seen: set[tuple[object, ...]] = set()
+    for state in pool:
+        # Keep real identities. Only identical market copies can collapse:
+        # the two parent masks differ in every supported one-egg shortcut.
+        key = (_material_usage_signature(state.used_ids), state.species, state.gender,
+               state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves)
+        if key not in seen and _fits_exact_subproblem(state, state.mask):
+            seen.add(key)
+            indexed.setdefault(state.mask, []).append(state)
+    results: list[ChainState] = []
+    bits = [index for index in range(6) if mask & (1 << index)]
+    specs = (
+        [(mask & ~(1 << stat), mask, None, stat, True, False) for stat in bits]
+        + [(mask, mask & ~(1 << stat), stat, None, False, True) for stat in bits]
+        if need_nature else
+        [(mask & ~(1 << b), mask & ~(1 << a), a, b, False, False)
+         for a, b in _ordered_stat_pairs(bits)]
+    )
+    for left, right, brace_a, brace_b, stone_a, stone_b in specs:
+        for mother in indexed.get(left, ()):
+            if normalize_text(mother.species) != profile.species_key:
+                continue
+            for father in indexed.get(right, ()):
+                ditto = is_ditto(father.species)
+                if not ditto and (mother.gender != "F" or father.gender != "M"):
+                    continue
+                if not ditto and not set(_group_key(mother.egg_groups)) & set(_group_key(father.egg_groups)):
+                    continue
+                if ditto and not allow_ditto:
+                    continue
+                if stone_a and not mother.has_nature or stone_b and not father.has_nature:
+                    continue
+                for output_gender in ((gender,) if gender else profile.allowed_genders):
+                    child = _forced_child(mother, father, profile, output_gender,
+                                          brace_a, brace_b, stone_a, stone_b)
+                    if child is not None and _is_goal(child, profile.species_key, mask,
+                            need_nature, gender, alpha, hidden, moves):
+                        results.append(child)
+    return results
+
+
 def _plain_nature_hand_goals(
     existing_leaves: list[ChainState],
     target_profile: SpeciesProfile,
@@ -2673,14 +2760,9 @@ def _plain_nature_hand_goals(
         profiles.values(),
         key=lambda value: (value[0], value[1].species_key, value[1].egg_groups),
     )
-    # A large inventory can contain many compatible males from unrelated
-    # concrete species lines.  Those inventory profiles used to occupy the
-    # whole ten-profile beam even when none had a matching female with which to
-    # build this independent nature hand.  The always-available generic market
-    # profiles were then crowded out and a perfectly valid staged route became
-    # "0 routes".  Keep the best inventory opportunities, but reserve part of
-    # the profile beam for virtual fallback lines so every species retains a
-    # purchasable route when its inventory combinations are incomplete.
+    # Evaluate every actual line before ranking complete hands. Alphabetical
+    # profile cutoffs can discard the only bridge through a dual egg group.
+    # Keep the market fallback profiles even when inventory has many species.
     actual_profiles = [entry for entry in ordered_profile_entries if entry[0] < 2]
     fallback_profiles = [entry for entry in ordered_profile_entries if entry[0] >= 2]
     goals: list[ChainState] = []
@@ -2720,10 +2802,18 @@ def _plain_nature_hand_goals(
                 priority, profile.species_key, profile.egg_groups,
             )
 
-        selected_entries = [*sorted(actual_profiles, key=opportunity)[:8], *fallback_profiles[:4]]
+        selected_entries = [*sorted(actual_profiles, key=opportunity), *fallback_profiles]
         ordered_profiles = [profile for _priority, profile in selected_entries]
         for profile in ordered_profiles:
-            for goal in _same_species_pyramid(
+            actual = [state for state in pool if not state.is_virtual and state.is_alpha == target_alpha
+                      and state.mask and not state.mask & ~mask]
+            # Compare all IV splits before trimming; the market allocator's
+            # first-two-candidates exit must not hide inventory-built mates.
+            inventory_goals = _structured_search(
+                actual, profile, mask, False, output_gender, max(4, min(beam, 12)),
+                strategy, preferred_ditto_ids, exact=len(actual) <= 12, independent_hand=True,
+            ) if any(normalize_text(s.species) == profile.species_key for s in actual) else []
+            candidates = inventory_goals or _same_species_pyramid(
                 pool,
                 profile,
                 mask,
@@ -2732,7 +2822,12 @@ def _plain_nature_hand_goals(
                 max(4, min(beam, 12)),
                 strategy,
                 preferred_ditto_ids,
-            ):
+            )
+            if _normalize_strategy(strategy) == "steps":
+                candidates += _one_breed_market_goals(
+                    actual, profile, target_ivs, mask, output_gender, target_alpha, allow_ditto,
+                )
+            for goal in candidates:
                 # A direct inventory leaf has a known nature already and is
                 # not a new gamble. Staged attempts must end in an actual egg.
                 if goal.action is None or goal.is_alpha != target_alpha:
@@ -3996,6 +4091,12 @@ def find_chain_candidates(
                     ))
                     goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
 
+    if strategy == "steps" and stage_requires_final_features and not existing_goals and custom_goals is None:
+        goals.extend(_one_breed_market_goals(
+            all_leaf_states, target_profile, target_ivs, target_mask, search_target_gender,
+            target_alpha, allow_ditto, need_nature, nature_label.strip() or nature_key,
+            need_hidden_ability, required_moves, egg_move_donors,
+        ))
     if allow_ditto and stage_requires_final_features:
         goals.extend(_direct_ditto_complements(
             all_leaf_states,

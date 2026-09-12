@@ -218,6 +218,12 @@ class SpeciesDatabase:
         exact = self.aliases.get(key)
         if exact is not None or not fuzzy:
             return exact
+        return self._fuzzy_match(key)
+
+    @lru_cache(maxsize=2048)
+    def _fuzzy_match(self, key: str) -> SpeciesRecord | None:
+        # The catalogue is immutable. Cache misses too: market placeholders
+        # recur in every node's gender, report and sprite lookup.
         best: tuple[float, SpeciesRecord] | None = None
         for alias, record in self.aliases.items():
             if abs(len(alias) - len(key)) > 3:
