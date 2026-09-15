@@ -116,14 +116,17 @@ class StrategySearchTests(unittest.TestCase):
             need_nature=True, nature="固执", hidden=True)
         self.assertTrue(goals)
         self.assertTrue(all(g.has_nature and g.has_hidden_ability and g.everstones == 1 for g in goals))
-        mother = leaf("mother", "刺尾虫", "F", 7)
+        # A synthetic move on Wurmple is no longer a legal fixture: offspring
+        # learnsets are now checked at every breeding step.
+        move_profile = SpeciesProfile("飞天螳螂", "飞天螳螂", ("虫",))
+        mother = leaf("mother", "飞天螳螂", "F", 7)
         mother.has_hidden_ability = True
-        mother.inherited_moves = frozenset({"测试技能"})
-        goals = _one_breed_market_goals([mother], self.profile,
+        mother.inherited_moves = frozenset({"快速防守"})
+        goals = _one_breed_market_goals([mother], move_profile,
             [31, 31, 31, None, 31, None], 23, "F", False, False,
-            hidden=True, moves=frozenset({"测试技能"}))
+            hidden=True, moves=frozenset({"快速防守"}))
         self.assertTrue(goals)
-        self.assertTrue(all(g.has_hidden_ability and "测试技能" in g.inherited_moves for g in goals))
+        self.assertTrue(all(g.has_hidden_ability and "快速防守" in g.inherited_moves for g in goals))
 
     def test_end_to_end_strategies_keep_random_hand_phase(self):
         from planner import make_report_with_candidates

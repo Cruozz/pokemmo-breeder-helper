@@ -313,19 +313,20 @@ def make_report_with_candidates(
 
     target_ivs = parse_iv_requirements(iv_string)
     nature_key = normalize_nature(nature)
-    selected_moves = tuple(str(move).strip() for move in (target_moves or ()) if str(move).strip())
+    reference_db = get_reference_database()
+    try:
+        selected_moves = reference_db.normalize_egg_move_selection(
+            offspring_record.id if offspring_record else resolved_species, target_moves,
+        )
+    except ValueError as exc:
+        return f"遗传技能设置无效：{exc}", []
     egg_move_donors: dict[str, tuple[str, ...]] = {}
     if selected_moves and offspring_record is not None:
-        routes_by_move = get_reference_database().egg_moves_for_species(offspring_record.id)
         for move in selected_moves:
-            donors: list[str] = []
-            for route in routes_by_move.get(move, ()):
-                direct_name = re.split(r"<=|←", route, maxsplit=1)[0]
-                direct_name = re.sub(r"\s*[（(].*$", "", direct_name).strip()
-                donor = species_db.get(direct_name, fuzzy=True)
-                if donor is not None:
-                    donors.append(donor.display_name)
-            egg_move_donors[move] = tuple(dict.fromkeys(donors))
+            egg_move_donors[move] = tuple(dict.fromkeys(
+                route.direct_donor.species
+                for route in reference_db.egg_move_routes(offspring_record.id, move)
+            ))
     candidates, missing = find_chain_candidates(
         planning_inventory,
         resolved_species,

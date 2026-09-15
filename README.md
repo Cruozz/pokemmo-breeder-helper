@@ -142,3 +142,17 @@ Set-ExecutionPolicy -Scope Process Bypass
 - [mylis/pokemmo_ocr](https://github.com/mylis/pokemmo_ocr)：截图/视频 OCR 识别精灵信息；
 - [PokeMMO-Tools/pokemmo-hub](https://github.com/PokeMMO-Tools/pokemmo-hub)：孵蛋模拟器和蛋招式工具；
 - [PokeMMO-Tools/pokemmo-data](https://github.com/PokeMMO-Tools/pokemmo-data)：版本化静态数据，可作为后续蛋组/招式数据库来源。
+
+## 遗传技能修订（2026-09-15，V0.2.5）
+
+- 按实际孵出物种逐代校验技能，统一中英文名称、去重并限制最多 4 个；不会仅因蛋组相同就让中间种继承不合法技能。
+- 支持不提升 IV 的技能导入、多个技能逐次合并，以及已有库存中的跨蛋组中间母体；等级/BP/写生只作为资料提示，不会凭空计入库存技能。
+- 补购规格明确写出“必须已携带”的技能与梦特要求；实际路线说明取自被选中的父母和步骤，不再显示无关的最短资料链。
+- 已有高 IV 母体缺技能时，会比较保留母体、补购技能父本后直接导入的路线；5V/6V 的多技能候选不会被普通素材状态挤掉。
+- 选择窗口显示已选数量，超限时禁用确认，支持清空和只读滚动资料。
+
+修复范围、验证方法与尚未覆盖的情况见 [EGG_MOVE_FIXES.md](EGG_MOVE_FIXES.md)。Windows 下载见 [V0.2.5 发布页](https://github.com/Cruozz/pokemmo-breeder-helper/releases/tag/v0.2.5)；安卓界面暂未接入技能选择。
+
+## 后续更新的交付要求
+
+每批源码修改须完成测试、Windows 打包、源码推送与 GitHub Release 上传，具体流程见 [AGENTS.md](AGENTS.md)。`release.ps1` 使用 PowerShell 7，从 `APP_VERSION` 读取版本并在压缩前执行真实 EXE 自检；版本不匹配或自检失败时不生成发布 ZIP。

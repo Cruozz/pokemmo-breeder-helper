@@ -8,3 +8,4 @@ dist-update/
 *.spec
 vendor/
 .runtime/
+.venv/

@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Iterable
 
 from models import Monster, normalize_gender
+from reference_data import get_reference_database
 from species_data import get_species_database
 
 
@@ -424,16 +425,19 @@ class ChainCandidate:
                 leaf_numbers[key] = len(leaf_numbers) + 1
             monster = state.leaf
             alpha_text = "头目 " if monster.is_alpha else "普通 "
+            features = "；必须保留梦特潜力" if state.has_hidden_ability else ""
+            if state.inherited_moves:
+                features += ("；必须已携带技能：" if state.is_virtual else "；已携带技能：") + "、".join(sorted(state.inherited_moves))
             if state.is_virtual:
                 groups = "/".join(state.egg_groups) or "蛋组待确认"
                 return (
                     f"需补充素材 {leaf_numbers[key]}：{alpha_text}{monster.species} {gender_name(monster.gender)} "
-                    f"{monster.iv_string} {monster.nature or ''}（蛋组 {groups}）"
+                    f"{monster.iv_string} {monster.nature or ''}（蛋组 {groups}）{features}"
                 )
             where = f"（{monster.position_label}）" if monster.position_label else ""
             return (
                 f"素材 {leaf_numbers[key]}：{alpha_text}{monster.species} {monster.gender or '性别未知'} "
-                f"{monster.iv_string} {monster.nature or '性格未知'}{where}"
+                f"{monster.iv_string} {monster.nature or '性格未知'}{where}{features}"
             )
 
         gender_locks = 0
@@ -496,7 +500,11 @@ class ChainCandidate:
             evolution_text = ""
             if self.root.leaf and self.final_evolution_from(self.root.leaf.species, self.root.gender):
                 evolution_text = f"\n该素材需进化为最终目标 {self.target_species}。"
-            return f"库存中已经有满足目标的精灵：\n{final_ref}{evolution_text}"
+            availability = (
+                "可直接补购满足目标的精灵（尚不在库存，无需再孵化）："
+                if self.root.is_virtual else "库存中已经有满足目标的精灵："
+            )
+            return f"{availability}\n{final_ref}{evolution_text}"
 
         summary = (
             f"使用现有素材 {self.root.existing_leaves} 只，需要补充 {self.root.purchases} 只；"
@@ -563,7 +571,34 @@ class ChainCandidate:
                     )
             else:
                 summary += f"\n性格策略：不变石链；沿性格支线逐级锁定 {self.target_nature}。"
+        sources = self.egg_move_sources()
+        if sources:
+            summary += "\n遗传技能实际路线：\n" + "\n".join(sources)
         return summary + "\n\n" + "\n\n".join(steps)
+
+    def egg_move_sources(self, *, include_steps: bool = True) -> list[str]:
+        """Explain the selected action tree, never an unrelated shortest route."""
+        def paths(state: ChainState, move: str) -> list[str]:
+            if move not in state.inherited_moves:
+                return []
+            if state.action is None:
+                species = state.leaf.species if state.leaf else state.output_species
+                origin = "补购已携带" if state.is_virtual else "库存已携带"
+                return [f"{origin} {species} {gender_name(state.gender)}"]
+            result: list[str] = []
+            for parent in (state.action.parent_a, state.action.parent_b):
+                if is_ditto(parent.species):
+                    continue
+                result.extend(
+                    f"{route} → {state.output_species} {gender_name(state.gender)}" if include_steps else route
+                    for route in paths(parent, move)
+                )
+            return list(dict.fromkeys(result))
+
+        return [
+            f"{move}：{'；'.join(paths(self.root, move))}"
+            for move in self.target_moves if move in self.root.inherited_moves
+        ]
 
     def purchase_requirements(self) -> list[str]:
         counter: Counter[tuple[object, ...]] = Counter()
@@ -576,12 +611,19 @@ class ChainCandidate:
             if not state.is_virtual or state.leaf is None:
                 return
             monster = state.leaf
-            counter[(monster.species, monster.gender, monster.iv_string, monster.nature, tuple(state.egg_groups), monster.is_alpha)] += 1
+            counter[(
+                monster.species, monster.gender, monster.iv_string, monster.nature,
+                tuple(state.egg_groups), monster.is_alpha, state.has_hidden_ability,
+                tuple(sorted(state.inherited_moves)),
+            )] += 1
 
         visit(self.root)
         result: list[str] = []
-        for (species, gender, ivs, nature, groups, is_alpha), count in counter.items():
+        for (species, gender, ivs, nature, groups, is_alpha, hidden, moves), count in counter.items():
             nature_text = f"，性格 {nature}" if nature else ""
+            feature_text = "，必须保留梦特潜力" if hidden else ""
+            if moves:
+                feature_text += "，必须已携带技能：" + "、".join(moves)
             group_text = "/".join(groups) or "待确认"
             iv_values = str(ivs).split("/")
             guaranteed = "、".join(
@@ -591,7 +633,7 @@ class ChainCandidate:
             ) or "无指定 IV"
             result.append(
                 f"{count}× {'头目' if is_alpha else '普通'} {species} {gender_name(str(gender))}，"
-                f"{guaranteed}{nature_text}（蛋组 {group_text}）"
+                f"{guaranteed}{nature_text}{feature_text}（蛋组 {group_text}）"
             )
         return result
 
@@ -790,7 +832,18 @@ def _forced_child(
         mask |= 1 << brace_b
     item_a = "不变之石" if everstone_a else (f"{STAT_NAMES[brace_a]}护腕" if brace_a is not None else "")
     item_b = "不变之石" if everstone_b else (f"{STAT_NAMES[brace_b]}护腕" if brace_b is not None else "")
-    inherited_moves = parent_a.inherited_moves | parent_b.inherited_moves
+    # A shared egg group establishes mating compatibility, not learnset
+    # compatibility. In particular, Smeargle cannot pass a sketched move
+    # through an arbitrary intermediate species (or through a Ditto).
+    parent_moves = frozenset().union(*(
+        parent.inherited_moves for parent in (parent_a, parent_b)
+        if not is_ditto(parent.species)
+    ))
+    child_species = profile.species_for_gender(output_gender)
+    inherited_moves = (
+        parent_moves & get_reference_database().inheritable_moves(child_species)
+        if parent_moves else frozenset()
+    )
     target_line_moves = frozenset().union(*(
         parent.inherited_moves
         for parent in (parent_a, parent_b)
@@ -839,6 +892,156 @@ def _forced_child(
     )
     child.action = ChainAction(parent_a, parent_b, item_a, item_b)
     return child
+
+
+def _egg_move_seed_states(
+    leaves: list[ChainState],
+    required_moves: frozenset[str],
+    strategy: str = "inventory",
+    *,
+    max_states: int = 256,
+) -> list[ChainState]:
+    """Add bounded, real breeding steps which import skills without an IV upgrade.
+
+    The IV pyramids decrease the required IV mask on every recursive call;
+    they cannot express 1V + 1V -> 1V (or 0V + 0V -> 0V) skill preparation.
+    These states remain full action trees, with disjoint consumed IDs and real
+    item costs. No source's level-up/BP/Sketch annotation grants a free move.
+    Up to eight expansion rounds and four alternatives per mechanical shape
+    keep large boxes/virtual market copies from exploding the search space.
+    """
+    if not required_moves or len(leaves) < 2:
+        return []
+    reference = get_reference_database()
+    species_db = get_species_database()
+
+    def shape(state: ChainState) -> tuple[object, ...]:
+        return (
+            state.species, state.gender, state.egg_groups, state.mask,
+            state.has_nature, state.is_alpha, state.has_hidden_ability,
+            state.inherited_moves, state.effective_material_v, state.gender_species,
+        )
+
+    def retain(states: list[ChainState]) -> list[ChainState]:
+        buckets: dict[tuple[object, ...], list[ChainState]] = {}
+        seen: set[tuple[object, ...]] = set()
+        for state in sorted(states, key=lambda item: _state_rank(item, strategy)):
+            key = shape(state)
+            identity = (key, state.used_ids)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            bucket = buckets.setdefault(key, [])
+            if len(bucket) < 4:
+                bucket.append(state)
+        return [state for bucket in buckets.values() for state in bucket]
+
+    base = retain(leaves)
+    known = list(base)
+    frontier = {id(state) for state in known}
+    added: list[ChainState] = []
+    seen = {(shape(state), state.used_ids) for state in base}
+    for _round in range(min(8, len(leaves) - 1)):
+        pending: list[ChainState] = []
+        for mother in known:
+            if is_ditto(mother.species):
+                continue
+            allowed_moves = reference.inheritable_moves(mother.species) & required_moves
+            if not allowed_moves:
+                continue
+            record = species_db.get(mother.species)
+            if record is None:
+                continue
+            genders = (
+                tuple(gender for gender, _species in mother.gender_species)
+                if mother.gender_species else record.allowed_genders
+            )
+            profile = SpeciesProfile(
+                mother.species, normalize_text(mother.species), mother.egg_groups,
+                genders == ("N",), genders, mother.breeding_species, mother.gender_species,
+            )
+            for father in known:
+                if id(mother) not in frontier and id(father) not in frontier:
+                    continue
+                if mother.used_ids & father.used_ids:
+                    continue
+                ditto = is_ditto(father.species)
+                if not ditto and not (
+                    mother.gender == "F" and father.gender == "M"
+                    and set(_group_key(mother.egg_groups)) & set(_group_key(father.egg_groups))
+                ):
+                    continue
+                moves = (mother.inherited_moves | (father.inherited_moves if not ditto else frozenset())) & allowed_moves
+                if not moves:
+                    continue
+                new_moves = moves - mother.inherited_moves
+                needs_hatch_form = mother.leaf is not None and normalize_text(mother.leaf.species) != normalize_text(mother.species)
+                output_genders = [
+                    gender for gender in genders
+                    if new_moves or needs_hatch_form or (
+                        gender != mother.gender
+                        and (ditto or (mother.gender == "F" and gender == "M"))
+                    )
+                ]
+                if not output_genders:
+                    continue
+                common = mother.mask & father.mask
+
+                def items(state: ChainState) -> list[tuple[int | None, bool]]:
+                    result = [(None, False)]
+                    result.extend((stat, False) for stat in range(6) if state.mask & ~common & (1 << stat))
+                    if state.has_nature:
+                        result.append((None, True))
+                    return result
+
+                for (brace_a, stone_a), (brace_b, stone_b) in product(items(mother), items(father)):
+                    if stone_a and stone_b:
+                        continue
+                    mask = common | (0 if brace_a is None else 1 << brace_a) | (0 if brace_b is None else 1 << brace_b)
+                    if mask.bit_count() != max(mother.mask.bit_count(), father.mask.bit_count()):
+                        continue
+                    if mask.bit_count() < max(mother.effective_material_v, father.effective_material_v):
+                        continue
+                    for gender in output_genders:
+                        child = _forced_child(mother, father, profile, gender, brace_a, brace_b, stone_a, stone_b)
+                        if child is None or not child.inherited_moves:
+                            continue
+                        identity = (shape(child), child.used_ids)
+                        # The same pair may have more than one item assignment;
+                        # retain() below picks the cheapest, not the first seen.
+                        if identity not in seen:
+                            pending.append(child)
+        pending = retain(pending)
+        pending.sort(key=lambda state: (-len(state.inherited_moves), *_state_rank(state, strategy)))
+        pending = pending[:max_states - len(added)]
+        if not pending:
+            break
+        added.extend(pending)
+        seen.update((shape(state), state.used_ids) for state in pending)
+        known = retain(base + added)
+        frontier = {id(state) for state in pending}
+        if len(added) >= max_states:
+            break
+    return added
+
+
+def _feature_diverse_beam(states: list[ChainState], limit: int) -> list[ChainState]:
+    """Do not let cheaper skill-less copies evict every required-move variant."""
+    if len(states) <= limit or not any(state.inherited_moves for state in states):
+        return states[:limit]
+    buckets: dict[tuple[object, ...], list[ChainState]] = {}
+    for state in states:
+        key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves)
+        buckets.setdefault(key, []).append(state)
+    selected: list[ChainState] = []
+    for depth in range(limit):
+        for bucket in buckets.values():
+            if depth < len(bucket):
+                selected.append(bucket[depth])
+        if len(selected) >= max(limit, len(buckets)):
+            break
+    selected_ids = {id(state) for state in selected[:max(limit, len(buckets))]}
+    return [state for state in states if id(state) in selected_ids]
 
 
 def _structured_search(
@@ -929,7 +1132,7 @@ def _structured_search(
             unique.values(),
             key=lambda state: rank(state, required_mask, require_nature),
         )
-        return ranked if exact else ranked[:beam]
+        return ranked if exact else _feature_diverse_beam(ranked, beam)
 
     def leaf_candidates(profile: SpeciesProfile, gender: str, required_mask: int, require_nature: bool) -> list[ChainState]:
         return [
@@ -1566,6 +1769,7 @@ def _maternal_spine_pyramid(
     strategy: str = "inventory",
     preferred_ditto_ids: frozenset[str] = frozenset(),
     need_hidden_ability: bool = False,
+    target_moves: frozenset[str] = frozenset(),
 ) -> list[ChainState]:
     """Deterministically build one target-female spine and donor pyramids.
 
@@ -1685,6 +1889,8 @@ def _maternal_spine_pyramid(
                     continue
                 if role == "line" and need_hidden_ability and not state.has_hidden_ability:
                     continue
+                if role == "line" and not target_moves.issubset(state.inherited_moves):
+                    continue
                 result.append(state)
             return sorted(
                 result,
@@ -1773,6 +1979,7 @@ def _maternal_spine_pyramid(
                 and _fits_exact_subproblem(state, required_mask)
                 and (not require_nature or state.has_nature)
                 and (role != "line" or not need_hidden_ability or state.has_hidden_ability)
+                and (role != "line" or target_moves.issubset(state.inherited_moves))
             ]
             return min(
                 valid,
@@ -1914,6 +2121,9 @@ def _canonical_six_iv_pyramid(
     target_alpha: bool,
     max_results: int,
     strategy: str = "inventory",
+    *,
+    target_moves: frozenset[str] = frozenset(),
+    need_hidden_ability: bool = False,
 ) -> list[ChainState]:
     """Build a six-value IV route without the combinatorial generic search.
 
@@ -1960,6 +2170,12 @@ def _canonical_six_iv_pyramid(
     indexed: dict[tuple[Role, int], list[ChainState]] = {}
     for role in roles:
         for state in leaves:
+            # Explicit prepared market bundles have the same modeled price
+            # (one purchase) as a partial-move donor. Preserve all real stock,
+            # but omit dominated partial virtual bundles in this six-IV
+            # allocator; otherwise 16 move subsets multiply at all 31 joins.
+            if state.is_virtual and state.inherited_moves and target_moves and not target_moves.issubset(state.inherited_moves):
+                continue
             if not role_matches(state, role):
                 continue
             if state.effective_material_v != state.mask.bit_count():
@@ -2117,6 +2333,8 @@ def _canonical_six_iv_pyramid(
             goals.extend(
                 state for key, state in variants.items()
                 if key[0] == target_alpha
+                and (not need_hidden_ability or state.has_hidden_ability)
+                and target_moves.issubset(state.inherited_moves)
             )
 
     goals.sort(key=lambda state: _state_rank(state, strategy))
@@ -2411,46 +2629,59 @@ def _virtual_materials(
             )
     if target_moves:
         species_db = get_species_database()
+        reference = get_reference_database()
         donor_map = egg_move_donors or {}
+        feature_shapes = list(base_shapes or [()])
+        if not is_alpha and () not in feature_shapes:
+            feature_shapes.append(())
         for move in sorted(target_moves):
-            donor_names = donor_map.get(move, ())
-            added = False
+            donor_names = donor_map.get(move) or tuple(dict.fromkeys(
+                route.direct_donor.species
+                for route in reference.egg_move_routes(target_profile.species, move)
+            ))
             for donor_name in donor_names:
-                donor_record = species_db.get(donor_name, fuzzy=True)
-                donor_parent = species_db.breeding_parent(donor_record) if donor_record else None
-                donor_offspring = species_db.breeding_offspring(donor_record) if donor_record else None
-                if donor_parent is None or donor_offspring is None or "M" not in donor_offspring.allowed_genders:
+                donor_record = species_db.get(donor_name)
+                if donor_record is None:
+                    continue
+                # Keep the actual workbook source form: Blaziken's level-up
+                # move must not silently turn into an unprepared Torchic.
+                donor_parent = (
+                    species_db.breeding_parent(donor_record)
+                    if "未发现" in donor_record.egg_groups else donor_record
+                )
+                donor_offspring = species_db.breeding_offspring(donor_record)
+                if donor_parent is None or donor_offspring is None or "M" not in donor_parent.allowed_genders:
                     continue
                 donor_groups = tuple(donor_parent.egg_groups)
                 if not set(_group_key(donor_groups)) & set(_group_key(target_profile.egg_groups)):
                     continue
-                for shape in (base_shapes or [()]):
+                for shape in feature_shapes:
                     add_material(
-                        donor_parent.display_name,
-                        "M",
-                        donor_groups,
-                        shape,
-                        False,
+                        donor_parent.display_name, "M", donor_groups, shape, False,
                         material_copies=1,
                         state_species=donor_offspring.display_name,
                         state_breeding_species=donor_parent.display_name,
                         inherited_moves=frozenset({move}),
                         role_suffix=f"egg-move-{move}",
                     )
-                added = True
-            if not added:
-                generic_donor = f"携带{move}的{'/'.join(target_profile.egg_groups)}组雄性"
-                for shape in (base_shapes or [()]):
-                    add_material(
-                        generic_donor,
-                        "M",
-                        target_profile.egg_groups,
-                        shape,
-                        False,
-                        material_copies=1,
-                        inherited_moves=frozenset({move}),
-                        role_suffix=f"egg-move-{move}",
-                    )
+
+        # Explicitly prepared same-line material is a valid market alternative
+        # for combinations of moves and male-/female-only families. It is a
+        # purchase specification, NOT a claim that these skills appear for free.
+        for prepared_gender in target_profile.allowed_genders:
+            if prepared_gender not in {"M", "F"}:
+                continue
+            prepared_species = target_profile.breeding_species_for_gender(prepared_gender)
+            for shape in feature_shapes:
+                add_material(
+                    prepared_species, prepared_gender, target_profile.egg_groups, shape, False,
+                    material_copies=1, state_species=target_profile.species,
+                    state_breeding_species=prepared_species,
+                    state_gender_species=target_profile.gender_species,
+                    has_hidden_ability=need_hidden_ability,
+                    inherited_moves=target_moves,
+                    role_suffix="egg-move-prepared-" + "-".join(sorted(target_moves)),
+                )
     return result
 
 
@@ -2653,7 +2884,7 @@ def _one_breed_market_goals(
     moves: frozenset[str] = frozenset(),
     egg_move_donors: dict[str, tuple[str, ...]] | None = None,
 ) -> list[ChainState]:
-    """Steps-first shortcuts are actual eggs, never purchased finished goals.
+    """One-egg shortcuts are actual eggs, never purchased finished goals.
 
     Only immediate parent tiers are generated. Index by exact mask, so this
     does not expand the recursive market search or multiply low-tier copies.
@@ -2685,6 +2916,12 @@ def _one_breed_market_goals(
         [(mask & ~(1 << b), mask & ~(1 << a), a, b, False, False)
          for a, b in _ordered_stat_pairs(bits)]
     )
+    if moves and not need_nature:
+        # A completed high-IV body may lack only its skills. Preserve its full
+        # IV mask with one brace while importing from an N-1V skill parent;
+        # do not force the user to rebuild the entire maternal pyramid.
+        specs += [(mask, mask & ~(1 << stat), stat, None, False, False) for stat in bits]
+        specs += [(mask & ~(1 << stat), mask, None, stat, False, False) for stat in bits]
     for left, right, brace_a, brace_b, stone_a, stone_b in specs:
         for mother in indexed.get(left, ()):
             if normalize_text(mother.species) != profile.species_key:
@@ -3026,7 +3263,11 @@ def find_chain_candidates(
     # Leaves keep their real target-nature marker even when the first planning
     # phase intentionally ignores nature and raises the IV mother first.
     need_nature = requested_need_nature
-    required_moves = frozenset(str(move).strip() for move in (target_moves or ()) if str(move).strip())
+    reference_db = get_reference_database()
+    try:
+        required_moves = frozenset(reference_db.normalize_egg_move_selection(planning_species, target_moves))
+    except ValueError as exc:
+        return [], [f"遗传技能设置无效：{exc}"]
     species_db = get_species_database()
     gender_species = tuple(target_gender_species or ())
 
@@ -3114,13 +3355,19 @@ def find_chain_candidates(
             if required is not None and monster.ivs[stat_index] == required:
                 mask |= 1 << stat_index
         has_nature = need_nature and _nature_matches(nature_key, monster.nature)
-        carries_required_move = bool(required_moves & set(monster.moves))
+        monster_moves = frozenset(
+            reference_db.canonical_move(move, fuzzy=False) for move in monster.moves
+        ) if required_moves else frozenset()
+        carries_required_move = bool(required_moves & monster_moves)
+        # A 0V intermediate mother can be essential to a cross-group egg
+        # chain even though she does not know the requested move yet.
+        can_receive_move = bool(required_moves & reference_db.inheritable_moves(monster.species))
         monster_key = normalize_text(monster.species)
         is_target_family = monster_key in family_keys
         is_goal_form = monster_key in goal_keys
         if not is_target_family and not is_goal_form and not reusable_outside_target_line(monster):
             continue
-        if not (mask or has_nature or carries_required_move or is_target_family or is_goal_form or is_ditto(monster.species)):
+        if not (mask or has_nature or carries_required_move or can_receive_move or is_target_family or is_goal_form or is_ditto(monster.species)):
             continue
         state_species = planning_species if is_target_family else monster.species
         state_breeding_species = (
@@ -3174,7 +3421,7 @@ def find_chain_candidates(
             is_virtual=False,
             leaf=monster,
             has_hidden_ability=monster.has_hidden_ability,
-            inherited_moves=frozenset(move for move in monster.moves if move in required_moves),
+            inherited_moves=monster_moves & required_moves,
             gender_species=gender_species if is_target_family else (),
         )
         all_leaf_states.append(state)
@@ -3413,6 +3660,8 @@ def find_chain_candidates(
                     gender_species=target_profile.gender_species,
                 )
             )
+
+    all_leaf_states.extend(_egg_move_seed_states(all_leaf_states, required_moves, strategy))
 
     available_preferred_material_ids = frozenset(
         preferred_material_ids
@@ -3949,6 +4198,8 @@ def find_chain_candidates(
             target_alpha,
             max_results,
             strategy,
+            target_moves=required_moves,
+            need_hidden_ability=need_hidden_ability,
         )
         goals = feature_goals(goals)
         if not goals:
@@ -3973,6 +4224,8 @@ def find_chain_candidates(
                 target_alpha,
                 max_results,
                 strategy,
+                target_moves=required_moves,
+                need_hidden_ability=need_hidden_ability,
             )
             goals = feature_goals(goals)
     else:
@@ -4024,6 +4277,7 @@ def find_chain_candidates(
                 egg_move_donors,
             )
             leaves_with_purchases = all_leaf_states + purchase_leaves
+            leaves_with_purchases.extend(_egg_move_seed_states(leaves_with_purchases, required_moves, strategy))
             goals = _direct_market_complements(
                 all_leaf_states,
                 purchase_leaves,
@@ -4056,6 +4310,7 @@ def find_chain_candidates(
                         strategy,
                         preferred_inventory_ditto_ids,
                         need_hidden_ability,
+                        required_moves,
                     )
                 )
                 goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
@@ -4101,7 +4356,11 @@ def find_chain_candidates(
                     ))
                     goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
 
-    if strategy == "steps" and stage_requires_final_features and not existing_goals and custom_goals is None:
+    has_skill_body = bool(required_moves) and any(
+        not state.is_virtual and normalize_text(state.species) == target_profile.species_key
+        and state.mask == target_mask for state in all_leaf_states
+    )
+    if (strategy == "steps" or has_skill_body) and stage_requires_final_features and not existing_goals and custom_goals is None:
         goals.extend(_one_breed_market_goals(
             all_leaf_states, target_profile, target_ivs, target_mask, search_target_gender,
             target_alpha, allow_ditto, need_nature, nature_label.strip() or nature_key,

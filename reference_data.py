@@ -15,6 +15,30 @@ def normalize_move(value: str) -> str:
 
 
 @dataclass(frozen=True)
+class EggMoveRouteStep:
+    species_id: int
+    species: str
+    annotations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class EggMoveRoute:
+    """Workbook order: direct father first, original move source last.
+
+    A route is reference data, not proof that a particular inventory monster
+    knows the move. Level/BP/Sketch annotations must never grant moves for free.
+    """
+
+    move: str
+    steps: tuple[EggMoveRouteStep, ...]
+    raw: str
+
+    @property
+    def direct_donor(self) -> EggMoveRouteStep:
+        return self.steps[0]
+
+
+@dataclass(frozen=True)
 class LocationRecord:
     region: str
     route: str
@@ -145,7 +169,63 @@ class ReferenceDatabase:
 
     def egg_moves_for_species(self, species: int | str) -> dict[str, tuple[str, ...]]:
         species_id = self._species_id(species)
-        return dict(self.egg_moves_by_species.get(species_id or -1, {}))
+        moves = self.egg_moves_by_species.get(species_id or -1)
+        if moves is None and species_id is not None:
+            offspring = self.species_database.breeding_offspring(species_id)
+            moves = self.egg_moves_by_species.get(offspring.id) if offspring else None
+        return dict(moves or {})
+
+    def normalize_egg_move_selection(
+        self, species: int | str, moves: tuple[str, ...] | list[str] | None,
+    ) -> tuple[str, ...]:
+        if isinstance(moves, str):
+            raise ValueError("遗传技能必须是技能名称列表，不能是一整段字符串。")
+        selected = tuple(dict.fromkeys(
+            self.canonical_move(str(move), fuzzy=False)
+            for move in (moves or ()) if str(move).strip()
+        ))
+        if len(selected) > 4:
+            raise ValueError("一只精灵最多保留 4 个遗传技能，请减少选择。")
+        available = self.egg_moves_for_species(species)
+        invalid = [move for move in selected if move not in available]
+        if invalid:
+            record = self.species_database.get_by_id(self._species_id(species))
+            label = record.display_name if record else str(species)
+            raise ValueError(
+                f"{label} 的内置遗传技能资料不支持：{'、'.join(invalid)}。"
+                "请从该孵出物种的遗传技能列表中选择；不会自动猜测或替换技能。"
+            )
+        return selected
+
+    @lru_cache(maxsize=2048)
+    def egg_move_routes(self, species: int | str, move: str) -> tuple[EggMoveRoute, ...]:
+        canonical = self.canonical_move(move, fuzzy=False)
+        result: list[EggMoveRoute] = []
+        for raw in self.egg_moves_for_species(species).get(canonical, ()):
+            steps: list[EggMoveRouteStep] = []
+            for segment in re.split(r"<=|←", raw):
+                name = re.split(r"[（(]", segment, maxsplit=1)[0].strip()
+                # Do not turn an unrecognized workbook name into a different
+                # species via OCR-style fuzzy matching.
+                record = self.species_database.get(name)
+                if record is None:
+                    break
+                annotations = tuple(re.findall(r"[（(]([^）)]*)[）)]", segment))
+                steps.append(EggMoveRouteStep(record.id, record.display_name, annotations))
+            else:
+                if steps:
+                    result.append(EggMoveRoute(canonical, tuple(steps), raw))
+        return tuple(result)
+
+    @lru_cache(maxsize=1024)
+    def inheritable_moves(self, species: str) -> frozenset[str]:
+        # Synthetic market egg-group placeholders have no known learnset.
+        # Fail closed instead of leaking skills through an arbitrary species.
+        record = self.species_database.get(species)
+        if record is None:
+            return frozenset()
+        offspring = self.species_database.breeding_offspring(record)
+        return frozenset(self.egg_moves_for_species((offspring or record).id))
 
     def abilities_for_species(self, species: int | str) -> dict[str, tuple[dict[str, Any], ...]]:
         species_id = self._species_id(species)
@@ -181,13 +261,15 @@ class ReferenceDatabase:
         ranked.sort(key=lambda item: (item[0], item[1], item[2]))
         return tuple(item[2] for item in ranked[: max(1, limit)])
 
-    def canonical_move(self, raw_text: str) -> str:
+    def canonical_move(self, raw_text: str, *, fuzzy: bool = True) -> str:
         key = normalize_move(raw_text)
         if not key:
             return ""
         exact = self.move_aliases.get(key)
         if exact:
             return exact
+        if not fuzzy:
+            return raw_text.strip()
         best: tuple[float, str] | None = None
         for alias, canonical in self.move_aliases.items():
             if abs(len(alias) - len(key)) > 2:

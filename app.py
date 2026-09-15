@@ -12,6 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
+APP_VERSION = "0.2.5"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -2516,18 +2517,19 @@ class App:
         window.geometry("860x560")
         window.minsize(680, 430)
         window.transient(self.root)
-        ttk.Label(
+        hint = ttk.Label(
             window,
-            text="最多选择 4 个；右侧会显示工作簿中的可行传递链。若库存没有携带技能的同进化线素材，规划会列为交易行/前置制作缺料。",
-            style="Muted.TLabel",
-            padding=(10, 10, 10, 5),
-        ).pack(fill=X)
+            text="最多选择 4 个。只有已携带的技能才计入库存；等级学习、BP 教学和写生不会自动完成。右侧是资料候选链，实际采用的父本与步骤以生成的路线为准。",
+            style="Muted.TLabel", wraplength=820, padding=(10, 10, 10, 5),
+        )
+        hint.pack(fill=X)
+        window.bind("<Configure>", lambda event: hint.configure(wraplength=max(300, event.width - 30)) if event.widget is window else None)
         body = self._create_paned_window(window, orient="horizontal")
         body.pack(fill=BOTH, expand=True, padx=10, pady=6)
         move_frame = ttk.LabelFrame(body, text="可遗传技能", padding=6)
-        route_frame = ttk.LabelFrame(body, text="遗传链明细", padding=6)
-        body.add(move_frame, minsize=220, stretch="never")
-        body.add(route_frame, minsize=380, stretch="always")
+        route_frame = ttk.LabelFrame(body, text="资料候选链（右端为源头）", padding=6)
+        body.add(move_frame, minsize=200, stretch="never")
+        body.add(route_frame, minsize=350, stretch="always")
         move_list = Listbox(move_frame, selectmode="multiple", exportselection=False, font=self.ui_font)
         move_scroll = ttk.Scrollbar(move_frame, orient="vertical", command=move_list.yview)
         move_list.configure(yscrollcommand=move_scroll.set)
@@ -2539,45 +2541,57 @@ class App:
             if move in self.selected_egg_moves:
                 move_list.selection_set(index)
         route_text = __import__("tkinter").Text(
-            route_frame,
-            wrap="word",
-            font=self.ui_font,
-            padx=9,
-            pady=8,
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=UI_COLORS["border"],
+            route_frame, wrap="word", font=self.ui_font, padx=9, pady=8,
+            relief="flat", highlightthickness=1, highlightbackground=UI_COLORS["border"],
         )
-        route_text.pack(fill=BOTH, expand=True)
+        route_scroll = ttk.Scrollbar(route_frame, orient="vertical", command=route_text.yview)
+        route_text.configure(yscrollcommand=route_scroll.set)
+        route_text.pack(side=LEFT, fill=BOTH, expand=True)
+        route_scroll.pack(side=RIGHT, fill=Y)
+        selection_status = StringVar(value="")
 
         def refresh_routes(_event=None) -> None:
             selected = [move_names[int(index)] for index in move_list.curselection()]
-            route_text.delete("1.0", END)
-            if not selected:
-                route_text.insert("1.0", "选择一个或多个技能后，这里显示每条可行遗传链。")
-                return
-            lines: list[str] = []
+            selection_status.set(f"已选 {len(selected)}/4 个" + (" · 请减少选择" if len(selected) > 4 else ""))
+            status_label.configure(style="Warning.TLabel" if len(selected) > 4 else "Muted.TLabel")
+            confirm_button.configure(state="disabled" if len(selected) > 4 else "normal")
+            lines = ["选择一个或多个技能后，这里显示资料中的候选传递链。"] if not selected else []
             for move in selected:
                 lines.append(f"【{move}】")
                 lines.extend(f"  {index}. {route}" for index, route in enumerate(egg_moves.get(move, ()), 1))
                 lines.append("")
+            if selected:
+                lines.append("说明：(蛋) 表示需要先孵化获得；幼年形态参与下一次孵化前须进化。采购父本必须已经携带所选技能，不能只购买同名精灵。")
+            route_text.configure(state="normal")
+            route_text.delete("1.0", END)
             route_text.insert("1.0", "\n".join(lines).strip())
+            route_text.configure(state="disabled")
 
         def confirm() -> None:
             selected = [move_names[int(index)] for index in move_list.curselection()]
             if len(selected) > 4:
-                messagebox.showwarning("技能过多", "一只精灵最多保留 4 个技能，请减少选择。")
+                messagebox.showwarning("技能过多", "一只精灵最多保留 4 个技能，请减少选择。", parent=window)
                 return
             self.selected_egg_moves = selected
             self.target_egg_moves_var.set("、".join(selected) if selected else "不需要遗传技能")
             window.destroy()
 
-        move_list.bind("<<ListboxSelect>>", refresh_routes)
-        refresh_routes()
+        def clear() -> None:
+            move_list.selection_clear(0, END)
+            refresh_routes()
+
         buttons = ttk.Frame(window, padding=(10, 4, 10, 10))
         buttons.pack(fill=X)
-        ttk.Button(buttons, text="确认选择", style="Primary.TButton", command=confirm).pack(side=RIGHT, padx=4)
+        status_label = ttk.Label(buttons, textvariable=selection_status, style="Muted.TLabel")
+        status_label.pack(side=LEFT)
+        confirm_button = ttk.Button(buttons, text="确认选择", style="Primary.TButton", command=confirm)
+        confirm_button.pack(side=RIGHT, padx=4)
         ttk.Button(buttons, text="取消", command=window.destroy).pack(side=RIGHT, padx=4)
+        ttk.Button(buttons, text="清空选择", command=clear).pack(side=RIGHT, padx=4)
+        move_list.bind("<<ListboxSelect>>", refresh_routes)
+        window.bind("<Control-Return>", lambda _event: confirm())
+        refresh_routes()
+        move_list.focus_set()
 
     def _sync_plan_exclusion_scope(self, record: SpeciesRecord) -> None:
         offspring = self.species_db.breeding_offspring(record)
@@ -5405,19 +5419,8 @@ class App:
 
         egg_route_note = ""
         if candidate.target_moves:
-            offspring = self.species_db.get(candidate.offspring_species, fuzzy=True)
-            routes_by_move = self.reference_db.egg_moves_for_species(offspring.id) if offspring else {}
-            route_lines: list[str] = []
-            for move in candidate.target_moves:
-                routes = routes_by_move.get(move, ())
-                if not routes:
-                    route_lines.append(f"{move}：暂无内置传递链，请人工核对来源")
-                    continue
-                # Prefer the shortest direct donor route; the picker still keeps
-                # every alternative for users who want a different species.
-                route = min(routes, key=lambda value: (value.count("<="), len(value), value))
-                route_lines.append(f"{move}：{route} → {candidate.offspring_species}")
-            egg_route_note = "\n遗传技能前置｜" + "；".join(route_lines)
+            egg_route_note = "\n遗传技能实际来源｜" + "；".join(candidate.egg_move_sources(include_steps=False))
+            egg_route_note += "。逐代传递步骤见下方路线树。"
 
         requirements = candidate.purchase_requirements()
         if requirements:
@@ -5509,8 +5512,8 @@ class App:
             assert state.leaf is not None
             if state.leaf.source.startswith("孵化方案"):
                 return "已完成子代"
-            if any(move in state.leaf.moves for move in candidate.target_moves):
-                return "遗传技能父本"
+            if any(move in state.inherited_moves for move in candidate.target_moves):
+                return "遗传技能携带者"
             if state.is_virtual:
                 return "交易行素材"
             if state.leaf.gender == "M":
@@ -5534,7 +5537,7 @@ class App:
                 feature_bits = []
                 if monster.has_hidden_ability:
                     feature_bits.append("梦特已解锁")
-                inherited = [move for move in candidate.target_moves if move in monster.moves]
+                inherited = [move for move in candidate.target_moves if move in state.inherited_moves]
                 if inherited:
                     feature_bits.append("技能 " + "、".join(inherited))
                 return MindMapNode(
@@ -6100,6 +6103,15 @@ class App:
 
 def main() -> None:
     import tkinter as tk
+
+    if "--self-test" in sys.argv:
+        import argparse
+        from release_self_test import run_self_test
+
+        parser = argparse.ArgumentParser(description="Isolated packaged-runtime self-test")
+        parser.add_argument("--self-test", required=True, metavar="REPORT_JSON")
+        args = parser.parse_args()
+        raise SystemExit(run_self_test(args.self_test, APP_VERSION))
 
     if "--check-ocr" in sys.argv:
         OCRProcessor()
