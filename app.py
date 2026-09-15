@@ -1937,7 +1937,7 @@ class App:
         ).grid(row=2, column=0, columnspan=2, sticky="w", padx=(0, 12), pady=3)
         ttk.Label(
             rules,
-            text="无目标母体时，可用目标公体＋百变怪只转换一次；其余支线仍遵守上方百变怪开关。",
+            text="比较现有母体与公体＋百变怪转母路线；转换只用于建立母系，其余支线仍遵守上方百变怪开关。",
             style="Muted.TLabel",
         ).grid(row=2, column=2, columnspan=4, sticky="w", pady=3)
         ttk.Label(rules, text="中间性别", style="Field.TLabel").grid(

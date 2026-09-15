@@ -3239,7 +3239,6 @@ def find_chain_candidates(
     conversion_requested = bool(
         convert_maternal_with_ditto
         and target_profile.allowed_genders == ("F", "M")
-        and not actual_target_females
         and actual_target_males
     )
     conversion_states: list[ChainState] = []
@@ -3294,14 +3293,20 @@ def find_chain_candidates(
         ]
         if not ditto_sources:
             ditto_sources = virtual_conversion_dittos()
-        male_sources = sorted(
-            actual_target_males,
-            key=lambda state: _search_rank(state, strategy, target_mask, False),
-        )[:12]
-        ditto_sources = sorted(
-            ditto_sources,
-            key=lambda state: _search_rank(state, strategy, target_mask, False),
-        )[:12]
+        def diverse_conversion_sources(states):
+            # A global ID-ordered cutoff can discard the only complementary
+            # IV shape. Keep alternatives per shape, including HA/move state.
+            counts = Counter()
+            result = []
+            for state in sorted(states, key=lambda s: _search_rank(s, strategy, target_mask, False)):
+                key = (state.mask, state.has_hidden_ability, state.inherited_moves)
+                if counts[key] < 3:
+                    result.append(state)
+                    counts[key] += 1
+            return result
+
+        male_sources = diverse_conversion_sources(actual_target_males)
+        ditto_sources = diverse_conversion_sources(ditto_sources)
         required_stats = [index for index in range(6) if target_mask & (1 << index)]
         for male in male_sources:
             male_braces = [None, *(stat for stat in required_stats if male.mask & (1 << stat))]
@@ -3329,14 +3334,17 @@ def find_chain_candidates(
         )
         unique_conversion_states: list[ChainState] = []
         seen_conversion: set[tuple[object, ...]] = set()
+        shape_counts = Counter()
         for state in conversion_states:
             signature = (state.used_ids, state.mask, state.has_hidden_ability, state.inherited_moves)
             if signature in seen_conversion:
                 continue
             seen_conversion.add(signature)
+            shape = (state.mask, state.has_hidden_ability, state.inherited_moves)
+            if shape_counts[shape] >= 4:
+                continue
+            shape_counts[shape] += 1
             unique_conversion_states.append(state)
-            if len(unique_conversion_states) >= 64:
-                break
         conversion_states = unique_conversion_states
         if conversion_states:
             if not allow_ditto:
@@ -3348,7 +3356,9 @@ def find_chain_candidates(
         # Ditto leaves into unrelated donor/nature branches.
         all_leaf_states = [state for state in all_leaf_states if not is_ditto(state.species)]
 
-    conversion_required = bool(conversion_states)
+    # Existing females and converted females compete on route cost. Presence
+    # of a weak female must neither disable conversion nor force consumption.
+    conversion_required = bool(conversion_states) and not actual_target_females
 
     # If neither sex of the target line exists, buying a target female is the
     # only sensible way to establish species inheritance.  Steps-first may

@@ -435,7 +435,7 @@ def make_report_with_candidates(
         if convert_maternal_with_ditto:
             if candidates and candidates[0].root.maternal_conversion:
                 lines.append(
-                    "母体转换：库存没有目标母体，已单独使用目标公体＋百变怪锁母建立母系；"
+                    "母体转换：比较候选后，已单独使用目标公体＋百变怪锁母建立母系；"
                     "该权限独立于其他支线的百变怪开关。"
                 )
             elif candidates and not target_inventory_genders.intersection({"F", "M"}):
@@ -449,7 +449,7 @@ def make_report_with_candidates(
                 )
             elif candidates:
                 lines.append(
-                    "母体转换：当前已有可用目标母体，或库存没有可转换的目标公体；未额外消耗百变怪。"
+                    "母体转换：本次候选未选择转母路线；可能现有母体系路线更合适，或没有可用的公体与百变怪组合。"
                 )
         if need_hidden_ability:
             lines.append("梦特约束：成品必须保留梦特潜力；仅同进化线的梦特父母可以向该子代传递。")
