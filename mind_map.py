@@ -52,6 +52,7 @@ class MindMapNode:
     exclude_material_id: str = ""
     egg_move_highlight: bool = False
     route_role: str = ""
+    route_moves: tuple[str, ...] = ()
     history_toggleable: bool = False
     sources_collapsed: bool = False
     children: list["MindMapNode"] = field(default_factory=list)
@@ -117,7 +118,7 @@ class BreedingMindMap(ttk.Frame):
         legend.pack(fill=X)
         for role, label in ROUTE_LABELS.items():
             ttk.Label(legend, text=f"━ {label}", foreground=ROUTE_PALETTES[role][1]).pack(side=LEFT, padx=(0, 18))
-        ttk.Label(legend, text="进度见节点状态标签", style="Muted.TLabel").pack(side=LEFT)
+        ttk.Label(legend, text="兼具身份：双层框／双线 · 技能层沿实际继承路径延续", style="Muted.TLabel").pack(side=LEFT)
 
         self.detail_var = StringVar(value="单击节点可在这里查看未截断的完整信息。")
         self.detail_label = ttk.Label(
@@ -317,6 +318,19 @@ class BreedingMindMap(ttk.Frame):
                 joinstyle="round",
                 tags=(f"edge:{child.key}",),
             )
+            # The skill layer follows actual parent-to-child inheritance,
+            # including maternal sources, without coloring unrelated IV mates.
+            if set(node.route_moves) & set(child.route_moves):
+                gap = self._scaled(6)
+                self.canvas.create_line(
+                    start_x + gap, start_y + gap,
+                    start_x + gap, middle_y + gap,
+                    end_x + gap, middle_y + gap,
+                    end_x + gap, child_y - gap,
+                    fill=ROUTE_PALETTES["egg_move"][1],
+                    width=max(2, round(2 * self.zoom)), joinstyle="round",
+                    tags=(f"skill-edge:{child.key}",),
+                )
             self._draw_edges(child)
 
     def _node_palette(self, node: MindMapNode) -> tuple[str, str, str]:
@@ -354,6 +368,14 @@ class BreedingMindMap(ttk.Frame):
             outline = border
             outline_width = 4 if node.key == self.selected_key else 2
         common_tags = (f"node:{node.key}", "mind-node")
+        if node.route_moves:
+            gap = self._scaled(6)
+            self.canvas.create_rectangle(
+                x - gap, y - gap, x + width + gap, y + height + gap,
+                fill="", outline=ROUTE_PALETTES["egg_move"][1],
+                width=max(2, round(2 * self.zoom)),
+                tags=common_tags + (f"skill-card:{node.key}", "mind-skill-card"),
+            )
         self.canvas.create_rectangle(
             x,
             y,
@@ -425,7 +447,7 @@ class BreedingMindMap(ttk.Frame):
             left,
             y + self._scaled(66),
             anchor="nw",
-            text=self._short((ROUTE_LABELS[node.route_role] + " · " if node.route_role in ROUTE_LABELS else "") + node.detail, body_limit),
+            text=self._short((ROUTE_LABELS[node.route_role] + ("＋遗传技能" if node.route_moves else "") + " · " if node.route_role in ROUTE_LABELS else "") + node.detail, body_limit),
             fill=self.colors["muted"],
             font=(self.font_family, body_font_size),
             tags=common_tags,
@@ -787,6 +809,8 @@ class BreedingMindMap(ttk.Frame):
         values = [node.title]
         if node.route_role in ROUTE_LABELS:
             values.append(ROUTE_LABELS[node.route_role])
+        if node.route_moves:
+            values.append("遗传技能：" + "、".join(node.route_moves))
         if node.iv_values:
             values.append(f"{node.iv_text or '个体值'} " + "/".join(node.iv_values))
         elif node.iv_text:

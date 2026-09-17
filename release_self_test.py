@@ -62,10 +62,10 @@ def run_checks() -> dict[str, object]:
     from execution_view import execution_map
     from route_roles import candidate_route_roles
     roles = candidate_route_roles(candidates[0])
-    if set(roles.values()) != {"maternal", "egg_move"}:
+    if set(roles.values()) != {"maternal", "iv"}:
         raise RuntimeError("Packaged route classification failed")
     route = execution_map(plan, inventory, set(), species)
-    if route.route_role != "maternal" or "egg_move" not in {child.route_role for child in route.children}:
+    if route.route_role != "maternal" or route.route_moves != ("祈愿",) or not any(child.route_moves for child in route.children):
         raise RuntimeError("Packaged execution route colors failed")
     checks["route_colors"] = "candidate and execution roles agree"
 

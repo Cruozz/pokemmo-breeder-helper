@@ -19,12 +19,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--visible", action="store_true", help="Briefly show the test window to render screenshots")
     parser.add_argument("--size", default="1460x1000")
+    parser.add_argument("--maternal-skill", action="store_true")
     args = parser.parse_args()
-    output = PROJECT / "release" / "qa-026"
+    output = PROJECT / "release" / ("qa-027-maternal" if args.maternal_skill else "qa-027")
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="breeder-planning-qa-") as temporary, \
          patch("storage.data_dir", return_value=Path(temporary)), patch("app.list_windows", return_value=[]):
-        candidate, plan, inventory = color_fixture()
+        candidate, plan, inventory = color_fixture(maternal_skill=args.maternal_skill)
         save_inventory(inventory)
         save_active_plan(plan.to_dict())
         root = tk.Tk()
@@ -54,7 +55,8 @@ def main():
                     assert str(app.clear_current_plan_button["state"]) == "normal"
                     app._set_plan_view("proposal")
                     snapshot("proposal.png")
-                    assert {n.route_role for n in app.plan_map.nodes_by_key.values()} == {"maternal", "nature", "egg_move"}
+                    assert app.plan_map.root_node.route_moves == ("祈愿",)
+                    assert {n.route_role for n in app.plan_map.nodes_by_key.values()} == {"maternal", "nature", "iv"}
                     app._set_plan_view("active")
                     app.active_plan.steps[0].completed = True
                     app.expanded_completed_sources.add((plan.id, 1))

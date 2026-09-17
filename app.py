@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.6"
+APP_VERSION = "0.2.7"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -5268,6 +5268,7 @@ class App:
             status_text="已完成入库",
             nature_text="爆性格：否",
             route_role="maternal" if role == "maternal" else "nature",
+            route_moves=tuple(sorted(set(monster.moves) & set(candidate.target_moves))),
             kind="completed",
             completed=True,
             show_checkbox=True,
@@ -5324,6 +5325,7 @@ class App:
                 key=f"{map_key_prefix}-nature-preview-{upper_level}",
                 title=f"性格手目标 · {upper_level}V {candidate.target_nature}",
                 route_role="nature",
+                route_moves=tuple(sorted((set(upper.moves) | set(current_root.route_moves)) & set(candidate.target_moves))),
                 iv_text=f"{upper_level}V",
                 iv_values=tuple("X" if value is None else str(value) for value in upper.ivs[:6]),
                 detail=(
@@ -5358,6 +5360,7 @@ class App:
         return MindMapNode(
             key=f"{map_key_prefix}-nature-preview-target",
             route_role="maternal",
+            route_moves=tuple(sorted(set(candidate.target_moves))),
             title=(
                 f"孵蛋目标 · {self._iv_badge(candidate.target_ivs)} "
                 f"{candidate.target_nature} · {candidate.target_species or offspring}"
@@ -5617,6 +5620,7 @@ class App:
                     key=f"{map_key_prefix}-leaf-{id(state)}",
                     title=f"{role} · {monster.species}",
                     route_role=route_roles.get(id(state), "iv"),
+                    route_moves=tuple(sorted(state.inherited_moves & set(candidate.target_moves))),
                     iv_text=f"{sum(value == 31 for value in monster.ivs)}V",
                     iv_values=leaf_values,
                     detail=f"{source} · {gender_name(monster.gender)} · {monster.nature or '性格未知'}"
@@ -5743,6 +5747,7 @@ class App:
                 nature_text=nature_status,
                 kind=kind,
                 route_role=route_roles.get(id(state), "iv"),
+                route_moves=tuple(sorted(state.inherited_moves & set(candidate.target_moves))),
                 step_number=step_number or None,
                 completed=completed,
                 in_progress=bool(step and step.in_progress),

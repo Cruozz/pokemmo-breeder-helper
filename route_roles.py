@@ -28,14 +28,8 @@ class RouteSource:
 
 
 def classify_routes(root: RouteSource, *, nature_phase: str = "", target_moves=()) -> dict:
-    """Follow the female/non-Ditto spine; color complete purpose-specific branches.
-
-    A mother that already carries a skill stays on the maternal spine. The
-    branch supplying a new requested skill gets the egg-move color. A nature
-    hand includes its IV-building ancestors, even before the first Everstone.
-    """
+    """Classify the structural role; inherited skills are an independent layer."""
     roles = {}
-    selected_moves = frozenset(target_moves)
 
     def visit(source, role):
         roles[source.key] = role
@@ -45,14 +39,11 @@ def classify_routes(root: RouteSource, *, nature_phase: str = "", target_moves=(
         mother = next((parent for parent in ordinary if parent.gender == "F"),
                       ordinary[0] if ordinary else None)
         for parent, item in source.parents:
-            child_role = role if role in {"nature", "egg_move"} else "iv"
+            child_role = role if role == "nature" else "iv"
             if parent is mother and role == "maternal":
                 child_role = "maternal"
             elif parent is not mother:
-                new_moves = (parent.moves & selected_moves) - (mother.moves if mother else frozenset())
-                if new_moves:
-                    child_role = "egg_move"
-                elif item == "不变之石" and role != "egg_move":
+                if item == "不变之石":
                     child_role = "nature"
             visit(parent, child_role)
 

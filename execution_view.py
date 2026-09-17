@@ -74,6 +74,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             item_text=f"本只携带：{edge_item or '无需道具'}", item_keys=(ITEM_KEYS[edge_item],) if edge_item in ITEM_KEYS else (),
             status_text=status, nature_text=nature,
             route_role=route_roles.get(child.id, "iv"),
+            route_moves=tuple(sorted(set(child.moves) & set(target_moves))),
             kind="completed" if step.completed else "in_progress" if step.in_progress else "current" if ready else "pending",
             completed=step.completed, in_progress=step.in_progress, actionable=ready, show_checkbox=True,
             history_toggleable=step.completed, sources_collapsed=step.completed and not opened, species_id=sprite(child.species),
@@ -99,6 +100,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
                 status_text="历史来源（不可再次使用）" if historical else "待采购" if purchase else "库存",
                 kind="completed" if historical else "purchase" if purchase else "inventory",
                 route_role=route_roles.get(pid, "iv"),
+                route_moves=tuple(sorted(set(monster.moves) & set(target_moves))) if monster else (),
                 completed=historical or not purchase, show_checkbox=False,
                 species_id=sprite(monster.species) if monster else None,
             ))

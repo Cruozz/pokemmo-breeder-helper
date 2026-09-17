@@ -162,6 +162,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 下载见 [V0.2.6 发布页](https://github.com/Cruozz/pokemmo-breeder-helper/releases/tag/v0.2.6)，详情见 [DESKTOP_026_NOTES.md](DESKTOP_026_NOTES.md)。
 
+## 多重身份配色（2026-09-17，V0.2.7）
+
+- 母体／性格手／IV 素材的原色保留，携带目标遗传技能时增加橙色外框与并行连线。
+- 技能从实际来源沿所有保留该技能的节点延续到成品，修复已带技能的母体整条主线看不到技能颜色的问题。无关配对素材不会被误标。
+- 预览、执行、恢复存档和独立窗口一致；选中、缩放、历史折叠不覆盖技能层。单击节点显示所携带的目标技能。
+
+下载见 [V0.2.7 发布页](https://github.com/Cruozz/pokemmo-breeder-helper/releases/tag/v0.2.7)。
+
 ## 后续更新的交付要求
 
 每批源码修改须完成测试、Windows 打包、源码推送与 GitHub Release 上传，具体流程见 [AGENTS.md](AGENTS.md)。`release.ps1` 使用 PowerShell 7，从 `APP_VERSION` 读取版本并在压缩前执行真实 EXE 自检；版本不匹配或自检失败时不生成发布 ZIP。
