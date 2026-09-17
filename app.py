@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.5"
+APP_VERSION = "0.2.6"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -73,6 +73,7 @@ from chain_planner import ChainCandidate, ChainState, gender_name, is_ditto
 from execution import ExecutionPlan, ExecutionStep, build_execution_plan
 from execution_view import execution_map
 from mind_map import BreedingMindMap, MindMapNode
+from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
 from autocomplete import AutocompletePopup
 from nature_data import (
@@ -176,6 +177,7 @@ class App:
         self.proposed_plan: ExecutionPlan | None = None
         self.plan_worker_busy = False
         self.plan_result_queue: queue.Queue = queue.Queue()
+        self.plan_request_id = 0
         self.plan_excluded_ids: set[str] = set()
         self.plan_exclusion_history: list[str] = []
         self.plan_exclusion_scope_id: int | None = None
@@ -2019,6 +2021,10 @@ class App:
         ttk.Button(view_bar, text="预览新建议（只读）", command=lambda: self._set_plan_view("proposal")).pack(side=LEFT, padx=6)
         self.plan_view_label = ttk.Label(view_bar, text="", style="Warning.TLabel")
         self.plan_view_label.pack(side=LEFT, padx=8)
+        self.clear_current_plan_button = ttk.Button(
+            view_bar, text="清除当前规划与路线", style="Danger.TButton", command=self.clear_current_plan,
+        )
+        self.clear_current_plan_button.pack(side=RIGHT)
         self.next_step_gender_frame = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
         ttk.Label(self.next_step_gender_frame, text="下一步性别", style="Field.TLabel").pack(side=LEFT)
         self.next_step_gender_combo = ttk.Combobox(
@@ -2232,6 +2238,9 @@ class App:
             and (self.active_plan is None or self.proposed_plan.id != self.active_plan.id)
         )
         self.activate_plan_button.configure(state="normal" if can_activate else "disabled")
+        if hasattr(self, "clear_current_plan_button"):
+            has_plan = self.plan_worker_busy or self.active_plan or self.proposed_plan or self.current_candidates
+            self.clear_current_plan_button.configure(state="normal" if has_plan else "disabled")
         selected_step = self._selected_ready_step()
         can_complete = bool(selected_step and not self.plan_worker_busy)
         self.complete_step_button.configure(state="normal" if can_complete else "disabled")
@@ -4947,6 +4956,52 @@ class App:
         self.refresh_inventory_tree()
         self.status_var.set(f"已导入 {len(imported)} 条素材。")
 
+    def clear_current_plan(self) -> None:
+        if not (self.active_plan or self.proposed_plan or self.current_candidates or self.plan_worker_busy):
+            return
+        if not messagebox.askyesno(
+            "清除当前规划与路线",
+            "确定放弃当前规划吗？已启用路线、新建议、孵化中标记和本次素材禁用将一并清空。\n\n"
+            "已经完成的核销和已入库的子代会保留，不会恢复已消耗的父母。目标设置保留，可重新生成规划。",
+            parent=self.root,
+        ):
+            return
+        try:
+            save_active_plan(None)
+        except OSError as exc:
+            messagebox.showerror("清除失败", f"无法清除已保存的路线：{exc}", parent=self.root)
+            return
+        # A worker may finish after clearing (or after a new request starts).
+        # Its queue and callback belong to the discarded request only.
+        self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
+        self.plan_result_queue = queue.Queue()
+        self.active_plan = None
+        self.proposed_plan = None
+        self.current_candidates = []
+        self.plan_candidate_cache.clear()
+        self.expanded_completed_sources.clear()
+        self.selected_plan_step_number = None
+        self.displayed_plan_id = None
+        self.plan_view_mode = "active"
+        self.auto_activate_replan_pending = False
+        self.auto_replan_reason = ""
+        self.auto_replan_progress_keys.clear()
+        self.auto_replan_preferred_material_ids.clear()
+        self.pending_plan_options = {}
+        self.plan_excluded_ids.clear()
+        self.plan_exclusion_history.clear()
+        self.plan_exclusion_scope_id = None
+        self._update_plan_exclusion_ui()
+        self.plan_summary_var.set("尚未生成规划。")
+        self.plan_purchase_var.set("生成方案后将在这里显示库存利用与补购信息。")
+        self.plan_purchase_label.configure(style="Muted.TLabel")
+        self.plan_view_label.configure(text="尚未生成规划")
+        self._set_plan_map_root(None, "规划已清除｜可修改目标后重新生成")
+        self.plan_status_var.set("已清除当前规划与路线；库存及已完成核销保留。")
+        self.status_var.set("当前规划已清除。")
+        self._set_planner_busy(False)
+        self._set_planner_details_collapsed(False)
+
     def generate_plan(self) -> None:
         if self.plan_worker_busy:
             messagebox.showinfo("正在计算", "库存规划仍在计算中，请稍候。")
@@ -5042,22 +5097,28 @@ class App:
             + (f"（本次保护 {len(excluded_snapshot)} 只）……" if excluded_snapshot else "……")
         )
 
+        self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
+        request_id = self.plan_request_id
+        result_queue = self.plan_result_queue = queue.Queue()
+
         def worker() -> None:
             try:
                 report, candidates = make_report_with_candidates(*request)
-                self.plan_result_queue.put((report, candidates, ""))
+                result_queue.put((report, candidates, ""))
             except Exception as exc:
-                self.plan_result_queue.put(("", [], str(exc)))
+                result_queue.put(("", [], str(exc)))
 
         threading.Thread(target=worker, name="breed-planner", daemon=True).start()
-        self.root.after(100, self._poll_plan_result)
+        self.root.after(100, lambda: self._poll_plan_result(request_id))
 
-    def _poll_plan_result(self) -> None:
+    def _poll_plan_result(self, request_id: int | None = None) -> None:
+        if request_id is not None and request_id != self.plan_request_id:
+            return
         try:
             report, candidates, error = self.plan_result_queue.get_nowait()
         except queue.Empty:
             if self.plan_worker_busy:
-                self.root.after(100, self._poll_plan_result)
+                self.root.after(100, lambda: self._poll_plan_result(request_id))
             return
         if error:
             self.auto_activate_replan_pending = False
@@ -5206,6 +5267,7 @@ class App:
             item_text="已保留：等待后续性格合成",
             status_text="已完成入库",
             nature_text="爆性格：否",
+            route_role="maternal" if role == "maternal" else "nature",
             kind="completed",
             completed=True,
             show_checkbox=True,
@@ -5261,6 +5323,7 @@ class App:
             staged_branch = MindMapNode(
                 key=f"{map_key_prefix}-nature-preview-{upper_level}",
                 title=f"性格手目标 · {upper_level}V {candidate.target_nature}",
+                route_role="nature",
                 iv_text=f"{upper_level}V",
                 iv_values=tuple("X" if value is None else str(value) for value in upper.ivs[:6]),
                 detail=(
@@ -5294,6 +5357,7 @@ class App:
         )
         return MindMapNode(
             key=f"{map_key_prefix}-nature-preview-target",
+            route_role="maternal",
             title=(
                 f"孵蛋目标 · {self._iv_badge(candidate.target_ivs)} "
                 f"{candidate.target_nature} · {candidate.target_species or offspring}"
@@ -5335,6 +5399,14 @@ class App:
         if hasattr(self, "plan_view_label"):
             self.plan_view_label.configure(text="新建议预览 · 未启用，不可核销")
         if candidate is None:
+            if not fallback_report and not self.current_candidates:
+                self.plan_summary_var.set("尚未生成规划。")
+                self.plan_purchase_var.set("生成方案后将在这里显示库存利用与补购信息。")
+                self.plan_purchase_label.configure(style="Muted.TLabel")
+                if hasattr(self, "plan_view_label"):
+                    self.plan_view_label.configure(text="尚未生成规划")
+                self._set_plan_map_root(None, "暂无规划路线｜请先生成规划")
+                return
             self.plan_summary_var.set("未找到能严格保证目标结果的路线。")
             self.plan_purchase_var.set(fallback_report.strip() or "请检查目标精灵、蛋组、性别、性格与库存素材。")
             self.plan_purchase_label.configure(style="Warning.TLabel")
@@ -5342,6 +5414,7 @@ class App:
             return
 
         root = candidate.root
+        route_roles = candidate_route_roles(candidate)
         audit_text = candidate.inventory_audit_text()
         if root.action is None:
             actual_species = root.leaf.species if root.leaf else root.output_species
@@ -5427,7 +5500,7 @@ class App:
             self.plan_purchase_var.set(
                 f"仅靠库存无法完成，还需手动采购 {root.purchases} 只。"
                 "雌性目标线负责出种；雄性缺料按同蛋组通用父本列出。"
-                "橙色素材购买后直接按路线孵化；确认节点完成时自动视为已使用，无需 OCR 入库。"
+                "标注“待采购”的素材购买后直接按路线孵化；确认节点完成时自动视为已使用，无需 OCR 入库。"
                 + egg_route_note
             )
             self.plan_purchase_label.configure(style="Warning.TLabel")
@@ -5543,6 +5616,7 @@ class App:
                 return MindMapNode(
                     key=f"{map_key_prefix}-leaf-{id(state)}",
                     title=f"{role} · {monster.species}",
+                    route_role=route_roles.get(id(state), "iv"),
                     iv_text=f"{sum(value == 31 for value in monster.ivs)}V",
                     iv_values=leaf_values,
                     detail=f"{source} · {gender_name(monster.gender)} · {monster.nature or '性格未知'}"
@@ -5668,6 +5742,7 @@ class App:
                 status_text=status,
                 nature_text=nature_status,
                 kind=kind,
+                route_role=route_roles.get(id(state), "iv"),
                 step_number=step_number or None,
                 completed=completed,
                 in_progress=bool(step and step.in_progress),
@@ -5772,7 +5847,7 @@ class App:
         self.refresh_plan_status()
         if plan.purchase_requirements:
             self.status_var.set(
-                "路线已启用：橙色交易行素材购买后直接完成对应节点，无需 OCR 扫描入库。"
+                "路线已启用：标注“待采购”的交易行素材购买后直接完成对应节点，无需 OCR 扫描入库。"
             )
 
     def refresh_plan_status(self) -> None:

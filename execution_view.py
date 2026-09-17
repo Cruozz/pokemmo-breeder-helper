@@ -2,6 +2,8 @@
 from execution import ExecutionPlan, gender_name
 from mind_map import MindMapNode
 from models import Monster
+from chain_planner import is_ditto
+from route_roles import RouteSource, classify_routes
 
 ITEM_KEYS = dict(zip(
     ("HP护腕", "攻击护腕", "防御护腕", "特攻护腕", "特防护腕", "速度护腕", "不变之石"),
@@ -16,6 +18,33 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
     roots = [step for step in plan.steps if step.child.id not in parents]
     if not roots:
         return None
+
+    sources = {}
+
+    def route_source(pid, path=frozenset()):
+        if pid in path:
+            raise ValueError("执行路线存在循环依赖")
+        if pid in sources:
+            return sources[pid]
+        step = producers.get(pid)
+        payload = plan.materials.get(pid)
+        monster = step.child if step else Monster.from_dict(payload) if payload else inventory_by_id.get(pid)
+        source = RouteSource(
+            pid, (step.planned_gender or monster.gender) if step else monster.gender if monster else "",
+            is_ditto(monster.species) if monster else False,
+            frozenset(monster.moves) if monster else frozenset(),
+        )
+        if step:
+            source.parents = [(route_source(step.parent_a_id, path | {pid}), step.item_a),
+                              (route_source(step.parent_b_id, path | {pid}), step.item_b)]
+        sources[pid] = source
+        return source
+
+    route_roles = {}
+    target_moves = plan.candidate_snapshot.get("target_moves", []) or [move for step in roots for move in step.child.moves]
+    for step in roots:
+        route_roles.update(classify_routes(route_source(step.child.id), nature_phase=plan.nature_phase,
+                                          target_moves=target_moves))
 
     def sprite(name):
         record = species_db.get(name, fuzzy=True)
@@ -44,6 +73,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
                 + f" · 子代 {child.species}" + (f" · {child.notes}" if child.notes else ""),
             item_text=f"本只携带：{edge_item or '无需道具'}", item_keys=(ITEM_KEYS[edge_item],) if edge_item in ITEM_KEYS else (),
             status_text=status, nature_text=nature,
+            route_role=route_roles.get(child.id, "iv"),
             kind="completed" if step.completed else "in_progress" if step.in_progress else "current" if ready else "pending",
             completed=step.completed, in_progress=step.in_progress, actionable=ready, show_checkbox=True,
             history_toggleable=step.completed, sources_collapsed=step.completed and not opened, species_id=sprite(child.species),
@@ -68,6 +98,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
                 item_keys=(ITEM_KEYS[item],) if item in ITEM_KEYS else (),
                 status_text="历史来源（不可再次使用）" if historical else "待采购" if purchase else "库存",
                 kind="completed" if historical else "purchase" if purchase else "inventory",
+                route_role=route_roles.get(pid, "iv"),
                 completed=historical or not purchase, show_checkbox=False,
                 species_id=sprite(monster.species) if monster else None,
             ))

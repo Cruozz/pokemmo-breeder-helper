@@ -7,6 +7,8 @@ from tkinter import BOTH, LEFT, RIGHT, X, Y, Canvas, StringVar
 from tkinter import ttk
 from typing import Callable
 
+from route_roles import ROUTE_LABELS, ROUTE_PALETTES
+
 MODULE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = MODULE_DIR / "vendor"
 if VENDOR_DIR.exists():
@@ -49,6 +51,7 @@ class MindMapNode:
     iv_values: tuple[str, ...] = ()
     exclude_material_id: str = ""
     egg_move_highlight: bool = False
+    route_role: str = ""
     history_toggleable: bool = False
     sources_collapsed: bool = False
     children: list["MindMapNode"] = field(default_factory=list)
@@ -109,6 +112,12 @@ class BreedingMindMap(ttk.Frame):
         ttk.Button(toolbar, text="−", width=3, style="Compact.TButton", command=lambda: self.set_zoom(self.zoom - 0.1)).pack(side=RIGHT, padx=(3, 0))
         ttk.Button(toolbar, text="100%", width=6, style="Compact.TButton", command=lambda: self.set_zoom(1.0)).pack(side=RIGHT, padx=(3, 0))
         ttk.Button(toolbar, text="+", width=3, style="Compact.TButton", command=lambda: self.set_zoom(self.zoom + 0.1)).pack(side=RIGHT, padx=(3, 0))
+
+        legend = ttk.Frame(self, padding=(8, 3))
+        legend.pack(fill=X)
+        for role, label in ROUTE_LABELS.items():
+            ttk.Label(legend, text=f"━ {label}", foreground=ROUTE_PALETTES[role][1]).pack(side=LEFT, padx=(0, 18))
+        ttk.Label(legend, text="进度见节点状态标签", style="Muted.TLabel").pack(side=LEFT)
 
         self.detail_var = StringVar(value="单击节点可在这里查看未截断的完整信息。")
         self.detail_label = ttk.Label(
@@ -284,26 +293,38 @@ class BreedingMindMap(ttk.Frame):
         node_height = self._scaled(self.BASE_NODE_HEIGHT)
         start_x = x + node_width / 2
         start_y = y + node_height
+        if node.children:
+            middle_y = start_y + (self.positions[node.children[0].key][1] - start_y) / 2
+            self.canvas.create_line(
+                start_x, start_y, start_x, middle_y,
+                fill=ROUTE_PALETTES[node.route_role][1] if node.route_role in ROUTE_PALETTES else self.colors["border_blue"],
+                width=max(2, round(3 * self.zoom)),
+                tags=(f"junction:{node.key}",),
+            )
         for child in node.children:
             child_x, child_y = self.positions[child.key]
             end_x = child_x + node_width / 2
             middle_y = start_y + (child_y - start_y) / 2
             self.canvas.create_line(
                 start_x,
-                start_y,
-                start_x,
                 middle_y,
                 end_x,
                 middle_y,
                 end_x,
                 child_y,
-                fill=self.colors["border_blue"],
-                width=max(2, round(2 * self.zoom)),
+                fill=ROUTE_PALETTES[child.route_role][1] if child.route_role in ROUTE_PALETTES else self.colors["border_blue"],
+                width=max(2, round(3 * self.zoom)),
                 joinstyle="round",
+                tags=(f"edge:{child.key}",),
             )
             self._draw_edges(child)
 
     def _node_palette(self, node: MindMapNode) -> tuple[str, str, str]:
+        if node.route_role in ROUTE_PALETTES:
+            return ROUTE_PALETTES[node.route_role]
+        return self._status_palette(node)
+
+    def _status_palette(self, node: MindMapNode) -> tuple[str, str, str]:
         palettes = {
             "target": (self.colors["selected"], self.colors["accent"], self.colors["ink_blue"]),
             "current": (self.colors["accent_soft"], self.colors["action"], self.colors["ink_blue"]),
@@ -325,12 +346,13 @@ class BreedingMindMap(ttk.Frame):
         width = self._scaled(self.BASE_NODE_WIDTH)
         height = self._scaled(self.BASE_NODE_HEIGHT)
         fill, border, text_color = self._node_palette(node)
-        if node.egg_move_highlight:
+        status_fill, _status_border, status_text_color = self._status_palette(node)
+        if node.egg_move_highlight and not node.route_role:
             outline = self.colors["danger"]
             outline_width = 4
         else:
-            outline = self.colors["accent"] if node.key == self.selected_key else border
-            outline_width = 3 if node.key == self.selected_key else 2
+            outline = border
+            outline_width = 4 if node.key == self.selected_key else 2
         common_tags = (f"node:{node.key}", "mind-node")
         self.canvas.create_rectangle(
             x,
@@ -403,7 +425,7 @@ class BreedingMindMap(ttk.Frame):
             left,
             y + self._scaled(66),
             anchor="nw",
-            text=self._short(node.detail, body_limit),
+            text=self._short((ROUTE_LABELS[node.route_role] + " · " if node.route_role in ROUTE_LABELS else "") + node.detail, body_limit),
             fill=self.colors["muted"],
             font=(self.font_family, body_font_size),
             tags=common_tags,
@@ -429,8 +451,8 @@ class BreedingMindMap(ttk.Frame):
                 left,
                 y + self._scaled(112),
                 node.status_text,
-                border,
-                fill,
+                status_text_color,
+                status_fill,
                 forced_width=min(status_natural_width, available_chip_width),
             )
             self._draw_chip(
@@ -448,8 +470,8 @@ class BreedingMindMap(ttk.Frame):
                 left,
                 chip_y,
                 node.status_text,
-                border,
-                fill,
+                status_text_color,
+                status_fill,
                 forced_width=min(status_natural_width, available_chip_width),
             )
             if node.nature_text:
@@ -763,6 +785,8 @@ class BreedingMindMap(ttk.Frame):
 
     def _show_node_detail(self, node: MindMapNode) -> None:
         values = [node.title]
+        if node.route_role in ROUTE_LABELS:
+            values.append(ROUTE_LABELS[node.route_role])
         if node.iv_values:
             values.append(f"{node.iv_text or '个体值'} " + "/".join(node.iv_values))
         elif node.iv_text:
@@ -802,8 +826,8 @@ class BreedingMindMap(ttk.Frame):
             selected = key == self.selected_key
             self.canvas.itemconfigure(
                 f"card:{key}",
-                outline=self.colors["accent"] if selected else border,
-                width=max(1, round((3 if selected else 2) * self.zoom)),
+                outline=border if node.route_role else self.colors["accent"] if selected else border,
+                width=max(1, round((4 if selected else 2) * self.zoom)),
             )
 
     def _activate_selected(self, _event=None):

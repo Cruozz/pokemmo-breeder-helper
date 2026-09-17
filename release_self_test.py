@@ -59,6 +59,24 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Packaged execution planner lost the inherited move")
     checks["egg_moves"] = {"breeds": 1, "purchases": 0, "moves": ["祈愿"]}
 
+    from execution_view import execution_map
+    from route_roles import candidate_route_roles
+    roles = candidate_route_roles(candidates[0])
+    if set(roles.values()) != {"maternal", "egg_move"}:
+        raise RuntimeError("Packaged route classification failed")
+    route = execution_map(plan, inventory, set(), species)
+    if route.route_role != "maternal" or "egg_move" not in {child.route_role for child in route.children}:
+        raise RuntimeError("Packaged execution route colors failed")
+    checks["route_colors"] = "candidate and execution roles agree"
+
+    from chain_planner import ChainState, SpeciesProfile, _forced_child
+    parent = ChainState("伊布", "M", ("陆上",), 7, False, "", False, frozenset({"male"}), 0, 0, 0, 0)
+    ditto = ChainState("百变怪", "N", (), 3, False, "", False, frozenset({"ditto"}), 0, 0, 0, 0)
+    profile = SpeciesProfile("伊布", "伊布", ("陆上",), False, ("F", "M"))
+    if _forced_child(parent, ditto, profile, "F", brace_a=2) is not None:
+        raise RuntimeError("Packaged planner allowed 3V male + 2V Ditto gender conversion")
+    checks["ditto_conversion"] = "lower-tier gender conversion rejected"
+
     image = Image.new("RGB", (700, 160), "white")
     ImageDraw.Draw(image).text((24, 45), "POKEMMO 12345", fill="black", font=ImageFont.load_default(size=48))
     items = OCRProcessor(performance_profile="low").recognize(image)

@@ -830,6 +830,18 @@ def _forced_child(
         mask |= 1 << brace_a
     if brace_b is not None:
         mask |= 1 << brace_b
+    # Gender conversion is not a reason to burn a high-tier breeder with a
+    # lower-tier Ditto, or to discard its guaranteed IVs. Apply this at the
+    # common constructor so direct, maternal and nature searches agree.
+    if is_ditto(parent_a.species) != is_ditto(parent_b.species):
+        source, ditto = (parent_b, parent_a) if is_ditto(parent_a.species) else (parent_a, parent_b)
+        if source.gender in {"F", "M"} and output_gender in {"F", "M"} and source.gender != output_gender:
+            if (
+                ditto.effective_material_v < source.effective_material_v
+                or mask & source.mask != source.mask
+                or mask.bit_count() < max(source.effective_material_v, ditto.effective_material_v)
+            ):
+                return None
     item_a = "不变之石" if everstone_a else (f"{STAT_NAMES[brace_a]}护腕" if brace_a is not None else "")
     item_b = "不变之石" if everstone_b else (f"{STAT_NAMES[brace_b]}护腕" if brace_b is not None else "")
     # A shared egg group establishes mating compatibility, not learnset
