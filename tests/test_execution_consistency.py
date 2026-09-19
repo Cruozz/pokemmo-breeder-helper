@@ -155,7 +155,7 @@ class ExecutionConsistencyTests(unittest.TestCase):
         expanded = execution_map(plan, inventory, {(plan.id, 1)}, get_species_database())
         history = expanded.children[0].children
         self.assertEqual(len(history), 2)
-        self.assertTrue(all("已消耗" in n.title for n in history))
+        self.assertTrue(all("历史来源" in n.status_text for n in history))
         self.assertTrue(all(not n.actionable and not n.exclude_material_id for n in history))
         self.assertEqual(len(inventory), 3)
 
@@ -242,7 +242,7 @@ class ExecutionConsistencyTests(unittest.TestCase):
         view.canvas.cget.return_value = "0 0 3000 1200"
         view.canvas.winfo_width.return_value = 1000
         view._center_on_root()
-        view.canvas.xview_moveto.assert_called_once_with(1 / 3)
+        view.canvas.xview_moveto.assert_called_once_with((1330 + view.BASE_NODE_WIDTH / 2 - 500) / 3000)
 
 
 if __name__ == "__main__":

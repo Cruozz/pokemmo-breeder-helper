@@ -11,6 +11,12 @@ ITEM_KEYS = dict(zip(
 ))
 
 
+def step_display_gender(step):
+    if step.completed:
+        return step.child.gender
+    return step.expected_gender if step.effective_gender_policy in {"locked", "fixed"} else ""
+
+
 def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindMapNode | None:
     producers = {step.child.id: step for step in plan.steps}
     inventory_by_id = {m.id: m for m in inventory}
@@ -68,6 +74,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
         node = MindMapNode(
             key=f"{plan.id}-step-{step.number}", step_number=step.number,
             title=f"{'已完成' if step.completed else '步骤 ' + str(step.number)} · {child.species}",
+            gender=step_display_gender(step),
             iv_text=f"{sum(v == 31 for v in child.ivs)}V", iv_values=values(child),
             detail=(f"实际{gender_name(child.gender)}" if step.completed else step.gender_instruction)
                 + f" · 子代 {child.species}" + (f" · {child.notes}" if child.notes else ""),
@@ -92,10 +99,15 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             historical = step.completed
             node.children.append(MindMapNode(
                 key=f"{plan.id}-parent-{step.number}-{pid}",
-                title=("已消耗 · " if historical else "待采购 · " if purchase else "库存 · ") + (monster.species if monster else label),
+                title=monster.species if monster else label,
+                gender=monster.gender if monster else "",
                 iv_text=f"{sum(v == 31 for v in monster.ivs)}V" if monster else "",
                 iv_values=values(monster) if monster else (),
-                detail=label, item_text=f"本只携带：{item or '无需道具'}",
+                detail=(f"{monster.account} {monster.position_label or '未定位'}\n"
+                        f"{gender_name(monster.gender)} · {monster.nature or '性格未知'}"
+                        + (" · 梦特已解锁" if monster.has_hidden_ability else "")
+                        + ("\n技能：" + "、".join(monster.moves) if monster.moves else "")) if monster else label,
+                item_text=f"本只携带：{item or '无需道具'}",
                 item_keys=(ITEM_KEYS[item],) if item in ITEM_KEYS else (),
                 status_text="历史来源（不可再次使用）" if historical else "待采购" if purchase else "库存",
                 kind="completed" if historical else "purchase" if purchase else "inventory",

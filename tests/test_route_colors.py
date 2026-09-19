@@ -66,6 +66,7 @@ class RouteColorTests(unittest.TestCase):
     def test_overlay_edges_only_follow_shared_selected_skills(self):
         view = BreedingMindMap.__new__(BreedingMindMap)
         view.colors, view.zoom, view.canvas = UI_COLORS, 1, Mock()
+        view._card_height = 152
         root = MindMapNode("root", "母体", route_role="maternal", route_moves=("祈愿",), children=[
             MindMapNode("source", "母体素材", route_role="maternal", route_moves=("祈愿",)),
             MindMapNode("other", "无关技能素材", route_role="iv", route_moves=("哈欠",)),
@@ -89,6 +90,9 @@ class RouteColorTests(unittest.TestCase):
             view._draw_chip = Mock(return_value=30)
             node = MindMapNode("skill", "性格手＋技能", route_role="nature", route_moves=("祈愿",), status_text="已完成")
             view.nodes_by_key = {node.key: node}
+            view.canvas.bbox.return_value = (0, 0, 150, 20)
+            view._layouts = {node.key: view._text_layout(node)}
+            view._card_height = view._layouts[node.key]["height"]
             view._draw_node(node)
             cards = view.canvas.create_rectangle.call_args_list
             self.assertEqual(cards[0].kwargs["outline"], ROUTE_PALETTES["egg_move"][1])
@@ -139,6 +143,7 @@ class RouteColorTests(unittest.TestCase):
         view = BreedingMindMap.__new__(BreedingMindMap)
         view.colors = UI_COLORS
         view.zoom = 1
+        view._card_height = 152
         view.canvas = Mock()
         root = MindMapNode("root", "成品", route_role="maternal", children=[
             MindMapNode("nature", "性格手", route_role="nature", kind="completed"),
@@ -153,7 +158,7 @@ class RouteColorTests(unittest.TestCase):
                          [ROUTE_PALETTES["nature"][1], ROUTE_PALETTES["egg_move"][1]])
         view._refresh_selection()
         self.assertEqual(view.canvas.itemconfigure.call_args.kwargs["outline"], ROUTE_PALETTES["egg_move"][1])
-        self.assertEqual(view._node_palette(root.children[0]), ROUTE_PALETTES["nature"])
+        self.assertEqual(view._node_palette(root.children[0])[1], ROUTE_PALETTES["nature"][1])
 
 
 if __name__ == "__main__":

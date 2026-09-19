@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.7"
+APP_VERSION = "0.2.8"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -71,7 +71,7 @@ from PIL import Image, ImageFilter, ImageGrab, ImageTk
 from capture import WindowInfo, capture_window, list_windows
 from chain_planner import ChainCandidate, ChainState, gender_name, is_ditto
 from execution import ExecutionPlan, ExecutionStep, build_execution_plan
-from execution_view import execution_map
+from execution_view import execution_map, step_display_gender
 from mind_map import BreedingMindMap, MindMapNode
 from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
@@ -5260,6 +5260,7 @@ class App:
             title = f"已保留{material_v}性格手（未爆性格） · {monster.species}"
         return MindMapNode(
             key=f"{map_key_prefix}-nature-history-{monster.id}",
+            gender=monster.gender,
             title=title,
             iv_text=material_v,
             iv_values=tuple("X" if value is None else str(value) for value in monster.ivs[:6]),
@@ -5584,26 +5585,9 @@ class App:
         def state_nature_text(state: ChainState) -> str:
             return state.nature if state.has_nature and state.nature else "随机性格"
 
-        def leaf_role(state: ChainState) -> str:
-            assert state.leaf is not None
-            if state.leaf.source.startswith("孵化方案"):
-                return "已完成子代"
-            if any(move in state.inherited_moves for move in candidate.target_moves):
-                return "遗传技能携带者"
-            if state.is_virtual:
-                return "交易行素材"
-            if state.leaf.gender == "M":
-                return "同组父本"
-            if state.leaf.gender == "F" and state.species == candidate.offspring_species:
-                return "母系出种"
-            if state.leaf.gender == "F":
-                return "中转母系"
-            return "库存素材"
-
         def build_node(state: ChainState, edge_item: str = "", depth: int = 0, is_root: bool = False) -> MindMapNode:
             if state.action is None and state.leaf is not None:
                 monster = state.leaf
-                role = leaf_role(state)
                 source = "手动采购" if state.is_virtual else (
                     f"{monster.account} {monster.position_label}" if monster.position_label else f"{monster.account} 未定位"
                 )
@@ -5618,12 +5602,13 @@ class App:
                     feature_bits.append("技能 " + "、".join(inherited))
                 return MindMapNode(
                     key=f"{map_key_prefix}-leaf-{id(state)}",
-                    title=f"{role} · {monster.species}",
+                    title=monster.species,
+                    gender=monster.gender,
                     route_role=route_roles.get(id(state), "iv"),
                     route_moves=tuple(sorted(state.inherited_moves & set(candidate.target_moves))),
                     iv_text=f"{sum(value == 31 for value in monster.ivs)}V",
                     iv_values=leaf_values,
-                    detail=f"{source} · {gender_name(monster.gender)} · {monster.nature or '性格未知'}"
+                    detail=f"{source}\n{gender_name(monster.gender)} · {monster.nature or '性格未知'}"
                     + (" · " + " · ".join(feature_bits) if feature_bits else ""),
                     item_text=f"本只携带：{edge_item or '无需道具'}",
                     status_text="待采购" if state.is_virtual else ("已完成入库" if hatched_result else "库存"),
@@ -5738,6 +5723,7 @@ class App:
 
             node = MindMapNode(
                 key=f"{map_key_prefix}-step-{step_number}",
+                gender=step_display_gender(step) if step else state.gender,
                 title=("遗传技能导入 · " + title) if introduced else title,
                 iv_text=f"{state_v(state)}V",
                 iv_values=tuple(self._plan_state_iv_text(state, candidate).split("/")),

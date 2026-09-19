@@ -52,6 +52,7 @@ class MindMapNode:
     exclude_material_id: str = ""
     egg_move_highlight: bool = False
     route_role: str = ""
+    gender: str = ""
     route_moves: tuple[str, ...] = ()
     history_toggleable: bool = False
     sources_collapsed: bool = False
@@ -61,7 +62,7 @@ class MindMapNode:
 class BreedingMindMap(ttk.Frame):
     """Scrollable, zoomable dependency map built with native Tk Canvas items."""
 
-    BASE_NODE_WIDTH = 340
+    BASE_NODE_WIDTH = 400
     BASE_NODE_HEIGHT = 152
     BASE_HORIZONTAL_GAP = 28
     BASE_VERTICAL_GAP = 78
@@ -118,7 +119,7 @@ class BreedingMindMap(ttk.Frame):
         legend.pack(fill=X)
         for role, label in ROUTE_LABELS.items():
             ttk.Label(legend, text=f"━ {label}", foreground=ROUTE_PALETTES[role][1]).pack(side=LEFT, padx=(0, 18))
-        ttk.Label(legend, text="兼具身份：双层框／双线 · 技能层沿实际继承路径延续", style="Muted.TLabel").pack(side=LEFT)
+        ttk.Label(legend, text="底色：蓝＝公／锁公，粉＝母／锁母，灰＝无性别／未锁定；双框／双线＝兼具遗传技能", style="Muted.TLabel").pack(side=LEFT)
 
         self.detail_var = StringVar(value="单击节点可在这里查看未截断的完整信息。")
         self.detail_label = ttk.Label(
@@ -244,7 +245,7 @@ class BreedingMindMap(ttk.Frame):
         width = self.subtree_widths[node.key]
         node_width = self._scaled(self.BASE_NODE_WIDTH)
         x = left + width / 2 - node_width / 2
-        y = self._scaled(self.BASE_MARGIN + depth * (self.BASE_NODE_HEIGHT + self.BASE_VERTICAL_GAP))
+        y = self._scaled(self.BASE_MARGIN) + depth * (self._card_height + self._scaled(self.BASE_VERTICAL_GAP))
         self.positions[node.key] = (x, y)
         child_left = left
         for child in node.children:
@@ -268,15 +269,21 @@ class BreedingMindMap(ttk.Frame):
             self.canvas.configure(scrollregion=(0, 0, 640, 260))
             return
 
+        self._layouts = {}
+        def measure_text(node):
+            self._layouts[node.key] = self._text_layout(node)
+            for child in node.children:
+                measure_text(child)
+        measure_text(root)
+        self._card_height = max(layout["height"] for layout in self._layouts.values())
         tree_width = self._measure(root)
         self._place(root, self._scaled(self.BASE_MARGIN), 0)
         max_depth = self._depth(root)
         total_width = tree_width + self._scaled(self.BASE_MARGIN * 2)
         total_height = self._scaled(
             self.BASE_MARGIN * 2
-            + (max_depth + 1) * self.BASE_NODE_HEIGHT
             + max_depth * self.BASE_VERTICAL_GAP
-        )
+        ) + (max_depth + 1) * self._card_height
         self._draw_edges(root)
         self._draw_nodes(root)
         self.canvas.configure(scrollregion=(0, 0, total_width, total_height))
@@ -291,7 +298,7 @@ class BreedingMindMap(ttk.Frame):
     def _draw_edges(self, node: MindMapNode) -> None:
         x, y = self.positions[node.key]
         node_width = self._scaled(self.BASE_NODE_WIDTH)
-        node_height = self._scaled(self.BASE_NODE_HEIGHT)
+        node_height = self._card_height
         start_x = x + node_width / 2
         start_y = y + node_height
         if node.children:
@@ -334,9 +341,29 @@ class BreedingMindMap(ttk.Frame):
             self._draw_edges(child)
 
     def _node_palette(self, node: MindMapNode) -> tuple[str, str, str]:
-        if node.route_role in ROUTE_PALETTES:
-            return ROUTE_PALETTES[node.route_role]
-        return self._status_palette(node)
+        palette = ROUTE_PALETTES.get(node.route_role) or self._status_palette(node)
+        fill = {"M": "#DBEAFE", "F": "#FCE7F3"}.get(node.gender, "#F8FAFC")
+        return fill, palette[1], "#172033"
+
+    def _text_layout(self, node: MindMapNode) -> dict:
+        """Measure the same wrapped Canvas text that will be drawn, at current DPI/zoom."""
+        title_font = (self.font_family, max(8, round(10 * self.zoom)), "bold")
+        body_font = (self.font_family, max(8, round(9 * self.zoom)))
+        title_left = 40 if node.show_checkbox or node.step_number is not None else 12
+        body_width = self._scaled(self.BASE_NODE_WIDTH - 94)
+        def height(text, width, font):
+            item = self.canvas.create_text(0, 0, anchor="nw", text=text, width=width, font=font)
+            bounds = self.canvas.bbox(item)
+            self.canvas.delete(item)
+            return bounds[3] - bounds[1] if bounds else 0
+        title_width = self._scaled(self.BASE_NODE_WIDTH - 82 - title_left)
+        iv_y = max(self._scaled(39), self._scaled(11) + height(node.title, title_width, title_font) + self._scaled(8))
+        detail_y = iv_y + self._scaled(28)
+        item_y = detail_y + height(node.detail, body_width, body_font) + self._scaled(6)
+        bottom = max(self._scaled(120), item_y + height(node.item_text, body_width, body_font) + self._scaled(12))
+        return dict(title_font=title_font, body_font=body_font, title_width=title_width,
+                    body_width=body_width, iv_y=iv_y, detail_y=detail_y, item_y=item_y,
+                    height=bottom + max(52, self._scaled(52)))
 
     def _status_palette(self, node: MindMapNode) -> tuple[str, str, str]:
         palettes = {
@@ -358,7 +385,8 @@ class BreedingMindMap(ttk.Frame):
     def _draw_node(self, node: MindMapNode) -> None:
         x, y = self.positions[node.key]
         width = self._scaled(self.BASE_NODE_WIDTH)
-        height = self._scaled(self.BASE_NODE_HEIGHT)
+        height = self._card_height
+        layout = self._layouts[node.key]
         fill, border, text_color = self._node_palette(node)
         status_fill, _status_border, status_text_color = self._status_palette(node)
         if node.egg_move_highlight and not node.route_role:
@@ -428,41 +456,40 @@ class BreedingMindMap(ttk.Frame):
             title_left += self._scaled(28)
 
         media_left = x + width - self._scaled(78)
-        title_font_size = max(8, round(9 * self.zoom))
-        body_font_size = max(7, round(8 * self.zoom))
-        title_limit = self._text_limit(media_left - title_left, title_font_size, maximum=24)
-        body_limit = self._text_limit(media_left - left, body_font_size, maximum=32)
 
         self.canvas.create_text(
             title_left,
             y + self._scaled(11),
             anchor="nw",
-            text=self._short(node.title, title_limit),
+            text=node.title,
+            width=layout["title_width"],
             fill=text_color,
-            font=(self.font_family, title_font_size, "bold"),
+            font=layout["title_font"],
             tags=common_tags + ("mind-title",),
         )
-        self._draw_iv_row(node, left, y + self._scaled(39), common_tags)
+        self._draw_iv_row(node, left, y + layout["iv_y"], common_tags)
         self.canvas.create_text(
             left,
-            y + self._scaled(66),
+            y + layout["detail_y"],
             anchor="nw",
-            text=self._short((ROUTE_LABELS[node.route_role] + ("＋遗传技能" if node.route_moves else "") + " · " if node.route_role in ROUTE_LABELS else "") + node.detail, body_limit),
-            fill=self.colors["muted"],
-            font=(self.font_family, body_font_size),
-            tags=common_tags,
+            text=node.detail,
+            width=layout["body_width"],
+            fill="#334155",
+            font=layout["body_font"],
+            tags=common_tags + ("mind-detail",),
         )
         self.canvas.create_text(
             left,
-            y + self._scaled(86),
+            y + layout["item_y"],
             anchor="nw",
-            text=self._short(node.item_text, body_limit),
-            fill=self.colors["muted"],
-            font=(self.font_family, body_font_size),
+            text=node.item_text,
+            width=layout["body_width"],
+            fill="#172033",
+            font=layout["body_font"],
             tags=common_tags,
         )
         self._draw_node_media(node, x, y, width, common_tags)
-        chip_y = y + self._scaled(120)
+        chip_y = y + height - max(44, self._scaled(44))
         chip_gap = self._scaled(6)
         available_chip_width = max(self._scaled(70), media_left - left - self._scaled(4))
         status_natural_width = self._chip_width(node.status_text, max(7, round(7 * self.zoom)))
@@ -471,7 +498,7 @@ class BreedingMindMap(ttk.Frame):
             self._draw_chip(
                 node,
                 left,
-                y + self._scaled(112),
+                chip_y,
                 node.status_text,
                 status_text_color,
                 status_fill,
@@ -480,7 +507,7 @@ class BreedingMindMap(ttk.Frame):
             self._draw_chip(
                 node,
                 left,
-                y + self._scaled(133),
+                chip_y + max(21, self._scaled(21)),
                 node.nature_text,
                 self.colors["action"],
                 self.colors["accent_soft"],
@@ -507,7 +534,7 @@ class BreedingMindMap(ttk.Frame):
                     forced_width=min(nature_natural_width, max(self._scaled(42), available_chip_width - status_width - chip_gap)),
                 )
         if node.exclude_material_id:
-            self._draw_exclude_action(node, x, y, width)
+            self._draw_exclude_action(node, x, y + height - self._scaled(164), width)
 
     @staticmethod
     def _load_atlas(path: Path) -> Image.Image | None:
@@ -708,7 +735,7 @@ class BreedingMindMap(ttk.Frame):
             return 0.0
         font_size = max(7, round(7 * self.zoom))
         width = forced_width or self._chip_width(text, font_size)
-        height = self._scaled(16)
+        height = max(16, self._scaled(16))
         tags = (f"node:{node.key}", "mind-chip")
         self.canvas.create_rectangle(x, y, x + width, y + height, fill=fill, outline=border, width=1, tags=tags)
         self.canvas.create_text(
@@ -719,7 +746,7 @@ class BreedingMindMap(ttk.Frame):
                 max(3, min(12, int(max(self._scaled(12), width - self._scaled(8)) / max(5.0, font_size * 1.2)))),
             ),
             fill=border,
-            font=(self.font_family, font_size, "bold"),
+            font=(self.font_family, -round(font_size * 1.35), "bold"),
             tags=tags,
         )
         return width
@@ -765,7 +792,7 @@ class BreedingMindMap(ttk.Frame):
             button_y + button_height / 2,
             text="本次禁用",
             fill=self.colors["danger_text"],
-            font=(self.font_family, max(7, round(7 * self.zoom)), "bold"),
+            font=(self.font_family, -max(9, round(10 * self.zoom)), "bold"),
             tags=tags,
         )
 
