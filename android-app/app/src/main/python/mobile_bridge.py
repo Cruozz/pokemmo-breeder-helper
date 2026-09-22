@@ -22,6 +22,54 @@ from chain_planner import is_ditto
 RULES_VERSION = "0.2.8"
 
 
+def inventory_duplicates(inventory_json: str) -> str:
+    from storage import find_high_confidence_duplicate_groups
+    inventory = [Monster.from_dict(item) for item in json.loads(inventory_json)]
+    groups = find_high_confidence_duplicate_groups(inventory)
+    return json.dumps([[item.id for item in group] for group in groups])
+
+
+def species_icons() -> str:
+    return json.dumps({name: record.id for record in get_species_database().records
+                       for name in (*record.names, record.identifier, record.display_name)})
+
+
+def species_reference(species: str) -> str:
+    database = get_species_database()
+    record = database.get(species, fuzzy=False)
+    if record is None:
+        raise ValueError("请先选择精灵。")
+    reference = get_reference_database()
+    lines = [f"#{record.id} {record.display_name}", "蛋组：" + " / ".join(record.egg_groups), "分布"]
+    locations = reference.locations_for_species(record.id)
+    lines.extend(" · ".join(part for part in (loc.region, loc.route, loc.encounter, loc.rarity, loc.notes) if part) for loc in locations)
+    if not locations:
+        lines.append("离线资料暂未收录分布。")
+    lines.append("遗传技能来源（需父母实际携带技能）")
+    for move, sources in reference.egg_moves_for_species(record.id).items():
+        lines.append(move + "：" + "；".join(sources))
+    return json.dumps(lines, ensure_ascii=False)
+
+
+def validate_material(material_json: str) -> str:
+    value = json.loads(material_json)
+    record = get_species_database().get(str(value.get("species", "")).strip(), fuzzy=False)
+    if record is None:
+        raise ValueError("请选择有效的精灵名称。")
+    ivs = value.get("ivs", [])
+    if len(ivs) != 6 or any(v is not None and (type(v) is not int or not 0 <= v <= 31) for v in ivs):
+        raise ValueError("六项个体值必须是 0–31 或 X。")
+    if len(value.get("moves", [])) > 4:
+        raise ValueError("最多记录 4 个技能。")
+    monster = Monster.from_dict(value)
+    if monster.gender and monster.gender not in record.allowed_genders:
+        raise ValueError("该精灵不支持所选性别。")
+    monster.species = record.display_name
+    monster.egg_groups = list(record.egg_groups)
+    monster.account = monster.account.strip() or "主账号"
+    return json.dumps(monster.to_dict(), ensure_ascii=False)
+
+
 def _final_target(plan: ExecutionPlan) -> Monster:
     snapshot, options = plan.candidate_snapshot, plan.planning_options
     return Monster(
@@ -206,10 +254,10 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
             bool(request.get("target_alpha", False)),
             bool(request.get("allow_ditto", True)),
             "steps" if request.get("strategy") == "steps" else "inventory",
-            "late",
+            "chain" if request.get("nature_strategy") == "chain" else "late",
             bool(request.get("allow_alpha_materials", False)),
             frozenset(request.get("excluded_ids") or ()),
-            "lock_all",
+            str(request.get("intermediate_gender_strategy") or "lock_all"),
             bool(request.get("need_hidden_ability", False)),
             selected_moves,
             bool(request.get("convert_maternal_with_ditto", False)),

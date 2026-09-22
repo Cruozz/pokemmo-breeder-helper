@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.4.5"
+        versionCode = 10
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
           abiFilters += listOf("arm64-v8a", "x86_64")
@@ -52,6 +52,7 @@ val plannerPythonDir = layout.buildDirectory.dir("generated/python/planner")
 val syncPlannerPython by tasks.registering(Sync::class) {
   from(rootProject.projectDir.parentFile) {
     include("models.py")
+    include("storage.py")
     include("nature_data.py")
     include("species_data.py")
     include("reference_data.py")

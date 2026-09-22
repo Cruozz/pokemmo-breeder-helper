@@ -94,6 +94,21 @@ class InventoryRepository(private val context: Context) {
     replace(workspace.current.copy(session = session))
   }
 
+  fun editInventory(items: List<MonsterRecord>) {
+    require(items.map { it.id }.distinct().size == items.size) { "素材编号不能重复。" }
+    val previous = workspace.current.inventory.associateBy { it.id }
+    val next = items.associateBy { it.id }
+    val changed = (previous.keys + next.keys).filter { previous[it] != next[it] }.toSet()
+    val session = workspace.current.session
+    val plan = session?.response?.plan
+    val affected = plan?.steps?.any { !it.completed && (it.parentAId in changed || it.parentBId in changed) } == true ||
+      plan?.retainedMaterials?.any { it.id in changed } == true
+    val updatedSession = if (affected && plan != null && session != null) session.copy(
+      response = session.response.copy(plan = plan.copy(needsReplan = true,
+        replanReason = "路线使用的素材已修改或删除，请按原目标重新规划。"))) else session
+    replace(workspace.current.copy(inventory = items, session = updatedSession))
+  }
+
   fun clearPlanSession(target: PlanRequest? = loadTarget()) {
     replace(workspace.current.copy(session = null, target = target), checkpoint = false, clearRoutes = true)
   }

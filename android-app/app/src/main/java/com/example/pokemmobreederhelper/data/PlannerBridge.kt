@@ -20,6 +20,15 @@ class PlannerBridge(context: Context) {
     return AppJson.codec.decodeFromString<SpeciesSearchResponse>(raw).items
   }
 
+  fun duplicateGroups(inventoryJson: String): List<List<String>> =
+    AppJson.codec.decodeFromString(module.callAttr("inventory_duplicates", inventoryJson).toString())
+
+  fun speciesIcons(): Map<String, Int> = AppJson.codec.decodeFromString(module.callAttr("species_icons").toString())
+  fun speciesReference(species: String): List<String> = AppJson.codec.decodeFromString(module.callAttr("species_reference", species).toString())
+
+  fun validateMaterial(material: MonsterRecord): MonsterRecord =
+    AppJson.codec.decodeFromString(module.callAttr("validate_material", AppJson.codec.encodeToString(material)).toString())
+
   fun generatePlan(inventoryJson: String, request: PlanRequest): PlannerResponse {
     val requestJson = AppJson.codec.encodeToString(request)
     val raw = module.callAttr("generate_plan", inventoryJson, requestJson).toString()

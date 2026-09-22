@@ -69,6 +69,8 @@ data class SpeciesSearchResponse(val items: List<SpeciesSuggestion> = emptyList(
 @Serializable
 data class PlanRequest(
   val species: String,
+  @SerialName("nature_strategy") val natureStrategy: String = "late",
+  @SerialName("intermediate_gender_strategy") val intermediateGenderStrategy: String = "lock_all",
   val nature: String = "",
   val ivs: List<String> = List(6) { "X" },
   @SerialName("target_alpha") val targetAlpha: Boolean = false,

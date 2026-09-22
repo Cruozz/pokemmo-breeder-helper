@@ -92,19 +92,29 @@ fun MainScreen(
   val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
     if (uri != null) viewModel.exportInventory(uri)
   }
+  var showMenu by remember { mutableStateOf(false) }
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
     topBar = {
-      if (LocalConfiguration.current.screenHeightDp >= 480) {
       TopAppBar(
         title = {
-          Column {
-            Text("PokeMMO 孵蛋助手", fontWeight = FontWeight.SemiBold)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            PokemonPortrait(null, Modifier.size(28.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("PokeMMO 孵蛋助手", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
           }
-        }
+        },
+        actions = {
+          Box {
+            TextButton(onClick = { showMenu = true }) { Text("更多") }
+            androidx.compose.material3.DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+              androidx.compose.material3.DropdownMenuItem(text = { Text("导出库存") }, enabled = !state.isPlanning, onClick = { showMenu = false; exporter.launch("pokemmo-inventory.json") })
+              androidx.compose.material3.DropdownMenuItem(text = { Text("撤销上次操作") }, enabled = state.canUndo && !state.isPlanning, onClick = { showMenu = false; confirmUndo = true })
+            }
+          }
+        },
       )
-      }
     },
   ) { innerPadding ->
     Column(Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
@@ -120,10 +130,6 @@ fun MainScreen(
           text = { Text("孵蛋规划") },
         )
       }
-      FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = { exporter.launch("pokemmo-inventory.json") }, enabled = !state.isPlanning) { Text("导出库存") }
-        TextButton(onClick = { confirmUndo = true }, enabled = state.canUndo && !state.isPlanning) { Text("撤销上次操作") }
-      }
       if (state.message.isNotBlank() || state.error.isNotBlank()) {
         MessageBanner(
           text = state.error.ifBlank { state.message },
@@ -133,12 +139,7 @@ fun MainScreen(
       }
       when (state.tab) {
         MainTab.Inventory ->
-          InventoryScreen(
-            state = state,
-            onImport = { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) },
-            onQueryChange = viewModel::setInventoryQuery,
-            onAccountChange = viewModel::setAccountFilter,
-          )
+          PokedexInventory(state, viewModel) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
         MainTab.Planner -> PlannerScreen(state, viewModel)
       }
     }
@@ -158,6 +159,13 @@ fun MainScreen(
   state.pendingStep?.let { step ->
     CompletionDialog(step, state.plannerResponse?.plan?.targetNature.orEmpty(),
       viewModel::dismissCompletion, viewModel::completeStep, viewModel::markInProgress)
+  }
+  state.editingMaterial?.let { MaterialEditor(it, state.materialError, state.isPlanning, viewModel::dismissMaterialEditor, viewModel::saveMaterial, viewModel::searchMaterialSpecies) }
+  DuplicateReview(state, viewModel)
+  state.referenceLines?.let { lines ->
+    AlertDialog(onDismissRequest = viewModel::dismissReference, title = { Text("精灵资料") },
+      text = { LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) { items(lines) { Text(it) } } },
+      confirmButton = { TextButton(onClick = viewModel::dismissReference) { Text("关闭") } })
   }
 }
 
@@ -215,118 +223,6 @@ private fun MessageBanner(text: String, isError: Boolean, onDismiss: () -> Unit)
         style = MaterialTheme.typography.bodyMedium,
       )
       TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 44.dp)) { Text("知道了") }
-    }
-  }
-}
-
-@Composable
-private fun InventoryScreen(
-  state: MainScreenUiState,
-  onImport: () -> Unit,
-  onQueryChange: (String) -> Unit,
-  onAccountChange: (String) -> Unit,
-) {
-  val accounts = remember(state.inventory) { listOf("全部账号") + state.inventory.map { it.account }.distinct().sorted() }
-  val query = state.inventoryQuery.trim().lowercase()
-  val filtered =
-    remember(state.inventory, query, state.accountFilter) {
-      state.inventory.filter { monster ->
-        val accountMatches = state.accountFilter == "全部账号" || monster.account == state.accountFilter
-        val textMatches =
-          query.isBlank() || listOf(
-            monster.species,
-            monster.nature,
-            monster.account,
-            monster.positionLabel,
-            monster.ivText,
-            monster.eggGroups.joinToString(" "),
-          ).any { query in it.lowercase() }
-        accountMatches && textMatches
-      }
-    }
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(12.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    item {
-      InventoryHeader(state.inventory, filtered.size, onImport)
-    }
-    item {
-      OutlinedTextField(
-        value = state.inventoryQuery,
-        onValueChange = onQueryChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("搜索精灵、账号、位置、性格或蛋组") },
-        singleLine = true,
-      )
-    }
-    item {
-      LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(accounts) { account ->
-          FilterChip(
-            selected = state.accountFilter == account,
-            onClick = { onAccountChange(account) },
-            label = { Text(account, maxLines = 1) },
-          )
-        }
-      }
-    }
-    if (filtered.isEmpty()) {
-      item {
-        EmptyInventory(hasInventory = state.inventory.isNotEmpty(), onImport = onImport)
-      }
-    } else {
-      items(filtered, key = { it.id }) { monster -> MonsterCard(monster) }
-    }
-  }
-}
-
-@Composable
-private fun InventoryHeader(inventory: List<MonsterRecord>, showing: Int, onImport: () -> Unit) {
-  val verified = inventory.count { it.verified }
-  val accounts = inventory.map { it.account }.distinct().size
-  Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
-      val compact = maxWidth < 480.dp
-      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (compact) {
-          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            InventoryStats(inventory.size, verified, accounts, showing)
-            Button(onClick = onImport, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-              Text("导入电脑 JSON")
-            }
-          }
-        } else {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { InventoryStats(inventory.size, verified, accounts, showing) }
-            Button(onClick = onImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入电脑 JSON") }
-          }
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun InventoryStats(total: Int, verified: Int, accounts: Int, showing: Int) {
-  Column {
-    Text("手机库存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    Text("共 $total 只 · 已确认 $verified 只 · $accounts 个账号 · 当前显示 $showing 只")
-  }
-}
-
-@Composable
-private fun EmptyInventory(hasInventory: Boolean, onImport: () -> Unit) {
-  OutlinedCard {
-    Column(
-      Modifier.fillMaxWidth().padding(24.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Text(if (hasInventory) "没有符合筛选条件的素材" else "手机里还没有素材库存", fontWeight = FontWeight.SemiBold)
-      Text(if (hasInventory) "换个关键词或账号试试。" else "在电脑版素材库存中导出 JSON，再传到手机导入。")
-      if (!hasInventory) Button(onClick = onImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("选择 JSON 文件") }
     }
   }
 }
@@ -548,6 +444,7 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
               preview = preview,
               excludedMaterialAction = if (preview && !state.isPlanning) viewModel::excludePreviewMaterial else null,
               inventoryIds = state.inventory.map { it.id }.toSet(),
+              onMarkInProgress = if (!preview && !state.isPlanning) viewModel::toggleInProgress else null,
             )
           }
         }
@@ -605,6 +502,8 @@ private fun PlanViewChooser(selected: PlanViewMode, onSelect: (PlanViewMode) -> 
 private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel) {
   var advancedExpanded by rememberSaveable { mutableStateOf(false) }
   val activeAdvancedOptions = listOf(
+    state.natureStrategy == "chain",
+    state.intermediateGenderStrategy != "lock_all",
     state.targetAlpha,
     state.allowDitto,
     state.convertMaternalWithDitto,
@@ -614,7 +513,13 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
   ).count { it }
   OutlinedCard {
     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("目标与规则", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        PokemonPortrait(state.selectedSpecies?.id ?: 447)
+        Column(Modifier.weight(1f)) {
+          Text("目标与规则", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+          Text("${state.ivs.count { it == "31" }}V · ${state.nature.ifBlank { "性格不限" }}", color = MaterialTheme.colorScheme.secondary)
+        }
+      }
       OutlinedTextField(
         value = state.speciesQuery,
         onValueChange = viewModel::setSpeciesQuery,
@@ -632,6 +537,7 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
           color = MaterialTheme.colorScheme.secondary,
           style = MaterialTheme.typography.bodySmall,
         )
+        TextButton(onClick = viewModel::showSpeciesReference) { Text("查看分布与遗传来源") }
       }
       NaturePicker(state.nature, viewModel::setNature)
       Text("遗传技能（${state.targetMoves.size}/4）", fontWeight = FontWeight.SemiBold)
@@ -675,6 +581,16 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
       }
       if (advancedExpanded) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          OptionSwitch("全程锁性格", "不变石链；关闭时逐级尝试目标性格", state.natureStrategy == "chain") {
+            viewModel.setNatureStrategy(if (it) "chain" else "late")
+          }
+          Text("中间代性别", fontWeight = FontWeight.SemiBold)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("lock_all" to "全程锁定", "smart" to "智能锁定", "minimal" to "尽量不锁").forEach { (key, label) ->
+              FilterChip(selected = state.intermediateGenderStrategy == key,
+                onClick = { viewModel.setIntermediateGenderStrategy(key) }, label = { Text(label) })
+            }
+          }
           OptionSwitch("孵化头目成品", "关闭时只规划普通成品", state.targetAlpha, viewModel::setTargetAlpha)
           OptionSwitch("允许使用百变怪", "可参与母体或其他支线", state.allowDitto, viewModel::setAllowDitto)
           OptionSwitch(
@@ -789,6 +705,8 @@ private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, complete
   Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
+        PokemonPortrait(plan.finalTargetSpeciesId, Modifier.size(48.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
           "${plan.targetSpecies} · ${plan.targetIvCount}V ${plan.targetNature}",
           modifier = Modifier.weight(1f),

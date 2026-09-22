@@ -102,6 +102,7 @@ internal fun BreedingMindMap(
   preview: Boolean = false,
   excludedMaterialAction: ((String) -> Unit)? = null,
   inventoryIds: Set<String> = emptySet(),
+  onMarkInProgress: ((ExecutionStepRecord) -> Unit)? = null,
 ) {
   val density = LocalDensity.current
   val nodeWidth = with(density) { 320.dp.toPx() }
@@ -210,11 +211,16 @@ internal fun BreedingMindMap(
       Modifier
         .fillMaxSize()
         .transformable(transformableState)
-        .pointerInput(layout, scale, translation) {
-          detectTapGestures { point ->
+        .pointerInput(layout, scale, translation, preview, onMarkInProgress) {
+          detectTapGestures(onDoubleTap = { point ->
+            val logicalPoint = (point - translation) / scale
+            val node = layout.nodes.lastOrNull { logicalPoint in it.bounds }?.node
+            node?.step?.takeIf { !preview && !plan.needsReplan && it.child.id !in completed && completed.containsAll(it.dependencies) }
+              ?.let { onMarkInProgress?.invoke(it) }
+          }, onTap = { point ->
             val logicalPoint = (point - translation) / scale
             selected = layout.nodes.lastOrNull { logicalPoint in it.bounds }?.node
-          }
+          })
         },
     ) {
       withTransform({
@@ -299,6 +305,8 @@ internal fun BreedingMindMap(
       onToggle = if (preview) null else node.step?.let { step -> { onToggleStep(step); selected = null } },
       onExclude = node.materialId?.takeIf { preview && !node.historical && !node.purchase && it in inventoryIds }
         ?.let { id -> excludedMaterialAction?.let { action -> { action(id); selected = null } } },
+      onMemo = node.step?.takeIf { !preview && !plan.needsReplan && it.child.id !in completed && completed.containsAll(it.dependencies) }
+        ?.let { step -> onMarkInProgress?.let { action -> { action(step); selected = null } } },
     )
   }
 }
@@ -319,6 +327,7 @@ private fun RouteNodeDialog(
   onDismiss: () -> Unit,
   onToggle: (() -> Unit)?,
   onExclude: (() -> Unit)? = null,
+  onMemo: (() -> Unit)? = null,
 ) {
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -332,6 +341,9 @@ private fun RouteNodeDialog(
           Text("父母 A：${step.parentALabel}")
           Text("父母 B：${step.parentBLabel}")
           Text("本步道具：${step.itemText}", fontWeight = FontWeight.SemiBold)
+        }
+        if (onMemo != null) OutlinedButton(onClick = onMemo, modifier = Modifier.fillMaxWidth()) {
+          Text(if (node.step?.inProgress == true) "取消正在孵化" else "标记正在孵化")
         }
       }
     },

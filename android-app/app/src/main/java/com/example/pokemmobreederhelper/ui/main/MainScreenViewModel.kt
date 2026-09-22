@@ -36,6 +36,8 @@ data class MainScreenUiState(
   val speciesSuggestions: List<SpeciesSuggestion> = emptyList(),
   val selectedSpecies: SpeciesSuggestion? = null,
   val nature: String = "",
+  val natureStrategy: String = "late",
+  val intermediateGenderStrategy: String = "lock_all",
   val targetMoves: List<String> = emptyList(),
   val availableMoves: List<String> = emptyList(),
   val ivs: List<String> = List(6) { "X" },
@@ -58,6 +60,11 @@ data class MainScreenUiState(
   val planningFailure: PlannerResponse? = null,
   val pendingStep: ExecutionStepRecord? = null,
   val canUndo: Boolean = false,
+  val editingMaterial: MonsterRecord? = null,
+  val materialError: String = "",
+  val duplicateGroups: List<List<String>>? = null,
+  val speciesIcons: Map<String, Int> = emptyMap(),
+  val referenceLines: List<String>? = null,
 )
 
 private fun MainScreenUiState.withRequest(request: PlanRequest): MainScreenUiState = copy(
@@ -66,6 +73,7 @@ private fun MainScreenUiState.withRequest(request: PlanRequest): MainScreenUiSta
   allowAlphaMaterials = request.allowAlphaMaterials, needHiddenAbility = request.needHiddenAbility,
   convertMaternalWithDitto = request.convertMaternalWithDitto, lockGender = request.lockGender,
   targetGender = request.targetGender, targetMoves = request.targetMoves,
+  natureStrategy = request.natureStrategy, intermediateGenderStrategy = request.intermediateGenderStrategy,
 )
 
 class MainScreenViewModel(application: Application) : AndroidViewModel(application) {
@@ -89,6 +97,10 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   val uiState: StateFlow<MainScreenUiState> = _uiState.asStateFlow()
 
   init {
+    viewModelScope.launch {
+      val icons = withContext(Dispatchers.Default) { runCatching { plannerBridge.speciesIcons() }.getOrDefault(emptyMap()) }
+      _uiState.update { it.copy(speciesIcons = icons) }
+    }
     val species = _uiState.value.speciesQuery
     if (species.isNotBlank()) viewModelScope.launch {
       val match = withContext(Dispatchers.Default) {
@@ -101,6 +113,87 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun selectTab(tab: MainTab) = _uiState.update { it.copy(tab = tab) }
+
+  fun editMaterial(material: MonsterRecord? = null) {
+    if (_uiState.value.isPlanning) return
+    _uiState.update { it.copy(editingMaterial = material ?: MonsterRecord(id = java.util.UUID.randomUUID().toString()), materialError = "") }
+  }
+
+  suspend fun searchMaterialSpecies(query: String): List<SpeciesSuggestion> = withContext(Dispatchers.Default) {
+    if (query.isBlank()) emptyList() else plannerBridge.searchSpecies(query, 6)
+  }
+
+  fun dismissMaterialEditor() {
+    if (!_uiState.value.isPlanning) _uiState.update { it.copy(editingMaterial = null, materialError = "") }
+  }
+
+  fun saveMaterial(material: MonsterRecord) {
+    val state = _uiState.value
+    if (state.isPlanning || state.editingMaterial?.id != material.id) return
+    _uiState.update { it.copy(isPlanning = true, materialError = "") }
+    viewModelScope.launch {
+      runCatching {
+        val validated = withContext(Dispatchers.Default) { plannerBridge.validateMaterial(material) }
+        val items = state.inventory.toMutableList()
+        val index = items.indexOfFirst { it.id == validated.id }
+        if (index < 0) items.add(validated) else items[index] = validated
+        withContext(Dispatchers.IO) { repository.editInventory(items) }
+        refreshInventoryState("素材已保存")
+      }.onFailure { error -> _uiState.update { it.copy(isPlanning = false, materialError = error.message ?: "保存失败") } }
+    }
+  }
+
+  fun deleteMaterials(ids: Set<String>) = changeInventory("已删除 ${ids.size} 只素材") { items -> items.filterNot { it.id in ids } }
+  fun clearInventory() = changeInventory("素材库已清空，可撤销恢复") { emptyList() }
+  fun verifyMaterials(ids: Set<String>) = changeInventory("选中素材已确认") { items -> items.map { if (it.id in ids) it.copy(verified = true) else it } }
+
+  private fun changeInventory(message: String, transform: (List<MonsterRecord>) -> List<MonsterRecord>) {
+    if (_uiState.value.isPlanning) return
+    val items = transform(_uiState.value.inventory)
+    if (items == _uiState.value.inventory) return
+    _uiState.update { it.copy(isPlanning = true) }
+    viewModelScope.launch {
+      runCatching { withContext(Dispatchers.IO) { repository.editInventory(items) }; refreshInventoryState(message) }
+        .onFailure { fail(it) }
+    }
+  }
+
+  private fun refreshInventoryState(message: String) {
+    val session = repository.loadPlanSession()
+    lastPlanningRequest = null
+    _uiState.update { it.copy(inventory = repository.inventory.value, plannerResponse = session?.response,
+      completedChildIds = session?.completedChildIds.orEmpty(), canUndo = repository.canUndo,
+      pendingResponse = null, previewRequest = null, showingSuggestion = false, planningFailure = null,
+      pendingStep = null, editingMaterial = null, duplicateGroups = null, materialError = "",
+      isPlanning = false, message = message, error = "") }
+  }
+
+  fun checkDuplicates() {
+    if (_uiState.value.isPlanning) return
+    val inventory = repository.inventoryJson()
+    _uiState.update { it.copy(isPlanning = true) }
+    viewModelScope.launch {
+      runCatching { withContext(Dispatchers.Default) { plannerBridge.duplicateGroups(inventory) } }
+        .onSuccess { groups -> _uiState.update { it.copy(duplicateGroups = groups, isPlanning = false) } }
+        .onFailure { fail(it) }
+    }
+  }
+
+  fun dismissDuplicates() = _uiState.update { it.copy(duplicateGroups = null) }
+  fun dismissReference() = _uiState.update { it.copy(referenceLines = null) }
+  fun showSpeciesReference() {
+    val species = _uiState.value.selectedSpecies?.displayName ?: _uiState.value.speciesQuery
+    viewModelScope.launch {
+      runCatching { withContext(Dispatchers.Default) { plannerBridge.speciesReference(species) } }
+        .onSuccess { lines -> _uiState.update { it.copy(referenceLines = lines) } }
+        .onFailure { error -> _uiState.update { it.copy(error = error.message ?: "资料读取失败") } }
+    }
+  }
+
+  fun toggleInProgress(step: ExecutionStepRecord) {
+    toggleStep(step)
+    if (_uiState.value.pendingStep?.child?.id == step.child.id) markInProgress()
+  }
 
   fun setInventoryQuery(value: String) = _uiState.update { it.copy(inventoryQuery = value) }
 
@@ -184,6 +277,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
       allowAlphaMaterials = state.allowAlphaMaterials, needHiddenAbility = state.needHiddenAbility,
       convertMaternalWithDitto = state.convertMaternalWithDitto, lockGender = state.lockGender,
       targetGender = state.targetGender, targetMoves = state.targetMoves)
+      .copy(natureStrategy = state.natureStrategy, intermediateGenderStrategy = state.intermediateGenderStrategy)
     runCatching { repository.clearPlanSession(target) }.onSuccess {
       planningGeneration++
       planningJob?.cancel()
@@ -198,6 +292,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun setNature(value: String) = _uiState.update { it.copy(nature = value) }
+  fun setNatureStrategy(value: String) = _uiState.update { it.copy(natureStrategy = value) }
+  fun setIntermediateGenderStrategy(value: String) = _uiState.update { it.copy(intermediateGenderStrategy = value) }
 
   fun setIv(index: Int, value: String) {
     if (index !in 0..5) return
@@ -234,6 +330,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     val request =
       PlanRequest(
         species = species,
+        natureStrategy = state.natureStrategy,
+        intermediateGenderStrategy = state.intermediateGenderStrategy,
         nature = state.nature.trim(),
         ivs = state.ivs.map { it.ifBlank { "X" } },
         targetAlpha = state.targetAlpha,
