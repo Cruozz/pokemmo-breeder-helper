@@ -79,6 +79,7 @@ internal data class RouteNode(
   val gender: String = "",
   val historical: Boolean = false,
   val children: List<RouteNode> = emptyList(),
+  val materialId: String? = null,
 )
 
 private data class PlacedRouteNode(val node: RouteNode, val bounds: Rect)
@@ -98,6 +99,9 @@ internal fun BreedingMindMap(
   completed: Set<String>,
   onToggleStep: (ExecutionStepRecord) -> Unit,
   modifier: Modifier = Modifier,
+  preview: Boolean = false,
+  excludedMaterialAction: ((String) -> Unit)? = null,
+  inventoryIds: Set<String> = emptySet(),
 ) {
   val density = LocalDensity.current
   val nodeWidth = with(density) { 320.dp.toPx() }
@@ -248,6 +252,7 @@ internal fun BreedingMindMap(
             itemAtlas = itemAtlas,
             textMeasurer = textMeasurer,
             paused = plan.needsReplan,
+            preview = preview,
           )
         }
       }
@@ -289,9 +294,11 @@ internal fun BreedingMindMap(
     RouteNodeDialog(
       node = node,
       completed = node.step?.child?.id in completed,
-      ready = !plan.needsReplan && node.step?.let { it.child.id !in completed && completed.containsAll(it.dependencies) } == true,
+      ready = !preview && !plan.needsReplan && node.step?.let { it.child.id !in completed && completed.containsAll(it.dependencies) } == true,
       onDismiss = { selected = null },
-      onToggle = node.step?.let { step -> { onToggleStep(step); selected = null } },
+      onToggle = if (preview) null else node.step?.let { step -> { onToggleStep(step); selected = null } },
+      onExclude = node.materialId?.takeIf { preview && !node.historical && !node.purchase && it in inventoryIds }
+        ?.let { id -> excludedMaterialAction?.let { action -> { action(id); selected = null } } },
     )
   }
 }
@@ -311,6 +318,7 @@ private fun RouteNodeDialog(
   ready: Boolean,
   onDismiss: () -> Unit,
   onToggle: (() -> Unit)?,
+  onExclude: (() -> Unit)? = null,
 ) {
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -328,6 +336,9 @@ private fun RouteNodeDialog(
       }
     },
     confirmButton = {
+      if (onExclude != null) {
+        Button(onClick = onExclude) { Text("本轮禁用并重算") }
+      }
       if (onToggle != null) {
         Button(onClick = onToggle, enabled = ready) {
           Text(if (completed) "已核销" else if (ready) "核对并记录结果" else "尚不可执行")
@@ -361,6 +372,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteNode(
   itemAtlas: ImageBitmap,
   textMeasurer: androidx.compose.ui.text.TextMeasurer,
   paused: Boolean = false,
+  preview: Boolean = false,
 ) {
   val node = placed.node
   val step = node.step
@@ -393,6 +405,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteNode(
   text(node.ivText.ifBlank { "个体值未记录" }, TextStyle(color = ink, fontSize = 12.sp))
   text(routeDetail(node), TextStyle(color = Color(0xFF334155), fontSize = 12.sp))
   val status = when {
+    preview && step != null -> "预览 · 未启用"
     isComplete -> "已完成"
     node.historical -> "历史来源 · 已消耗"
     step?.inProgress == true -> "孵化中"
@@ -535,6 +548,7 @@ private fun buildStepNode(
         speciesId = speciesId,
         itemKey = key,
         purchase = id.startsWith("buy:"),
+        materialId = id,
       )
   }
   val children = listOf(

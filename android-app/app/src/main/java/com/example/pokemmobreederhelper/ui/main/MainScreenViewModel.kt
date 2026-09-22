@@ -53,6 +53,8 @@ data class MainScreenUiState(
   val message: String = "",
   val error: String = "",
   val pendingResponse: PlannerResponse? = null,
+  val previewRequest: PlanRequest? = null,
+  val showingSuggestion: Boolean = false,
   val planningFailure: PlannerResponse? = null,
   val pendingStep: ExecutionStepRecord? = null,
   val canUndo: Boolean = false,
@@ -122,7 +124,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
             completedChildIds = emptySet(),
             message = "已导入 ${summary.count} 只素材，${summary.accountCount} 个账号；已确认 ${summary.verifiedCount} 只。",
             error = "",
-            pendingResponse = null, planningFailure = null, isPlanning = false, canUndo = repository.canUndo,
+            pendingResponse = null, previewRequest = null, showingSuggestion = false,
+            planningFailure = null, isPlanning = false, canUndo = repository.canUndo,
           )
         }
       }.onFailure { throwable ->
@@ -187,6 +190,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
       planningJob = null
       lastPlanningRequest = null
       _uiState.update { it.copy(plannerResponse = null, pendingResponse = null,
+        previewRequest = null, showingSuggestion = false,
         planningFailure = null, pendingStep = null, completedChildIds = emptySet(),
         isPlanning = false, canUndo = repository.canUndo, error = "",
         message = "当前规划与路线已清除，库存和已完成子代保留。") }
@@ -241,7 +245,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
         lockGender = state.lockGender,
         targetGender = state.targetGender,
         preferredMaterialIds = state.plannerResponse?.plan?.planningOptions?.preferredMaterialIds.orEmpty(),
-        excludedIds = state.plannerResponse?.plan?.planningOptions?.excludedIds.orEmpty(),
+        excludedIds = (state.previewRequest ?: state.plannerResponse?.plan?.planningOptions)
+          ?.takeIf { it.species == species }?.excludedIds.orEmpty(),
         targetMoves = state.targetMoves,
       )
     startPlanning(request)
@@ -253,7 +258,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     val inventoryJson = repository.inventoryJson()
     lastPlanningRequest = request
     _uiState.update { it.copy(isPlanning = true, error = "", message = "", speciesSuggestions = emptyList(),
-      pendingResponse = null, planningFailure = null) }
+      pendingResponse = null, planningFailure = null, pendingStep = null,
+      previewRequest = request, showingSuggestion = true) }
     planningJob = viewModelScope.launch {
       val response = runCatching {
         withContext(Dispatchers.Default) { plannerBridge.generatePlan(inventoryJson, request) }
@@ -268,7 +274,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
           pendingResponse = response.takeIf { result -> result.ok },
           planningFailure = response.takeUnless { result -> result.ok },
           error = if (response.ok) "" else response.error.ifBlank { "没有找到可执行路线。" },
-          message = if (response.ok) "建议已生成。确认启用前，原路线和库存不会改变。" else "",
+          message = "",
         )
       }
     }
@@ -287,7 +293,31 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     lastPlanningRequest?.let(::startPlanning) ?: suggestNext()
   }
 
-  fun dismissSuggestion() = _uiState.update { it.copy(pendingResponse = null) }
+  fun showSuggestion(value: Boolean) = _uiState.update { it.copy(showingSuggestion = value, pendingStep = null) }
+
+  fun excludePreviewMaterial(id: String) {
+    val state = _uiState.value
+    if (state.isPlanning || !state.showingSuggestion) return
+    val plan = state.pendingResponse?.plan ?: return
+    val request = state.previewRequest ?: return
+    val used = plan.steps.any { it.parentAId == id || it.parentBId == id }
+    if (!used || state.inventory.none { it.id == id }) return
+    startPlanning(request.copy(excludedIds = request.excludedIds + id))
+  }
+
+  fun restorePreviewMaterials() {
+    val state = _uiState.value
+    if (state.isPlanning || !state.showingSuggestion) return
+    val request = state.previewRequest ?: return
+    startPlanning(request.copy(excludedIds = emptySet()))
+  }
+
+  fun dismissSuggestion() {
+    if (_uiState.value.isPlanning) return
+    lastPlanningRequest = null
+    _uiState.update { it.copy(pendingResponse = null, previewRequest = null,
+      showingSuggestion = false, planningFailure = null, error = "") }
+  }
 
   fun activateSuggestion() {
     val state = _uiState.value
@@ -297,6 +327,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
       repository.savePlanSession(SavedPlanSession(response, request = response.plan?.planningOptions))
     }.onSuccess {
       _uiState.update { it.copy(plannerResponse = response, completedChildIds = emptySet(),
+        previewRequest = null, showingSuggestion = false,
         pendingResponse = null, canUndo = repository.canUndo, error = "", message = "新路线已启用；点击可执行节点核对并完成。")
         .let { updated -> response.plan?.planningOptions?.let { request -> updated.withRequest(request) } ?: updated } }
     }.onFailure { fail(it) }
@@ -304,13 +335,16 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
 
   fun toggleStep(step: ExecutionStepRecord) {
     val state = _uiState.value
-    if (state.isPlanning) return
+    if (state.isPlanning || state.showingSuggestion) return
+    val activeStep = state.plannerResponse?.plan?.steps?.firstOrNull {
+      it.child.id == step.child.id && it.number == step.number
+    } ?: return
     if (state.plannerResponse?.rulesVersion != "0.2.8") {
       _uiState.update { it.copy(error = "请重新生成并启用路线。") }; return
     }
-    if (state.plannerResponse.plan?.needsReplan == true || step.child.id in state.completedChildIds ||
-      !state.completedChildIds.containsAll(step.dependencies)) return
-    _uiState.update { it.copy(pendingStep = step) }
+    if (state.plannerResponse.plan?.needsReplan == true || activeStep.child.id in state.completedChildIds ||
+      !state.completedChildIds.containsAll(activeStep.dependencies)) return
+    _uiState.update { it.copy(pendingStep = activeStep) }
   }
 
   fun dismissCompletion() = _uiState.update { it.copy(pendingStep = null) }
@@ -333,6 +367,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
           repository.replace(WorkspaceSnapshot(result.inventory, SavedPlanSession(next, completed, next.plan?.planningOptions)))
         }
         _uiState.update { it.copy(inventory = result.inventory, plannerResponse = next,
+          previewRequest = null, showingSuggestion = false,
           completedChildIds = completed, pendingResponse = null, planningFailure = null, isPlanning = false,
           canUndo = repository.canUndo, message = result.message, error = "") }
         // Save the completed egg first. Suggestion generation must not replace
@@ -366,6 +401,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { it.copy(inventory = repository.inventory.value,
           plannerResponse = session?.response, completedChildIds = session?.completedChildIds.orEmpty(),
           pendingResponse = null, planningFailure = null, pendingStep = null, canUndo = repository.canUndo,
+          previewRequest = null, showingSuggestion = false,
           message = "已恢复上次操作前的库存与路线。", error = "")
           .let { updated -> session?.request?.let { updated.withRequest(it) } ?: updated } }
       }

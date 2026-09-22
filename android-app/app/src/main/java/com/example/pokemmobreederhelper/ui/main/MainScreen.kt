@@ -374,13 +374,17 @@ private fun StatusPill(text: String, accent: Boolean) {
 }
 
 @Composable
-private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewModel) {
-  val plan = state.plannerResponse?.plan
+internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewModel) {
+  val preview = state.showingSuggestion
+  val displayedResponse = if (preview) state.pendingResponse else state.plannerResponse
+  val plan = displayedResponse?.plan
+  val displayedCompleted = if (preview) emptySet() else state.completedChildIds
   val listState = rememberLazyListState()
   var formExpanded by rememberSaveable { mutableStateOf(plan == null) }
   var stepFilter by rememberSaveable { mutableStateOf(PlanStepFilter.Actionable) }
   var planView by rememberSaveable { mutableStateOf(PlanViewMode.MindMap) }
   var showColorGuide by rememberSaveable { mutableStateOf(false) }
+  var showMaterials by rememberSaveable { mutableStateOf(false) }
   val mapHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).coerceIn(300f, 560f).dp
   LaunchedEffect(state.pendingResponse?.plan?.id) {
     if (state.pendingResponse != null) listState.scrollToItem(0)
@@ -392,7 +396,7 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
   LaunchedEffect(plan?.id) {
     if (plan != null) {
       formExpanded = false
-      stepFilter = PlanStepFilter.Actionable
+      stepFilter = if (preview) PlanStepFilter.All else PlanStepFilter.Actionable
       planView = PlanViewMode.MindMap
       listState.scrollToItem(0)
     }
@@ -409,19 +413,34 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
         Text("清除当前规划与路线")
       }
     }
-    state.pendingResponse?.let { suggestion ->
+    if (state.plannerResponse != null && state.previewRequest != null) {
+      item {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          FilterChip(selected = preview, onClick = { viewModel.showSuggestion(true) }, label = { Text("预览建议") })
+          FilterChip(selected = !preview, onClick = { viewModel.showSuggestion(false) }, label = { Text("执行路线") })
+        }
+      }
+    }
+    if (preview && state.pendingResponse != null) {
       item {
         OutlinedCard {
           Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("新路线建议 · 尚未启用", style = MaterialTheme.typography.titleMedium)
-            Text("${suggestion.plan?.targetSpecies} · ${suggestion.plan?.targetIvCount}V ${suggestion.plan?.targetNature}")
-            Text("${suggestion.plan?.phaseLabel} · ${suggestion.plan?.steps?.size ?: 0} 步")
-            PlanReport(suggestion.report)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               Button(onClick = viewModel::activateSuggestion, enabled = !state.isPlanning) { Text("确认启用建议") }
-              TextButton(onClick = viewModel::dismissSuggestion) { Text("保留原路线") }
+              TextButton(onClick = viewModel::dismissSuggestion, enabled = !state.isPlanning) { Text(if (state.plannerResponse != null) "保留原路线" else "放弃建议") }
             }
           }
+        }
+      }
+    }
+    if (preview && state.previewRequest?.excludedIds?.isNotEmpty() == true) {
+      item {
+        Column {
+          Text("本轮已禁用 ${state.previewRequest.excludedIds.size} 只素材")
+          Text(state.inventory.filter { it.id in state.previewRequest.excludedIds }
+            .joinToString("、") { "${it.species} ${it.positionLabel}" }, style = MaterialTheme.typography.bodySmall)
+          TextButton(onClick = viewModel::restorePreviewMaterials, enabled = !state.isPlanning) { Text("恢复全部并重算") }
         }
       }
     }
@@ -453,12 +472,12 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
     if (formExpanded || plan == null) {
       item { PlannerForm(state, viewModel) }
     }
-    state.plannerResponse?.let { response ->
+    displayedResponse?.let { response ->
       val responsePlan = response.plan
       if (responsePlan != null) {
         val visibleSteps = responsePlan.steps.filter { step ->
-          val complete = step.child.id in state.completedChildIds
-          val ready = !state.isPlanning && !responsePlan.needsReplan && !complete && state.completedChildIds.containsAll(step.dependencies)
+          val complete = step.child.id in displayedCompleted
+          val ready = !preview && !state.isPlanning && !responsePlan.needsReplan && !complete && displayedCompleted.containsAll(step.dependencies)
           when (stepFilter) {
             PlanStepFilter.All -> true
             PlanStepFilter.Actionable -> ready
@@ -470,11 +489,12 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
           PlanSummary(
             plan = responsePlan,
             candidateCount = response.candidateCount,
-            completed = state.completedChildIds,
+            completed = displayedCompleted,
             onEdit = { formExpanded = !formExpanded },
+            preview = preview,
           )
         }
-        if (responsePlan.needsReplan || response.rulesVersion != "0.2.8") {
+        if (!preview && (responsePlan.needsReplan || response.rulesVersion != "0.2.8")) {
           item {
             OutlinedCard {
               Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -492,6 +512,22 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
         if (responsePlan.steps.isNotEmpty()) {
           item { PlanViewChooser(planView) { planView = it } }
         }
+        if (preview) {
+          val materialIds = responsePlan.steps.flatMap { listOf(it.parentAId, it.parentBId) }.toSet()
+          val materials = state.inventory.filter { it.id in materialIds }
+          if (materials.isNotEmpty()) {
+            item { TextButton(onClick = { showMaterials = !showMaterials }) { Text(if (showMaterials) "收起本轮素材" else "本轮素材 · ${materials.size} 只") } }
+            if (showMaterials) items(materials, key = { "preview-material-${it.id}" }) { material ->
+              OutlinedCard {
+                Column(Modifier.padding(12.dp)) {
+                  Text("${material.species} · ${material.ivText}")
+                  Text("${material.account} · ${material.positionLabel.ifBlank { "未定位" }} · ${material.nature}", style = MaterialTheme.typography.bodySmall)
+                  TextButton(onClick = { viewModel.excludePreviewMaterial(material.id) }, enabled = !state.isPlanning) { Text("本轮禁用并重算") }
+                }
+              }
+            }
+          }
+        }
         if (responsePlan.steps.isNotEmpty() && planView == PlanViewMode.MindMap) {
           item {
             Column {
@@ -506,30 +542,33 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
           item {
             BreedingMindMap(
               plan = responsePlan,
-              completed = state.completedChildIds,
+              completed = displayedCompleted,
               onToggleStep = viewModel::toggleStep,
               modifier = Modifier.fillMaxWidth().height(mapHeight),
+              preview = preview,
+              excludedMaterialAction = if (preview && !state.isPlanning) viewModel::excludePreviewMaterial else null,
+              inventoryIds = state.inventory.map { it.id }.toSet(),
             )
           }
         }
-        if (responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
+        if (!preview && responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
           item {
             PlanStepFilters(
               selected = stepFilter,
               plan = responsePlan,
-              completed = state.completedChildIds,
+              completed = displayedCompleted,
               onSelect = { stepFilter = it },
             )
           }
         }
-        if (visibleSteps.isEmpty() && responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
+        if (!preview && visibleSteps.isEmpty() && responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
           item { EmptyStepFilter(stepFilter) }
         }
         if (planView == PlanViewMode.Steps) {
-          items(visibleSteps, key = { it.child.id }) { step ->
-            val complete = step.child.id in state.completedChildIds
-            val ready = !state.isPlanning && !responsePlan.needsReplan && !complete && state.completedChildIds.containsAll(step.dependencies)
-            PlanStepCard(step, complete, ready) { viewModel.toggleStep(step) }
+          items(if (preview) responsePlan.steps else visibleSteps, key = { it.child.id }) { step ->
+            val complete = step.child.id in displayedCompleted
+            val ready = !preview && !state.isPlanning && !responsePlan.needsReplan && !complete && displayedCompleted.containsAll(step.dependencies)
+            PlanStepCard(step, complete, ready, preview = preview) { viewModel.toggleStep(step) }
           }
         }
         item { PlanReport(response.report) }
@@ -743,7 +782,7 @@ private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, onCh
 }
 
 @Composable
-private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, completed: Set<String>, onEdit: () -> Unit) {
+private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, completed: Set<String>, onEdit: () -> Unit, preview: Boolean = false) {
   val completedCount = plan.steps.count { it.child.id in completed }
   val readyCount = if (plan.needsReplan) 0 else plan.steps.count { it.child.id !in completed && completed.containsAll(it.dependencies) }
   val progress = if (plan.steps.isEmpty()) 1f else completedCount.toFloat() / plan.steps.size
@@ -758,9 +797,9 @@ private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, complete
         )
         TextButton(onClick = onEdit, modifier = Modifier.heightIn(min = 48.dp)) { Text("修改目标") }
       }
-      LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+      if (!preview) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
       if (plan.phaseLabel.isNotBlank()) Text("当前阶段：${plan.phaseLabel}", fontWeight = FontWeight.SemiBold)
-      Text("本阶段 $completedCount/${plan.steps.size} 步 · 可执行 $readyCount 步 · 可选方案 $candidateCount 个")
+      Text(if (preview) "本阶段 ${plan.steps.size} 步 · 可选方案 $candidateCount 个" else "本阶段 $completedCount/${plan.steps.size} 步 · 可执行 $readyCount 步 · 可选方案 $candidateCount 个")
       Text("使用库存 ${plan.inventoryUsedCount} 只 · 交易行补充 ${plan.purchaseRequirements.size} 项")
       if (plan.steps.isEmpty()) Text("库存中已经有满足目标的素材，无需继续孵化。", color = MaterialTheme.colorScheme.secondary)
     }
@@ -805,7 +844,7 @@ private fun EmptyStepFilter(filter: PlanStepFilter) {
 }
 
 @Composable
-private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Boolean, onToggle: () -> Unit) {
+private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Boolean, preview: Boolean = false, onToggle: () -> Unit) {
   val background = when {
     complete -> MaterialTheme.colorScheme.secondaryContainer
     ready -> MaterialTheme.colorScheme.surface
@@ -822,6 +861,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
         Spacer(Modifier.width(8.dp))
         StatusPill(
           when {
+            preview -> "预览 · 未启用"
             complete -> "已完成"
             step.inProgress -> "孵化中（备注）"
             ready -> "可执行"
@@ -848,7 +888,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
           )
         }
       }
-      OutlinedButton(
+      if (!preview) OutlinedButton(
         onClick = onToggle,
         enabled = ready,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
