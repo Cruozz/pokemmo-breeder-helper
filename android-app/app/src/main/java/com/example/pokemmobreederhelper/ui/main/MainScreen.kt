@@ -4,11 +4,20 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.platform.LocalConfiguration
+import android.net.Uri
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -35,15 +45,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,26 +83,33 @@ fun MainScreen(
   viewModel: MainScreenViewModel = viewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  var pendingImport by rememberSaveable { mutableStateOf<String?>(null) }
+  var confirmUndo by rememberSaveable { mutableStateOf(false) }
   val importer =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-      if (uri != null) viewModel.importInventory(uri)
+      if (uri != null) pendingImport = uri.toString()
     }
+  val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    if (uri != null) viewModel.exportInventory(uri)
+  }
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
     topBar = {
+      if (LocalConfiguration.current.screenHeightDp >= 480) {
       TopAppBar(
         title = {
           Column {
             Text("PokeMMO 孵蛋助手", fontWeight = FontWeight.SemiBold)
-            Text("手机版 · 离线库存与规划", style = MaterialTheme.typography.labelSmall)
+            Text("安卓版 0.4.3 · 桌面规则 0.2.8", style = MaterialTheme.typography.labelSmall)
           }
         }
       )
+      }
     },
   ) { innerPadding ->
-    Column(Modifier.fillMaxSize().padding(innerPadding)) {
-      TabRow(selectedTabIndex = if (state.tab == MainTab.Inventory) 0 else 1) {
+    Column(Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
+      PrimaryTabRow(selectedTabIndex = if (state.tab == MainTab.Inventory) 0 else 1) {
         Tab(
           selected = state.tab == MainTab.Inventory,
           onClick = { viewModel.selectTab(MainTab.Inventory) },
@@ -101,6 +120,10 @@ fun MainScreen(
           onClick = { viewModel.selectTab(MainTab.Planner) },
           text = { Text("孵蛋规划") },
         )
+      }
+      FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { exporter.launch("pokemmo-inventory.json") }, enabled = !state.isPlanning) { Text("导出库存") }
+        TextButton(onClick = { confirmUndo = true }, enabled = state.canUndo && !state.isPlanning) { Text("撤销上次操作") }
       }
       if (state.message.isNotBlank() || state.error.isNotBlank()) {
         MessageBanner(
@@ -113,7 +136,7 @@ fun MainScreen(
         MainTab.Inventory ->
           InventoryScreen(
             state = state,
-            onImport = { importer.launch(arrayOf("application/json", "text/json", "text/plain")) },
+            onImport = { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) },
             onQueryChange = viewModel::setInventoryQuery,
             onAccountChange = viewModel::setAccountFilter,
           )
@@ -121,6 +144,62 @@ fun MainScreen(
       }
     }
   }
+  pendingImport?.let { selected ->
+    AlertDialog(onDismissRequest = { pendingImport = null }, title = { Text("导入电脑库存") },
+      text = { Text("将替换手机库存并清除当前路线。建议先导出库存；本次替换可用“撤销上次操作”恢复。原电脑 JSON 文件不会修改。") },
+      confirmButton = { TextButton(onClick = { pendingImport = null; viewModel.importInventory(Uri.parse(selected)) }) { Text("确认导入") } },
+      dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("取消") } })
+  }
+  if (confirmUndo) {
+    AlertDialog(onDismissRequest = { confirmUndo = false }, title = { Text("恢复上次操作前的状态？") },
+      text = { Text("同时恢复库存与路线，包括核销前的父母及步骤；游戏中的操作不会撤销。再次使用可恢复刚才的状态。") },
+      confirmButton = { TextButton(onClick = { confirmUndo = false; viewModel.undoLastAction() }) { Text("确认恢复") } },
+      dismissButton = { TextButton(onClick = { confirmUndo = false }) { Text("取消") } })
+  }
+  state.pendingStep?.let { step ->
+    CompletionDialog(step, state.plannerResponse?.plan?.targetNature.orEmpty(),
+      viewModel::dismissCompletion, viewModel::completeStep, viewModel::markInProgress)
+  }
+}
+
+@Composable
+internal fun CompletionDialog(step: ExecutionStepRecord, targetNature: String,
+  onDismiss: () -> Unit, onComplete: (String, Boolean?) -> Unit, onMemo: () -> Unit) {
+  var gender by rememberSaveable(step.child.id) { mutableStateOf("") }
+  var natureChoice by rememberSaveable(step.child.id) { mutableStateOf("") }
+  val canConfirm = (step.genderPolicy != "random" || gender.isNotEmpty()) &&
+    (!step.shouldCheckNature || natureChoice.isNotEmpty())
+  AlertDialog(onDismissRequest = onDismiss, title = { Text("完成步骤 ${step.number} 并核销") },
+    text = {
+      Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("仅在游戏中实际孵完后确认。父母会从手机库存核销；中间代入库，最终成品不入库。")
+        Text("父母 A：${step.parentALabel}\n携带：${step.itemA.ifBlank { "无" }}")
+        Text("父母 B：${step.parentBLabel}\n携带：${step.itemB.ifBlank { "无" }}")
+        if (step.requiresPurchase) Text("请确认交易行素材已购买并用于孵化，无需另行扫描入库。", color = MaterialTheme.colorScheme.error)
+        Text(step.genderInstruction)
+        if (step.genderPolicy == "random") {
+          Text("实际孵出的性别（必选）")
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("F", "M").forEach { value -> FilterChip(selected = gender == value,
+              onClick = { gender = value }, label = { Text(genderLabel(value)) }) }
+          }
+        }
+        if (step.shouldCheckNature) {
+          Text("是否爆出 $targetNature？（必选）")
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = natureChoice == "hit", onClick = { natureChoice = "hit" }, label = { Text("已爆目标性格") })
+            FilterChip(selected = natureChoice == "miss", onClick = { natureChoice = "miss" }, label = { Text("没有爆性格") })
+          }
+        }
+        OutlinedButton(onClick = onMemo, modifier = Modifier.fillMaxWidth()) {
+          Text(if (step.inProgress) "取消孵化中备注" else "只标记孵化中，不核销")
+        }
+      }
+    },
+    confirmButton = { Button(enabled = canConfirm, onClick = {
+      onComplete(gender, if (step.shouldCheckNature) natureChoice == "hit" else null)
+    }) { Text("确认已孵完") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }
 
 @Composable
@@ -209,16 +288,33 @@ private fun InventoryHeader(inventory: List<MonsterRecord>, showing: Int, onImpo
   val verified = inventory.count { it.verified }
   val accounts = inventory.map { it.account }.distinct().size
   Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-          Text("手机库存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text("共 ${inventory.size} 只 · 已确认 $verified 只 · $accounts 个账号 · 当前显示 $showing 只")
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
+      val compact = maxWidth < 480.dp
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (compact) {
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            InventoryStats(inventory.size, verified, accounts, showing)
+            Button(onClick = onImport, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+              Text("导入电脑 JSON")
+            }
+          }
+        } else {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { InventoryStats(inventory.size, verified, accounts, showing) }
+            Button(onClick = onImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入电脑 JSON") }
+          }
         }
-        Button(onClick = onImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入电脑 JSON") }
+        Text("重新导入会以电脑文件覆盖手机库存，并清除旧规划进度。", style = MaterialTheme.typography.labelMedium)
       }
-      Text("重新导入会以电脑文件覆盖手机库存，并清除旧规划进度。", style = MaterialTheme.typography.labelMedium)
     }
+  }
+}
+
+@Composable
+private fun InventoryStats(total: Int, verified: Int, accounts: Int, showing: Int) {
+  Column {
+    Text("手机库存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Text("共 $total 只 · 已确认 $verified 只 · $accounts 个账号 · 当前显示 $showing 只")
   }
 }
 
@@ -281,13 +377,65 @@ private fun StatusPill(text: String, accent: Boolean) {
 
 @Composable
 private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewModel) {
+  val plan = state.plannerResponse?.plan
+  val listState = rememberLazyListState()
+  var formExpanded by rememberSaveable { mutableStateOf(plan == null) }
+  var stepFilter by rememberSaveable { mutableStateOf(PlanStepFilter.Actionable) }
+  var planView by rememberSaveable { mutableStateOf(PlanViewMode.MindMap) }
+  val mapHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).coerceIn(300f, 560f).dp
+  LaunchedEffect(state.pendingResponse?.plan?.id) {
+    if (state.pendingResponse != null) listState.scrollToItem(0)
+  }
+  LaunchedEffect(state.planningFailure, state.isPlanning) {
+    if (state.planningFailure != null || state.isPlanning) listState.scrollToItem(0)
+  }
+
+  LaunchedEffect(plan?.id) {
+    if (plan != null) {
+      formExpanded = false
+      stepFilter = PlanStepFilter.Actionable
+      planView = PlanViewMode.MindMap
+      listState.scrollToItem(0)
+    }
+  }
+
   LazyColumn(
+    state = listState,
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(12.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     item {
-      PlannerForm(state, viewModel)
+      OutlinedButton(onClick = viewModel::clearPlanning, modifier = Modifier.fillMaxWidth()) {
+        Text("清除当前规划与路线")
+      }
+    }
+    state.pendingResponse?.let { suggestion ->
+      item {
+        OutlinedCard {
+          Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("新路线建议 · 尚未启用", style = MaterialTheme.typography.titleMedium)
+            Text("${suggestion.plan?.targetSpecies} · ${suggestion.plan?.targetIvCount}V ${suggestion.plan?.targetNature}")
+            Text("${suggestion.plan?.phaseLabel} · ${suggestion.plan?.steps?.size ?: 0} 步")
+            PlanReport(suggestion.report)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              Button(onClick = viewModel::activateSuggestion, enabled = !state.isPlanning) { Text("确认启用建议") }
+              TextButton(onClick = viewModel::dismissSuggestion) { Text("保留原路线") }
+            }
+          }
+        }
+      }
+    }
+    state.planningFailure?.let { failure ->
+      item {
+        Column(Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text("本次规划未生成", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+          Text(failure.error)
+          Text("库存与已完成步骤保留")
+          if (failure.report.isNotBlank()) PlanReport(failure.report, initiallyExpanded = true)
+          Button(onClick = viewModel::retryPlanning, enabled = !state.isPlanning) { Text("重试本次规划") }
+        }
+      }
     }
     if (state.isPlanning) {
       item {
@@ -303,14 +451,78 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
         }
       }
     }
+    if (formExpanded || plan == null) {
+      item { PlannerForm(state, viewModel) }
+    }
     state.plannerResponse?.let { response ->
-      val plan = response.plan
-      if (plan != null) {
-        item { PlanSummary(plan, response.candidateCount, state.completedChildIds) }
-        items(plan.steps, key = { it.child.id }) { step ->
+      val responsePlan = response.plan
+      if (responsePlan != null) {
+        val visibleSteps = responsePlan.steps.filter { step ->
           val complete = step.child.id in state.completedChildIds
-          val ready = !complete && state.completedChildIds.containsAll(step.dependencies)
-          PlanStepCard(step, complete, ready) { viewModel.toggleStep(step) }
+          val ready = !state.isPlanning && !responsePlan.needsReplan && !complete && state.completedChildIds.containsAll(step.dependencies)
+          when (stepFilter) {
+            PlanStepFilter.All -> true
+            PlanStepFilter.Actionable -> ready
+            PlanStepFilter.Incomplete -> !complete
+            PlanStepFilter.Completed -> complete
+          }
+        }
+        item {
+          PlanSummary(
+            plan = responsePlan,
+            candidateCount = response.candidateCount,
+            completed = state.completedChildIds,
+            onEdit = { formExpanded = !formExpanded },
+          )
+        }
+        if (responsePlan.needsReplan || response.rulesVersion != "0.2.8") {
+          item {
+            OutlinedCard {
+              Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("路线已暂停", style = MaterialTheme.typography.titleMedium)
+                Text(responsePlan.replanReason.ifBlank { "旧版路线只作备忘，请按 0.2.8 规则生成新建议。" })
+                Button(onClick = viewModel::suggestNext, enabled = !state.isPlanning) { Text("按原目标生成建议") }
+              }
+            }
+          }
+        }
+        if (responsePlan.retainedMaterials.isNotEmpty()) {
+          item { Text("已保留的母体 / 性格手", style = MaterialTheme.typography.titleMedium) }
+          items(responsePlan.retainedMaterials, key = { "retained-${it.id}" }) { MonsterCard(it) }
+        }
+        if (responsePlan.steps.isNotEmpty()) {
+          item { PlanViewChooser(planView) { planView = it } }
+        }
+        if (responsePlan.steps.isNotEmpty() && planView == PlanViewMode.MindMap) {
+          item { Text("边框 / 连线：蓝＝母体，紫＝性格手，灰蓝＝IV素材；橙色双框 / 双线＝遗传技能。底色：蓝＝公，粉＝母，灰＝无性别或未锁定。", style = MaterialTheme.typography.bodySmall) }
+          item {
+            BreedingMindMap(
+              plan = responsePlan,
+              completed = state.completedChildIds,
+              onToggleStep = viewModel::toggleStep,
+              modifier = Modifier.fillMaxWidth().height(mapHeight),
+            )
+          }
+        }
+        if (responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
+          item {
+            PlanStepFilters(
+              selected = stepFilter,
+              plan = responsePlan,
+              completed = state.completedChildIds,
+              onSelect = { stepFilter = it },
+            )
+          }
+        }
+        if (visibleSteps.isEmpty() && responsePlan.steps.isNotEmpty() && planView == PlanViewMode.Steps) {
+          item { EmptyStepFilter(stepFilter) }
+        }
+        if (planView == PlanViewMode.Steps) {
+          items(visibleSteps, key = { it.child.id }) { step ->
+            val complete = step.child.id in state.completedChildIds
+            val ready = !state.isPlanning && !responsePlan.needsReplan && !complete && state.completedChildIds.containsAll(step.dependencies)
+            PlanStepCard(step, complete, ready) { viewModel.toggleStep(step) }
+          }
         }
         item { PlanReport(response.report) }
       } else if (response.report.isNotBlank()) {
@@ -320,8 +532,39 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
   }
 }
 
+private enum class PlanStepFilter { All, Actionable, Incomplete, Completed }
+
+private enum class PlanViewMode { MindMap, Steps }
+
+@Composable
+private fun PlanViewChooser(selected: PlanViewMode, onSelect: (PlanViewMode) -> Unit) {
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FilterChip(
+      selected = selected == PlanViewMode.MindMap,
+      onClick = { onSelect(PlanViewMode.MindMap) },
+      label = { Text("思维导图") },
+      modifier = Modifier.weight(1f),
+    )
+    FilterChip(
+      selected = selected == PlanViewMode.Steps,
+      onClick = { onSelect(PlanViewMode.Steps) },
+      label = { Text("步骤清单") },
+      modifier = Modifier.weight(1f),
+    )
+  }
+}
+
 @Composable
 private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel) {
+  var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+  val activeAdvancedOptions = listOf(
+    state.targetAlpha,
+    state.allowDitto,
+    state.convertMaternalWithDitto,
+    state.allowAlphaMaterials,
+    state.needHiddenAbility,
+    state.lockGender,
+  ).count { it }
   OutlinedCard {
     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("目标与规则", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -343,20 +586,15 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
           style = MaterialTheme.typography.bodySmall,
         )
       }
-      OutlinedTextField(
-        value = state.nature,
-        onValueChange = viewModel::setNature,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("目标性格（留空表示不指定）") },
-        singleLine = true,
-      )
-      LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(listOf("固执", "内敛", "爽朗", "胆小")) { nature ->
-          FilterChip(
-            selected = state.nature == nature,
-            onClick = { viewModel.setNature(if (state.nature == nature) "" else nature) },
-            label = { Text("★ $nature") },
-          )
+      NaturePicker(state.nature, viewModel::setNature)
+      Text("遗传技能（${state.targetMoves.size}/4）", fontWeight = FontWeight.SemiBold)
+      if (state.availableMoves.isEmpty() && state.targetMoves.isEmpty()) {
+        Text("选择搜索结果中的精灵后，可查看可遗传技能。", style = MaterialTheme.typography.bodySmall)
+      }
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        (state.availableMoves + state.targetMoves).distinct().forEach { move ->
+          FilterChip(selected = move in state.targetMoves, onClick = { viewModel.toggleTargetMove(move) },
+            label = { Text(move) })
         }
       }
       Text("目标个体值", fontWeight = FontWeight.SemiBold)
@@ -375,26 +613,43 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
         )
       }
       HorizontalDivider()
-      OptionSwitch("孵化头目成品", "关闭时只规划普通成品", state.targetAlpha, viewModel::setTargetAlpha)
-      OptionSwitch("允许使用百变怪", "可参与母体或其他支线", state.allowDitto, viewModel::setAllowDitto)
-      OptionSwitch(
-        "使用百变怪转换母体",
-        "即使关闭上项，也允许一次目标公体转母体",
-        state.convertMaternalWithDitto,
-        viewModel::setConvertMaternal,
-      )
-      OptionSwitch(
-        "普通目标允许使用头目素材",
-        "最终仍为普通，但会消耗头目库存",
-        state.allowAlphaMaterials,
-        viewModel::setAllowAlphaMaterials,
-      )
-      OptionSwitch("成品保留梦特", "要求目标母系携带梦特潜力", state.needHiddenAbility, viewModel::setNeedHiddenAbility)
-      OptionSwitch("锁定成品性别", "不勾选表示公母都可以；特殊进化会自动锁定", state.lockGender, viewModel::setLockGender)
-      if (state.lockGender) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterChip(selected = state.targetGender == "F", onClick = { viewModel.setTargetGender("F") }, label = { Text("母") })
-          FilterChip(selected = state.targetGender == "M", onClick = { viewModel.setTargetGender("M") }, label = { Text("公") })
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text("高级规则", fontWeight = FontWeight.SemiBold)
+          Text(
+            "已启用 $activeAdvancedOptions 项，可设置头目、百变怪、梦特与性别",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        TextButton(onClick = { advancedExpanded = !advancedExpanded }, modifier = Modifier.heightIn(min = 48.dp)) {
+          Text(if (advancedExpanded) "收起" else "展开")
+        }
+      }
+      if (advancedExpanded) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          OptionSwitch("孵化头目成品", "关闭时只规划普通成品", state.targetAlpha, viewModel::setTargetAlpha)
+          OptionSwitch("允许使用百变怪", "可参与母体或其他支线", state.allowDitto, viewModel::setAllowDitto)
+          OptionSwitch(
+            "使用百变怪转换母体",
+            "即使关闭上项，也允许一次目标公体转母体",
+            state.convertMaternalWithDitto,
+            viewModel::setConvertMaternal,
+          )
+          OptionSwitch(
+            "普通目标允许使用头目素材",
+            "最终仍为普通，但会消耗头目库存",
+            state.allowAlphaMaterials,
+            viewModel::setAllowAlphaMaterials,
+          )
+          OptionSwitch("成品保留梦特", "要求目标母系携带梦特潜力", state.needHiddenAbility, viewModel::setNeedHiddenAbility)
+          OptionSwitch("锁定成品性别", "不勾选表示公母都可以；特殊进化会自动锁定", state.lockGender, viewModel::setLockGender)
+          if (state.lockGender) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              FilterChip(selected = state.targetGender == "F", onClick = { viewModel.setTargetGender("F") }, label = { Text("母") })
+              FilterChip(selected = state.targetGender == "M", onClick = { viewModel.setTargetGender("M") }, label = { Text("公") })
+            }
+          }
         }
       }
       Button(
@@ -436,27 +691,42 @@ private fun SpeciesSuggestions(items: List<SpeciesSuggestion>, onChoose: (Specie
 @Composable
 private fun IvFields(values: List<String>, onChange: (Int, String) -> Unit) {
   val labels = listOf("HP", "攻击", "防御", "特攻", "特防", "速度")
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-    labels.forEachIndexed { index, label ->
-      Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 11.sp, maxLines = 1)
-        OutlinedTextField(
-          value = values.getOrElse(index) { "X" },
-          onValueChange = { onChange(index, it) },
-          singleLine = true,
-          textStyle = MaterialTheme.typography.bodyMedium.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-          modifier = Modifier.fillMaxWidth(),
-        )
+  val largeText = LocalConfiguration.current.fontScale > 1.3f
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val columns = if (largeText && maxWidth < 600.dp) 2 else 3
+    if (maxWidth < 600.dp || largeText) {
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        labels.indices.chunked(columns).forEach { rowIndices ->
+          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            rowIndices.forEach { index ->
+              IvField(index, labels[index], values.getOrElse(index) { "X" }, onChange, Modifier.weight(1f))
+            }
+          }
+        }
+      }
+    } else {
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        labels.forEachIndexed { index, label ->
+          IvField(index, label, values.getOrElse(index) { "X" }, onChange, Modifier.weight(1f))
+        }
       }
     }
   }
 }
 
 @Composable
+private fun IvField(index: Int, label: String, value: String, onChange: (Int, String) -> Unit, modifier: Modifier) {
+  IvSelector(label, value, { onChange(index, it) }, modifier)
+}
+
+@Composable
 private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
   Row(
-    Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(vertical = 3.dp),
+    Modifier
+      .fillMaxWidth()
+      .heightIn(min = 64.dp)
+      .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+      .padding(vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Column(Modifier.weight(1f)) {
@@ -464,19 +734,69 @@ private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, onCh
       Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Spacer(Modifier.width(10.dp))
-    Switch(checked = checked, onCheckedChange = onCheckedChange)
+    Switch(checked = checked, onCheckedChange = null)
   }
 }
 
 @Composable
-private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, completed: Set<String>) {
+private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, completed: Set<String>, onEdit: () -> Unit) {
+  val completedCount = plan.steps.count { it.child.id in completed }
+  val readyCount = if (plan.needsReplan) 0 else plan.steps.count { it.child.id !in completed && completed.containsAll(it.dependencies) }
+  val progress = if (plan.steps.isEmpty()) 1f else completedCount.toFloat() / plan.steps.size
   Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Text("${plan.targetSpecies} · ${plan.targetIvCount}V ${plan.targetNature}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-      Text("完成 ${completed.size}/${plan.steps.size} 步 · 可选方案 $candidateCount 个")
+    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          "${plan.targetSpecies} · ${plan.targetIvCount}V ${plan.targetNature}",
+          modifier = Modifier.weight(1f),
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+        )
+        TextButton(onClick = onEdit, modifier = Modifier.heightIn(min = 48.dp)) { Text("修改目标") }
+      }
+      LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+      if (plan.phaseLabel.isNotBlank()) Text("当前阶段：${plan.phaseLabel}", fontWeight = FontWeight.SemiBold)
+      Text("本阶段 $completedCount/${plan.steps.size} 步 · 可执行 $readyCount 步 · 可选方案 $candidateCount 个")
       Text("使用库存 ${plan.inventoryUsedCount} 只 · 交易行补充 ${plan.purchaseRequirements.size} 项")
       if (plan.steps.isEmpty()) Text("库存中已经有满足目标的素材，无需继续孵化。", color = MaterialTheme.colorScheme.secondary)
     }
+  }
+}
+
+@Composable
+private fun PlanStepFilters(
+  selected: PlanStepFilter,
+  plan: ExecutionPlanRecord,
+  completed: Set<String>,
+  onSelect: (PlanStepFilter) -> Unit,
+) {
+  val completedCount = plan.steps.count { it.child.id in completed }
+  val readyCount = if (plan.needsReplan) 0 else plan.steps.count { it.child.id !in completed && completed.containsAll(it.dependencies) }
+  val labels = listOf(
+    PlanStepFilter.All to "全部 ${plan.steps.size}",
+    PlanStepFilter.Actionable to "可执行 $readyCount",
+    PlanStepFilter.Incomplete to "待完成 ${plan.steps.size - completedCount}",
+    PlanStepFilter.Completed to "完成 $completedCount",
+  )
+  LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    items(labels) { (filter, label) ->
+      FilterChip(selected = selected == filter, onClick = { onSelect(filter) }, label = { Text(label) })
+    }
+  }
+}
+
+@Composable
+private fun EmptyStepFilter(filter: PlanStepFilter) {
+  OutlinedCard {
+    Text(
+      when (filter) {
+        PlanStepFilter.Actionable -> "暂时没有可执行步骤，请先查看未完成步骤的依赖关系。"
+        PlanStepFilter.Completed -> "还没有已完成步骤。"
+        else -> "这个筛选条件下没有步骤。"
+      },
+      modifier = Modifier.fillMaxWidth().padding(16.dp),
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
   }
 }
 
@@ -487,10 +807,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
     ready -> MaterialTheme.colorScheme.surface
     else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
   }
-  val border = when {
-    complete || ready -> MaterialTheme.colorScheme.secondary
-    else -> MaterialTheme.colorScheme.outline
-  }
+  val border = routeColor(step.routeRole)
   Card(
     colors = CardDefaults.cardColors(containerColor = background),
     border = BorderStroke(if (ready || complete) 1.5.dp else 1.dp, border),
@@ -502,6 +819,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
         StatusPill(
           when {
             complete -> "已完成"
+            step.inProgress -> "孵化中（备注）"
             ready -> "可执行"
             else -> "等待下层"
           },
@@ -510,8 +828,10 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
         Spacer(Modifier.weight(1f))
         if (step.requiresPurchase) Text("含采购", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
       }
-      Text("父母 A：${step.parentALabel}", maxLines = 3, overflow = TextOverflow.Ellipsis)
-      Text("父母 B：${step.parentBLabel}", maxLines = 3, overflow = TextOverflow.Ellipsis)
+      Text(when (step.routeRole) { "maternal" -> "母体主线"; "nature" -> "性格手"; else -> "IV 素材" })
+      if (step.routeMoves.isNotEmpty()) Text("遗传技能：${step.routeMoves.joinToString("、")}")
+      Text("父母 A：${step.parentALabel}\n携带：${step.itemA.ifBlank { "无需道具" }}")
+      Text("父母 B：${step.parentBLabel}\n携带：${step.itemB.ifBlank { "无需道具" }}")
       HorizontalDivider()
       Text("道具：${step.itemText}")
       Text("子代：${step.child.species} · ${step.child.ivText} · ${step.genderInstruction}", fontWeight = FontWeight.SemiBold)
@@ -526,10 +846,10 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
       }
       OutlinedButton(
         onClick = onToggle,
-        enabled = ready || complete,
+        enabled = ready,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
       ) {
-        Text(if (complete) "撤销本步完成" else if (ready) "标记本步已完成" else "完成下层后解锁")
+        Text(if (complete) "已核销 · 可用顶部撤销恢复" else if (ready) "核对本步并记录结果" else "尚不可执行")
       }
     }
   }
@@ -541,7 +861,7 @@ private fun PlanReport(report: String, initiallyExpanded: Boolean = false) {
   OutlinedCard {
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("规划说明与缺口", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+        Text("初始方案说明与缺口", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
         TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 44.dp)) {
           Text(if (expanded) "收起" else "展开")
         }

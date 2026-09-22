@@ -2,6 +2,7 @@ package com.example.pokemmobreederhelper.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class MonsterRecord(
@@ -54,6 +55,7 @@ data class SpeciesSuggestion(
   val id: Int,
   @SerialName("display_name") val displayName: String,
   val identifier: String = "",
+  @SerialName("egg_moves") val eggMoves: List<String> = emptyList(),
   @SerialName("egg_groups") val eggGroups: List<String> = emptyList(),
   @SerialName("allowed_genders") val allowedGenders: List<String> = emptyList(),
   @SerialName("female_percent") val femalePercent: Double? = null,
@@ -68,7 +70,7 @@ data class SpeciesSearchResponse(val items: List<SpeciesSuggestion> = emptyList(
 data class PlanRequest(
   val species: String,
   val nature: String = "",
-  val ivs: List<String> = listOf("31", "31", "31", "31", "31", "31"),
+  val ivs: List<String> = List(6) { "X" },
   @SerialName("target_alpha") val targetAlpha: Boolean = false,
   @SerialName("allow_ditto") val allowDitto: Boolean = true,
   val strategy: String = "inventory",
@@ -77,6 +79,9 @@ data class PlanRequest(
   @SerialName("convert_maternal_with_ditto") val convertMaternalWithDitto: Boolean = false,
   @SerialName("lock_gender") val lockGender: Boolean = false,
   @SerialName("target_gender") val targetGender: String = "",
+  @SerialName("excluded_ids") val excludedIds: Set<String> = emptySet(),
+  @SerialName("preferred_material_ids") val preferredMaterialIds: Set<String> = emptySet(),
+  @SerialName("target_moves") val targetMoves: List<String> = emptyList(),
 )
 
 @Serializable
@@ -86,7 +91,12 @@ data class ExecutionStepRecord(
   @SerialName("parent_b_id") val parentBId: String,
   @SerialName("parent_a_label") val parentALabel: String = "",
   @SerialName("parent_b_label") val parentBLabel: String = "",
+  @SerialName("parent_a_species") val parentASpecies: String = "",
+  @SerialName("parent_b_species") val parentBSpecies: String = "",
+  @SerialName("parent_a_species_id") val parentASpeciesId: Int? = null,
+  @SerialName("parent_b_species_id") val parentBSpeciesId: Int? = null,
   val child: MonsterRecord,
+  @SerialName("child_species_id") val childSpeciesId: Int? = null,
   @SerialName("item_a") val itemA: String = "",
   @SerialName("item_b") val itemB: String = "",
   val completed: Boolean = false,
@@ -100,6 +110,15 @@ data class ExecutionStepRecord(
   @SerialName("should_check_nature") val shouldCheckNature: Boolean = false,
   @SerialName("is_final") val isFinal: Boolean = false,
   val dependencies: List<String> = emptyList(),
+  @SerialName("route_role") val routeRole: String = "iv",
+  @SerialName("route_moves") val routeMoves: List<String> = emptyList(),
+  @SerialName("display_gender") val displayGender: String = "",
+  @SerialName("parent_a_record") val parentARecord: MonsterRecord? = null,
+  @SerialName("parent_b_record") val parentBRecord: MonsterRecord? = null,
+  @SerialName("parent_a_role") val parentARole: String = "iv",
+  @SerialName("parent_b_role") val parentBRole: String = "iv",
+  @SerialName("parent_a_moves") val parentAMoves: List<String> = emptyList(),
+  @SerialName("parent_b_moves") val parentBMoves: List<String> = emptyList(),
 ) {
   val itemText: String
     get() = listOf(itemA, itemB).filter { it.isNotBlank() }.joinToString("、").ifBlank { "无锁定道具" }
@@ -118,6 +137,19 @@ data class ExecutionPlanRecord(
   @SerialName("status_text") val statusText: String = "",
   @SerialName("candidate_description") val candidateDescription: String = "",
   @SerialName("inventory_used_count") val inventoryUsedCount: Int = 0,
+  @SerialName("adaptive_nature") val adaptiveNature: Boolean = false,
+  @SerialName("gender_strategy") val genderStrategy: String = "lock_all",
+  @SerialName("nature_target_key") val natureTargetKey: String = "",
+  @SerialName("nature_attempt_level") val natureAttemptLevel: Int = 0,
+  @SerialName("candidate_snapshot") val candidateSnapshot: JsonObject = JsonObject(emptyMap()),
+  val materials: JsonObject = JsonObject(emptyMap()),
+  @SerialName("planning_options") val planningOptions: PlanRequest? = null,
+  @SerialName("needs_replan") val needsReplan: Boolean = false,
+  @SerialName("replan_reason") val replanReason: String = "",
+  @SerialName("retained_materials") val retainedMaterials: List<MonsterRecord> = emptyList(),
+  @SerialName("final_target") val finalTarget: MonsterRecord? = null,
+  @SerialName("final_target_species_id") val finalTargetSpeciesId: Int? = null,
+  @SerialName("phase_label") val phaseLabel: String = "",
 )
 
 @Serializable
@@ -128,12 +160,43 @@ data class PlannerResponse(
   @SerialName("candidate_count") val candidateCount: Int = 0,
   val plan: ExecutionPlanRecord? = null,
   val debug: String = "",
+  @SerialName("rules_version") val rulesVersion: String = "",
 )
 
 @Serializable
 data class SavedPlanSession(
   val response: PlannerResponse,
   val completedChildIds: Set<String> = emptySet(),
+  val request: PlanRequest? = null,
+)
+
+@Serializable
+data class WorkspaceSnapshot(
+  val inventory: List<MonsterRecord> = emptyList(),
+  val session: SavedPlanSession? = null,
+  val target: PlanRequest? = null,
+)
+
+@Serializable
+data class MobileWorkspace(
+  val current: WorkspaceSnapshot = WorkspaceSnapshot(),
+  val undo: WorkspaceSnapshot? = null,
+)
+
+@Serializable
+data class StepOutcome(
+  val number: Int,
+  val gender: String = "",
+  @SerialName("nature_hit") val natureHit: Boolean? = null,
+)
+
+@Serializable
+data class CompletionResponse(
+  val ok: Boolean = false,
+  val error: String = "",
+  val message: String = "",
+  val inventory: List<MonsterRecord> = emptyList(),
+  val response: PlannerResponse? = null,
 )
 
 data class ImportSummary(val count: Int, val accountCount: Int, val verifiedCount: Int)

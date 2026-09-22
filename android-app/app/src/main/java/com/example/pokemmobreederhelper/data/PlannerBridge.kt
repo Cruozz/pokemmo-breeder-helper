@@ -25,4 +25,10 @@ class PlannerBridge(context: Context) {
     val raw = module.callAttr("generate_plan", inventoryJson, requestJson).toString()
     return AppJson.codec.decodeFromString(raw)
   }
+
+  fun completeStep(inventoryJson: String, response: PlannerResponse, outcome: StepOutcome): CompletionResponse {
+    val raw = module.callAttr("complete_step", inventoryJson,
+      AppJson.codec.encodeToString(response), AppJson.codec.encodeToString(outcome)).toString()
+    return AppJson.codec.decodeFromString(raw)
+  }
 }

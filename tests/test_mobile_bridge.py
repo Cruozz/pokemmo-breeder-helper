@@ -47,6 +47,9 @@ def test_mobile_bridge_uses_desktop_nidoran_planning_rules():
     steps = result["plan"]["steps"]
     final = next(step for step in steps if step["is_final"])
     assert final["child"]["species"] == "尼多朗"
+    assert final["child_species_id"] == 32
+    assert final["parent_a_species_id"] is not None
+    assert "parent_b_species_id" in final
     assert final["child"]["gender"] == "M"
     assert any(
         step["child"]["species"] == "尼多兰" and step["child"]["gender"] == "F"

@@ -12,8 +12,9 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 7
+        versionName = "0.4.3"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
           abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -57,6 +58,7 @@ val syncPlannerPython by tasks.registering(Sync::class) {
     include("chain_planner.py")
     include("planner.py")
     include("execution.py")
+    include("route_roles.py")
     include("data/**")
   }
   into(plannerPythonDir)
