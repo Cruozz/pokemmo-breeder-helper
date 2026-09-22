@@ -847,20 +847,19 @@ def _forced_child(
     # A shared egg group establishes mating compatibility, not learnset
     # compatibility. In particular, Smeargle cannot pass a sketched move
     # through an arbitrary intermediate species (or through a Ditto).
-    parent_moves = frozenset().union(*(
-        parent.inherited_moves for parent in (parent_a, parent_b)
-        if not is_ditto(parent.species)
-    ))
+    parent_moves = (
+        (parent_a.inherited_moves if not is_ditto(parent_a.species) else frozenset())
+        | (parent_b.inherited_moves if not is_ditto(parent_b.species) else frozenset())
+    ) if parent_a.inherited_moves or parent_b.inherited_moves else frozenset()
     child_species = profile.species_for_gender(output_gender)
     inherited_moves = (
         parent_moves & get_reference_database().inheritable_moves(child_species)
         if parent_moves else frozenset()
     )
-    target_line_moves = frozenset().union(*(
-        parent.inherited_moves
-        for parent in (parent_a, parent_b)
-        if normalize_text(parent.species) == profile.species_key
-    ))
+    target_line_moves = (
+        (parent_a.inherited_moves if normalize_text(parent_a.species) == profile.species_key else frozenset())
+        | (parent_b.inherited_moves if normalize_text(parent_b.species) == profile.species_key else frozenset())
+    ) if inherited_moves else frozenset()
     child = ChainState(
         species=profile.species,
         gender=output_gender,
@@ -892,10 +891,9 @@ def _forced_child(
         # while rejecting an unrelated same-group HA father.  Alpha inheritance
         # remains the separate ``parent_a.is_alpha and parent_b.is_alpha`` rule
         # above; a parent does not need both attributes merely to be compatible.
-        has_hidden_ability=any(
-            parent.has_hidden_ability
-            and normalize_text(parent.species) == profile.species_key
-            for parent in (parent_a, parent_b)
+        has_hidden_ability=(
+            (parent_a.has_hidden_ability and normalize_text(parent_a.species) == profile.species_key)
+            or (parent_b.has_hidden_ability and normalize_text(parent_b.species) == profile.species_key)
         ),
         inherited_moves=inherited_moves,
         introduced_moves=inherited_moves - target_line_moves,
@@ -1105,6 +1103,7 @@ def _structured_search(
     ditto_leaves = [state for state in leaves if is_ditto(state.species)]
     memo: dict[tuple[object, ...], list[ChainState]] = {}
     visiting: set[tuple[object, ...]] = set()
+    mate_memo: dict[tuple[SpeciesProfile, int, bool], list[ChainState]] = {}
 
     def rank(state: ChainState, required_mask: int, require_nature: bool) -> tuple[object, ...]:
         # Treat an explicitly preferred inventory Ditto as a planning
@@ -1121,13 +1120,16 @@ def _structured_search(
 
     def trim(candidates: list[ChainState], required_mask: int, require_nature: bool) -> list[ChainState]:
         unique: dict[tuple[object, ...], ChainState] = {}
+        ranks: dict[tuple[object, ...], tuple[object, ...]] = {}
         for state in candidates:
             if not _fits_exact_subproblem(state, required_mask):
                 continue
             if require_nature and not state.has_nature:
                 continue
             key = (
-                _material_usage_signature(state.used_ids),
+                # Real IDs already have an order-independent hash. Only
+                # market copies need their IDs normalized to material shapes.
+                (state.used_ids, ()) if state.purchases == 0 else _material_usage_signature(state.used_ids),
                 normalize_text(state.species),
                 state.gender,
                 _group_key(state.egg_groups),
@@ -1137,15 +1139,14 @@ def _structured_search(
                 state.has_hidden_ability,
                 state.inherited_moves,
             )
-            current = unique.get(key)
-            if current is None or rank(state, required_mask, require_nature) < rank(current, required_mask, require_nature):
+            state_rank = rank(state, required_mask, require_nature)
+            if key not in unique or state_rank < ranks[key]:
                 unique[key] = state
-        ranked = sorted(
-            unique.values(),
-            key=lambda state: rank(state, required_mask, require_nature),
-        )
+                ranks[key] = state_rank
+        ranked = [unique[key] for key in sorted(unique, key=ranks.__getitem__)]
         return ranked if exact else _feature_diverse_beam(ranked, beam)
 
+    @lru_cache(maxsize=None)
     def leaf_candidates(profile: SpeciesProfile, gender: str, required_mask: int, require_nature: bool) -> list[ChainState]:
         return [
             state
@@ -1158,6 +1159,7 @@ def _structured_search(
             and (not require_nature or state.has_nature)
         ]
 
+    @lru_cache(maxsize=None)
     def compatible_profiles(profile: SpeciesProfile) -> list[SpeciesProfile]:
         groups = set(_group_key(profile.egg_groups))
         if not groups:
@@ -1167,12 +1169,14 @@ def _structured_search(
             if "M" in candidate.allowed_genders and groups & set(_group_key(candidate.egg_groups))
         ]
 
+    @lru_cache(maxsize=None)
     def ditto_candidates(required_mask: int, require_nature: bool) -> list[ChainState]:
         return [
             state for state in ditto_leaves
             if _fits_exact_subproblem(state, required_mask) and (not require_nature or state.has_nature)
         ]
 
+    @lru_cache(maxsize=None)
     def direct_compatible_males(
         profile: SpeciesProfile,
         required_mask: int,
@@ -1197,13 +1201,25 @@ def _structured_search(
         # pyramids.  Recurse only through non-target compatible lines; this
         # leaves one target female spine and builds the other branches from any
         # compatible egg-group species.
-        result = ditto_candidates(required_mask, require_nature)
+        cache_key = (profile, required_mask, require_nature)
+        if cache_key in mate_memo:
+            return mate_memo[cache_key]
+        result = list(ditto_candidates(required_mask, require_nature))
         result.extend(direct_compatible_males(profile, required_mask, require_nature))
+        complete = True
         for mate_profile in compatible_profiles(profile):
             if mate_profile.species_key == target_profile.species_key and not independent_hand:
                 continue
-            result.extend(build(mate_profile, "M", required_mask, require_nature))
-        return trim(result, required_mask, require_nature)
+            branch = build(mate_profile, "M", required_mask, require_nature)
+            result.extend(branch)
+            build_key = (mate_profile.species_key, _group_key(mate_profile.egg_groups), "M", required_mask, require_nature)
+            # A cycle returns only the current leaves. Never cache that partial
+            # result: subsequent calls must see the completed donor branch.
+            complete = complete and memo.get(build_key) is branch
+        result = trim(result, required_mask, require_nature)
+        if complete:
+            mate_memo[cache_key] = result
+        return result
 
     def combine_regular(
         profile: SpeciesProfile,

@@ -306,7 +306,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     val state = _uiState.value
     if (state.isPlanning) return
     if (state.plannerResponse?.rulesVersion != "0.2.8") {
-      _uiState.update { it.copy(error = "旧版路线只作备忘，请重新生成并启用 0.2.8 路线。") }; return
+      _uiState.update { it.copy(error = "请重新生成并启用路线。") }; return
     }
     if (state.plannerResponse.plan?.needsReplan == true || step.child.id in state.completedChildIds ||
       !state.completedChildIds.containsAll(step.dependencies)) return

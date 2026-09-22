@@ -101,7 +101,6 @@ fun MainScreen(
         title = {
           Column {
             Text("PokeMMO 孵蛋助手", fontWeight = FontWeight.SemiBold)
-            Text("安卓版 0.4.3 · 桌面规则 0.2.8", style = MaterialTheme.typography.labelSmall)
           }
         }
       )
@@ -304,7 +303,6 @@ private fun InventoryHeader(inventory: List<MonsterRecord>, showing: Int, onImpo
             Button(onClick = onImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入电脑 JSON") }
           }
         }
-        Text("重新导入会以电脑文件覆盖手机库存，并清除旧规划进度。", style = MaterialTheme.typography.labelMedium)
       }
     }
   }
@@ -382,6 +380,7 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
   var formExpanded by rememberSaveable { mutableStateOf(plan == null) }
   var stepFilter by rememberSaveable { mutableStateOf(PlanStepFilter.Actionable) }
   var planView by rememberSaveable { mutableStateOf(PlanViewMode.MindMap) }
+  var showColorGuide by rememberSaveable { mutableStateOf(false) }
   val mapHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).coerceIn(300f, 560f).dp
   LaunchedEffect(state.pendingResponse?.plan?.id) {
     if (state.pendingResponse != null) listState.scrollToItem(0)
@@ -444,7 +443,7 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
             Row(verticalAlignment = Alignment.CenterVertically) {
               CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
               Spacer(Modifier.width(12.dp))
-              Text("正在使用 ${state.inventory.count { it.verified }} 只已确认素材计算最佳路线……")
+              Text("正在规划……")
             }
             LinearProgressIndicator(Modifier.fillMaxWidth())
           }
@@ -480,7 +479,7 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
             OutlinedCard {
               Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("路线已暂停", style = MaterialTheme.typography.titleMedium)
-                Text(responsePlan.replanReason.ifBlank { "旧版路线只作备忘，请按 0.2.8 规则生成新建议。" })
+                Text(responsePlan.replanReason.ifBlank { "请重新生成路线。" })
                 Button(onClick = viewModel::suggestNext, enabled = !state.isPlanning) { Text("按原目标生成建议") }
               }
             }
@@ -494,7 +493,16 @@ private fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMod
           item { PlanViewChooser(planView) { planView = it } }
         }
         if (responsePlan.steps.isNotEmpty() && planView == PlanViewMode.MindMap) {
-          item { Text("边框 / 连线：蓝＝母体，紫＝性格手，灰蓝＝IV素材；橙色双框 / 双线＝遗传技能。底色：蓝＝公，粉＝母，灰＝无性别或未锁定。", style = MaterialTheme.typography.bodySmall) }
+          item {
+            Column {
+              TextButton(onClick = { showColorGuide = !showColorGuide }) {
+                Text(if (showColorGuide) "收起颜色说明" else "颜色说明")
+              }
+              if (showColorGuide) {
+                Text("边框 / 连线：蓝＝母体，紫＝性格手，灰蓝＝IV素材；橙色双框 / 双线＝遗传技能。底色：蓝＝公，粉＝母，灰＝无性别或未锁定。", style = MaterialTheme.typography.bodySmall)
+              }
+            }
+          }
           item {
             BreedingMindMap(
               plan = responsePlan,
@@ -617,7 +625,7 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
         Column(Modifier.weight(1f)) {
           Text("高级规则", fontWeight = FontWeight.SemiBold)
           Text(
-            "已启用 $activeAdvancedOptions 项，可设置头目、百变怪、梦特与性别",
+            "已启用 $activeAdvancedOptions 项",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -659,10 +667,6 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
       ) {
         Text(if (state.isPlanning) "正在生成规划" else "生成最佳孵蛋路线")
       }
-      Text(
-        "交易行素材会直接进入路线，无需在手机或电脑再次扫描入库。",
-        style = MaterialTheme.typography.bodySmall,
-      )
     }
   }
 }
