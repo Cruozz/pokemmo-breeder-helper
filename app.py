@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.12"
+APP_VERSION = "0.2.13"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -75,6 +75,8 @@ from execution_view import execution_map, step_display_gender
 from mind_map import BreedingMindMap, MindMapNode
 from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
+from inventory_order import inventory_in_display_order, sorted_inventory_ids
+from account_order_dialog import AccountOrderDialog
 from autocomplete import AutocompletePopup
 from nature_data import (
     NATURES,
@@ -98,9 +100,11 @@ from storage import (
     load_accounts,
     load_active_plan,
     load_inventory,
+    load_inventory_display_order,
     save_accounts,
     save_active_plan,
     save_inventory,
+    save_inventory_display_order,
     undo_last_inventory_deletion,
     undo_last_consumption,
 )
@@ -166,6 +170,8 @@ class App:
         self.windows: list[WindowInfo] = []
         self.inventory = load_inventory()
         self.accounts = list(dict.fromkeys([*load_accounts(), *(item.account for item in self.inventory if item.account)]))
+        self.inventory_display_order = load_inventory_display_order()
+        self.account_order_dialog = None
         self.species_db = get_species_database()
         self.reference_db = get_reference_database()
         self.ocr: OCRProcessor | None = None
@@ -1606,19 +1612,30 @@ class App:
         )
         type_filter.grid(row=0, column=5, sticky="w", pady=(0, 6))
         type_filter.bind("<<ComboboxSelected>>", lambda _event: self.refresh_inventory_tree())
-        ttk.Label(actions, text="账号", style="Field.TLabel").grid(row=0, column=6, sticky="e", padx=(10, 4), pady=(0, 6))
+        ordering = ttk.Frame(actions)
+        ordering.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(0, 6))
+        ttk.Label(ordering, text="账号", style="Field.TLabel").pack(side=LEFT, padx=(0, 4))
         self.inventory_account_filter = ttk.Combobox(
-            actions,
+            ordering,
             textvariable=self.inventory_account_filter_var,
             values=("全部账号",),
             state="readonly",
             width=12,
         )
-        self.inventory_account_filter.grid(row=0, column=7, sticky="w", pady=(0, 6))
+        self.inventory_account_filter.pack(side=LEFT)
         self.inventory_account_filter.bind("<<ComboboxSelected>>", lambda _event: self.refresh_inventory_tree())
+        self.inventory_account_order_button = ttk.Button(
+            ordering, text="账号排序", command=self.open_account_order_dialog
+        )
+        self.inventory_account_order_button.pack(side=LEFT, padx=(8, 4))
+        self.inventory_reorder_button = ttk.Button(
+            ordering, text="重新排列", command=self.reorder_inventory
+        )
+        self.inventory_reorder_button.pack(side=LEFT, padx=(0, 8))
+        ttk.Label(ordering, text="按账号、仓库页、行、列排列", style="Muted.TLabel").pack(side=LEFT)
 
         self.inventory_action_bar = ttk.Frame(actions)
-        self.inventory_action_bar.grid(row=1, column=0, columnspan=8, sticky="ew")
+        self.inventory_action_bar.grid(row=2, column=0, columnspan=6, sticky="ew")
         self.inventory_refresh_button = ttk.Button(
             self.inventory_action_bar, text="刷新列表", command=self.refresh_inventory_tree
         )
@@ -4526,6 +4543,44 @@ class App:
         self._upsert_inventory(monster, match_location=False)
         self.status_var.set(f"已保存并确认 {monster.species}，库存共 {len(self.inventory)} 只。")
 
+    def open_account_order_dialog(self) -> None:
+        existing = getattr(self, "account_order_dialog", None)
+        if existing is not None and existing.window.winfo_exists():
+            existing.window.lift()
+            return
+        accounts = list(dict.fromkeys([*self.accounts, *(item.account for item in self.inventory)]))
+        self.account_order_dialog = AccountOrderDialog(
+            self._new_child_window(), accounts, self.reorder_inventory
+        )
+
+    def reorder_inventory(self, accounts: list[str] | None = None) -> bool:
+        ordered_accounts = list(dict.fromkeys([
+            *(accounts if accounts is not None else self.accounts),
+            *self.accounts,
+            *(item.account for item in self.inventory),
+        ]))
+        record_ids = sorted_inventory_ids(self.inventory, ordered_accounts)
+        try:
+            save_inventory_display_order(ordered_accounts, record_ids)
+        except Exception as exc:
+            messagebox.showerror("排列未保存", f"无法保存排列顺序，请重试。\n{exc}", parent=self.root)
+            return False
+        self.accounts = ordered_accounts
+        self.inventory_display_order = record_ids
+        tree = self.inventory_tree
+        selected, focused, scroll = tree.selection(), tree.focus(), tree.yview()
+        self.refresh_inventory_tree()
+        tree.selection_set([identifier for identifier in selected if tree.exists(identifier)])
+        if tree.exists(focused):
+            tree.focus(focused)
+        if scroll:
+            tree.yview_moveto(scroll[0])
+        self.status_var.set(
+            f"已按账号顺序及仓库页、行、列重新排列全部 {len(self.inventory)} 条素材；"
+            "新录入素材仍追加到末尾，再次点击后归位。"
+        )
+        return True
+
     def refresh_inventory_tree(self) -> None:
         if not hasattr(self, "inventory_tree"):
             return
@@ -4548,7 +4603,7 @@ class App:
                 self.inventory_account_filter_var.set("全部账号")
         account_filter = self.inventory_account_filter_var.get() if hasattr(self, "inventory_account_filter_var") else "全部账号"
         visible_count = 0
-        for monster in self.inventory:
+        for monster in inventory_in_display_order(self.inventory, getattr(self, "inventory_display_order", [])):
             haystack = " ".join(
                 (
                     monster.account,

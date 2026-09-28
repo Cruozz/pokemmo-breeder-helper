@@ -56,15 +56,49 @@ def load_accounts() -> list[str]:
             values = [str(value).strip() for value in raw if str(value).strip()] if isinstance(raw, list) else []
         except (json.JSONDecodeError, TypeError):
             values = []
-    return list(dict.fromkeys(["主账号", *values]))
+    return _account_labels(values)
+
+
+def _account_labels(accounts: list[str]) -> list[str]:
+    values = list(dict.fromkeys(str(value).strip() for value in accounts if str(value).strip()))
+    if "主账号" not in values:
+        values.insert(0, "主账号")
+    return values
 
 
 def save_accounts(accounts: list[str]) -> None:
-    values = list(dict.fromkeys(["主账号", *(str(value).strip() for value in accounts if str(value).strip())]))
+    values = _account_labels(accounts)
     with closing(_connect()) as connection:
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES ('accounts', ?)",
             (json.dumps(values, ensure_ascii=False),),
+        )
+        connection.commit()
+
+
+def load_inventory_display_order() -> list[str]:
+    with closing(_connect()) as connection:
+        row = connection.execute("SELECT value FROM metadata WHERE key='inventory_display_order'").fetchone()
+    if row is not None:
+        try:
+            values = json.loads(row["value"])
+            if isinstance(values, list):
+                return list(dict.fromkeys(value for value in values if isinstance(value, str) and value))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return []
+
+
+def save_inventory_display_order(accounts: list[str], record_ids: list[str]) -> None:
+    """Persist the two display settings atomically, leaving all inventory rows intact."""
+    values = list(dict.fromkeys(record_ids))
+    with closing(_connect()) as connection:
+        connection.executemany(
+            "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+            [
+                ("accounts", json.dumps(_account_labels(accounts), ensure_ascii=False)),
+                ("inventory_display_order", json.dumps(values, ensure_ascii=False)),
+            ],
         )
         connection.commit()
 

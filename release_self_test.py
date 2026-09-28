@@ -77,6 +77,22 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Packaged planner allowed 3V male + 2V Ditto gender conversion")
     checks["ditto_conversion"] = "lower-tier gender conversion rejected"
 
+    from account_order_dialog import AccountOrderDialog
+    from inventory_order import inventory_in_display_order, sorted_inventory_ids
+    display_inventory = [
+        Monster(id="two9", account="TwoBit", page="1", slot="9"),
+        Monster(id="one10", account="OneBit", page="1", slot="10"),
+        Monster(id="one9", account="OneBit", page="1", slot="9"),
+    ]
+    original_ids = [item.id for item in display_inventory]
+    display_ids = sorted_inventory_ids(display_inventory, ["OneBit", "TwoBit"])
+    if display_ids != ["one9", "one10", "two9"] or [item.id for item in display_inventory] != original_ids:
+        raise RuntimeError("Packaged inventory sort changed account grouping or planner input")
+    display_inventory.append(Monster(id="new", account="OneBit", page="1", slot="1"))
+    if [item.id for item in inventory_in_display_order(display_inventory, display_ids)] != [*display_ids, "new"]:
+        raise RuntimeError("Packaged manual sort automatically repositioned a new record")
+    checks["inventory_order"] = {"account_grouping": "ok", "new_records_append": True, "dialog": AccountOrderDialog.__name__}
+
     image = Image.new("RGB", (700, 160), "white")
     ImageDraw.Draw(image).text((24, 45), "POKEMMO 12345", fill="black", font=ImageFont.load_default(size=48))
     items = OCRProcessor(performance_profile="low").recognize(image)
