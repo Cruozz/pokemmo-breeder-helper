@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.13"
+APP_VERSION = "0.2.16"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -77,6 +77,7 @@ from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
 from inventory_order import inventory_in_display_order, sorted_inventory_ids
 from account_order_dialog import AccountOrderDialog
+from guide_views import GuideWorkspace, PAGE_TITLES
 from autocomplete import AutocompletePopup
 from nature_data import (
     NATURES,
@@ -96,6 +97,7 @@ from storage import (
     are_high_confidence_duplicates,
     consume_parents_and_add_child,
     delete_inventory_records,
+    delete_accounts_and_inventory,
     find_high_confidence_duplicate_groups,
     load_accounts,
     load_active_plan,
@@ -221,7 +223,7 @@ class App:
 
         self.page_var = StringVar()
         self.slot_var = StringVar()
-        self.account_var = StringVar(value="主账号")
+        self.account_var = StringVar(value=self.accounts[0] if self.accounts else "")
         self.species_var = StringVar()
         self.gender_var = StringVar()
         self.nature_var = StringVar()
@@ -263,7 +265,7 @@ class App:
         self.target_iv_var = StringVar(value="x/x/x/x/x/x")
         self.target_iv_vars = [StringVar(value="X") for _stat in STATS]
         self.target_groups_var = StringVar(value="待选择")
-        self.target_info_var = StringVar(value="输入图鉴编号或名字片段，再从下方结果中双击选择。")
+        self.target_info_var = StringVar(value="")
         self.inventory_filter_var = StringVar()
         self.batch_page_var = StringVar(value="1")
         self.batch_slot_var = StringVar(value="1")
@@ -332,6 +334,12 @@ class App:
             command=lambda: self._select_workspace_mode("planner"),
         )
         self.planner_mode_button.pack(side=LEFT, padx=(0, 5))
+        self.guide_buttons = {}
+        self.guide_workspace = None
+        for guide_mode, guide_title in PAGE_TITLES.items():
+            button = ttk.Button(workspace_bar, text=guide_title, command=lambda mode=guide_mode: self._select_workspace_mode(mode))
+            button.pack(side=LEFT, padx=(0, 5))
+            self.guide_buttons[guide_mode] = button
         self.author_mode_button = ttk.Button(
             workspace_bar,
             text="作者的话",
@@ -362,9 +370,12 @@ class App:
         self.right_panel.bind("<Configure>", self._resize_right_content, add="+")
 
     def _select_workspace_mode(self, mode: str) -> None:
-        mode = mode if mode in {"planner", "author"} else "scan"
-        labels = {"scan": "扫描素材", "planner": "孵蛋规划", "author": "作者的话"}
+        mode = mode if mode in {"planner", "author", *PAGE_TITLES} else "scan"
+        labels = {"scan": "扫描素材", "planner": "孵蛋规划", "author": "作者的话", **PAGE_TITLES}
         self.workspace_mode_var.set(labels[mode])
+        if mode in PAGE_TITLES:
+            self._schedule_responsive_layout(immediate=True)
+            return
         if hasattr(self, "right_tabs"):
             self._set_author_workspace_visible(mode == "author")
             if mode != "author":
@@ -389,6 +400,8 @@ class App:
     def _on_right_tab_changed(self, _event=None) -> None:
         if not hasattr(self, "right_tabs"):
             return
+        if self.workspace_mode_var.get() in PAGE_TITLES.values():
+            return
         selected = self.right_tabs.nametowidget(self.right_tabs.select())
         if selected is self.planner_tab:
             label = "孵蛋规划"
@@ -405,6 +418,12 @@ class App:
         self.scan_mode_button.configure(style="Primary.TButton" if mode == "scan" else "TButton")
         self.planner_mode_button.configure(style="Primary.TButton" if mode == "planner" else "TButton")
         self.author_mode_button.configure(style="Primary.TButton" if mode == "author" else "TButton")
+        for guide_mode, button in getattr(self, "guide_buttons", {}).items():
+            button.configure(style="Primary.TButton" if mode == guide_mode else "TButton")
+
+    def _navigate_guide(self, mode: str, species_id: int) -> None:
+        self._select_workspace_mode(mode)
+        self.guide_workspace.show(mode, species_id)
 
     def build_scan_status_bar(self, parent: ttk.Frame) -> None:
         primary = ttk.Frame(parent)
@@ -861,6 +880,25 @@ class App:
         desired = self._layout_for_width(width)
         density = "tight" if desired == "compact" and height < 780 else "normal"
         workspace_label = self.workspace_mode_var.get()
+        guide_mode = next((key for key, label in PAGE_TITLES.items() if label == workspace_label), None)
+        if guide_mode is not None:
+            self.scan_status_frame.pack_forget()
+            self.scan_controls_panel.pack_forget()
+            self.main_pane.pack_forget()
+            if self.guide_workspace is None:
+                self.guide_workspace = GuideWorkspace(self.root, self._navigate_guide)
+            self.guide_workspace.pack(fill=BOTH, expand=True, padx=12, pady=(8, 10))
+            if self.applied_workspace_mode != guide_mode:
+                self.guide_workspace.show(guide_mode)
+            self.layout_orientation = desired
+            self.applied_workspace_mode = guide_mode
+            self.applied_layout_density = density
+            self._update_workspace_buttons(guide_mode)
+            return
+        if getattr(self, "guide_workspace", None) is not None:
+            self.guide_workspace.pack_forget()
+        if not self.main_pane.winfo_manager():
+            self.main_pane.pack(fill=BOTH, expand=True, padx=12, pady=(0, 10))
         mode = (
             "planner"
             if workspace_label == "孵蛋规划"
@@ -2256,8 +2294,7 @@ class App:
         )
         self.activate_plan_button.configure(state="normal" if can_activate else "disabled")
         if hasattr(self, "clear_current_plan_button"):
-            has_plan = self.plan_worker_busy or self.active_plan or self.proposed_plan or self.current_candidates
-            self.clear_current_plan_button.configure(state="normal" if has_plan else "disabled")
+            self.clear_current_plan_button.configure(state="normal")
         selected_step = self._selected_ready_step()
         can_complete = bool(selected_step and not self.plan_worker_busy)
         self.complete_step_button.configure(state="normal" if can_complete else "disabled")
@@ -2430,7 +2467,7 @@ class App:
         if not query:
             self.target_species_list.grid_remove()
             self.target_species_hint.grid_remove()
-            self.target_info_var.set("输入图鉴编号或名字片段，再从下方结果中双击选择。")
+            self.target_info_var.set("")
             return
         self.target_species_list.grid()
         self.target_species_hint.grid()
@@ -3898,6 +3935,8 @@ class App:
         self._focus_helper_for_batch_action()
 
     def _handle_batch_enter(self, _event=None) -> str | None:
+        if self.workspace_mode_var.get() in PAGE_TITLES.values():
+            return None
         if not self.batch_running:
             return None
         if not self.batch_waiting_confirmation:
@@ -4550,8 +4589,48 @@ class App:
             return
         accounts = list(dict.fromkeys([*self.accounts, *(item.account for item in self.inventory)]))
         self.account_order_dialog = AccountOrderDialog(
-            self._new_child_window(), accounts, self.reorder_inventory
+            self._new_child_window(), accounts, self.reorder_inventory, self._save_account_deletions
         )
+
+    def _save_account_deletions(self, remaining: list[str], removed: list[str]) -> bool:
+        if self.batch_running or self.batch_worker_busy:
+            messagebox.showwarning("请先停止连续扫描", "停止扫描后再删除账号，避免正在录入的素材被误删。", parent=self.root)
+            return False
+        try:
+            current = load_inventory()
+        except Exception as exc:
+            messagebox.showerror("读取库存失败", f"尚未删除账号，请重试。\n{exc}", parent=self.root)
+            return False
+        identifiers = {item.id for item in current if item.account in removed}
+        details = "\n".join(f"{name}：{sum(item.account == name for item in current)} 条素材" for name in removed)
+        if not messagebox.askyesno(
+            "确认删除账号及素材", f"将删除以下本地账号及全部素材（不受当前库存筛选影响）：\n\n{details}\n\n"
+            "当前规划与路线会同时清除，目标设置保留。可通过库存的“撤销删除”恢复账号和素材，路线不会恢复。\n"
+            "不会操作游戏内账号或精灵。确定删除吗？", default="no", parent=self.account_order_dialog.window,
+        ):
+            return False
+        saved_plan = load_active_plan()
+        try:
+            save_active_plan(None)
+            deleted = delete_accounts_and_inventory(removed, remaining, identifiers)
+        except Exception as exc:
+            try:
+                save_active_plan(saved_plan)
+            except OSError:
+                self._clear_plan_state(reset_targets=False)
+            messagebox.showerror("删除失败", f"账号和素材未删除，请刷新后重试。\n{exc}", parent=self.root)
+            return False
+        self._clear_plan_state(reset_targets=False)
+        self.inventory = load_inventory()
+        self.accounts = load_accounts()
+        self.inventory_display_order = load_inventory_display_order()
+        if self.account_var.get() in removed:
+            self.account_var.set(self.accounts[0] if self.accounts else "")
+        if self.editing_monster_id in identifiers:
+            self.clear_current()
+        self.refresh_inventory_tree()
+        self.status_var.set(f"已删除 {len(removed)} 个账号及 {len(deleted)} 条素材；可在库存中撤销删除。")
+        return True
 
     def reorder_inventory(self, accounts: list[str] | None = None) -> bool:
         ordered_accounts = list(dict.fromkeys([
@@ -4594,9 +4673,9 @@ class App:
             self.accounts = accounts
             save_accounts(self.accounts)
         if hasattr(self, "account_combo"):
-            self.account_combo.configure(values=tuple(accounts or ("主账号",)))
+            self.account_combo.configure(values=tuple(accounts))
         if hasattr(self, "batch_account_combo"):
-            self.batch_account_combo.configure(values=tuple(accounts or ("主账号",)))
+            self.batch_account_combo.configure(values=tuple(accounts))
         if hasattr(self, "inventory_account_filter"):
             self.inventory_account_filter.configure(values=("全部账号", *accounts))
             if self.inventory_account_filter_var.get() not in {"全部账号", *accounts}:
@@ -4963,15 +5042,20 @@ class App:
         self.status_var.set(f"已删除 {len(deleted)} 只素材，库存剩余 {len(self.inventory)} 只；可点击“撤销删除”恢复。")
 
     def undo_last_inventory_delete(self) -> None:
+        previous_accounts = list(self.accounts)
         try:
             restored = undo_last_inventory_deletion()
         except Exception as exc:
             messagebox.showerror("撤销删除失败", str(exc))
             return
-        if not restored:
+        self.accounts = load_accounts()
+        if not restored and self.accounts == previous_accounts:
             messagebox.showinfo("没有删除记录", "没有可以撤销的库存删除记录。")
             return
         self.inventory = load_inventory()
+        self.inventory_display_order = load_inventory_display_order()
+        if not self.account_var.get() and self.accounts:
+            self.account_var.set(self.accounts[0])
         self.refresh_inventory_tree()
         restored_ids = [item.id for item in restored if self.inventory_tree.exists(item.id)]
         if restored_ids:
@@ -4979,7 +5063,7 @@ class App:
             self.inventory_tree.focus(restored_ids[0])
             self.inventory_tree.see(restored_ids[0])
         self._on_inventory_selection_changed()
-        self.status_var.set(f"已恢复最近一次删除的 {len(restored)} 只素材。")
+        self.status_var.set(f"已撤销删除，恢复 {len(restored)} 只素材及关联账号。")
 
     def export_inventory(self) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -5012,12 +5096,11 @@ class App:
         self.status_var.set(f"已导入 {len(imported)} 条素材。")
 
     def clear_current_plan(self) -> None:
-        if not (self.active_plan or self.proposed_plan or self.current_candidates or self.plan_worker_busy):
-            return
         if not messagebox.askyesno(
             "清除当前规划与路线",
             "确定放弃当前规划吗？已启用路线、新建议、孵化中标记和本次素材禁用将一并清空。\n\n"
-            "已经完成的核销和已入库的子代会保留，不会恢复已消耗的父母。目标设置保留，可重新生成规划。",
+            "目标精灵、性格、个体值、遗传技能和附加约束也会重置。\n"
+            "已经完成的核销和已入库的子代会保留，不会恢复已消耗的父母。",
             parent=self.root,
         ):
             return
@@ -5026,6 +5109,38 @@ class App:
         except OSError as exc:
             messagebox.showerror("清除失败", f"无法清除已保存的路线：{exc}", parent=self.root)
             return
+        self._clear_plan_state(reset_targets=True)
+
+    def _reset_target_constraints(self) -> None:
+        defaults = {
+            "target_species_var": "", "target_gender_var": "任意", "target_alpha_var": "普通",
+            "target_hidden_ability_var": False, "target_nature_var": "", "target_lock_nature_var": False,
+            "target_lock_gender_var": False, "target_allow_ditto_var": False,
+            "target_convert_mother_with_ditto_var": False, "target_allow_alpha_materials_var": False,
+            "target_strategy_var": "库存优先", "target_intermediate_gender_strategy_var": "智能锁定",
+            "next_step_gender_var": "自动", "next_step_gender_hint_var": "", "target_iv_var": "x/x/x/x/x/x",
+            "target_groups_var": "待选择", "target_info_var": "", "target_egg_moves_var": "不需要遗传技能",
+        }
+        self.selected_target_species_id = None
+        self.target_species_results = []
+        self.selected_egg_moves = []
+        self.alpha_scope_declined_key = None
+        for name, value in defaults.items():
+            getattr(self, name).set(value)
+        for variable in self.target_iv_vars:
+            variable.set("X")
+        self.target_species_list.delete(0, END)
+        self.target_species_list.grid_remove()
+        self.target_species_hint.grid_remove()
+        if self.nature_picker_window is not None and self.nature_picker_window.winfo_exists():
+            self.nature_picker_window.destroy()
+            self.nature_picker_window = None
+        self._sync_gender_controls()
+        self._on_target_alpha_changed()
+        self._on_nature_lock_changed()
+        self._on_intermediate_gender_strategy_changed()
+
+    def _clear_plan_state(self, *, reset_targets: bool) -> None:
         # A worker may finish after clearing (or after a new request starts).
         # Its queue and callback belong to the discarded request only.
         self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
@@ -5046,13 +5161,15 @@ class App:
         self.plan_excluded_ids.clear()
         self.plan_exclusion_history.clear()
         self.plan_exclusion_scope_id = None
+        if reset_targets:
+            self._reset_target_constraints()
         self._update_plan_exclusion_ui()
         self.plan_summary_var.set("尚未生成规划。")
         self.plan_purchase_var.set("生成方案后将在这里显示库存利用与补购信息。")
         self.plan_purchase_label.configure(style="Muted.TLabel")
         self.plan_view_label.configure(text="尚未生成规划")
         self._set_plan_map_root(None, "规划已清除｜可修改目标后重新生成")
-        self.plan_status_var.set("已清除当前规划与路线；库存及已完成核销保留。")
+        self.plan_status_var.set("已清除规划、路线及目标约束；库存及已完成核销保留。" if reset_targets else "当前规划与路线已清除；目标设置保留。")
         self.status_var.set("当前规划已清除。")
         self._set_planner_busy(False)
         self._set_planner_details_collapsed(False)

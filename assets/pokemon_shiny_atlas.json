@@ -1,0 +1,9 @@
+{
+  "source_repository": "https://github.com/PokeAPI/sprites",
+  "revision": "fb3512817b9c3f46952b3f89e82645e77bdcaf49",
+  "source_path": "sprites/pokemon/shiny/{id}.png",
+  "count": 649,
+  "columns": 16,
+  "cell": 96,
+  "sha256": "6517fac6e318d027092d895e8aca119d4dbfb6258b65a47ea0197d6cbcb50827"
+}

@@ -16,14 +16,20 @@ is used to build this file.
 
 ## PokeAPI sprite assets
 
-`assets/pokemon_atlas.png` and `assets/item_atlas.png` are mechanically packed
+`assets/pokemon_atlas.png`, `assets/pokemon_shiny_atlas.png` and `assets/item_atlas.png` are mechanically packed
 from the public [PokeAPI/sprites](https://github.com/PokeAPI/sprites) repository.
 They provide offline visual references for species and breeding items in the
-planning mind map; the application does not download them at runtime and does
+planning mind map and Pokédex; the application does not download them at runtime and does
 not read or unpack the PokeMMO client. The upstream notice states that image
 contents are Copyright The Pokémon Company and that the repository is
 distributed under CC0 1.0 Universal. A copy is bundled at
 `assets/POKEAPI_SPRITES_LICENSE.txt`.
+
+The shiny atlas covers national species 1–649, using the front sprites from
+PokeAPI/sprites commit `fb3512817b9c3f46952b3f89e82645e77bdcaf49`.
+The build manifest at `assets/pokemon_shiny_atlas.json` records the source and
+atlas hash. `scripts/build_shiny_assets.py` builds this asset independently;
+the pre-existing normal and item atlases are unchanged.
 
 ## Reviewed PokeMMO-specific mechanics
 
@@ -40,3 +46,12 @@ from the user-provided workbooks `全地区精灵分布.xlsx` and `技能遗传�
 The workbooks did not include an explicit redistribution license. Confirm the
 original authors' permission before publishing these derived datasets in a
 public release.
+
+## V0.2.14 原生查询资料
+
+新增 `data/guide.json.gz` 为露珠 PokeMMO 工具站公开事实资料的只读快照。
+来源：https://tool.lzpoke.com/data/monsters.json （2026-09-29）。
+仅提取物种、属性、数值、招式、进化与遭遇条件，不包含网站界面代码。
+数据、名称等权利属于各自权利人；不将本项目代码许可套用于第三方资料，
+不宣称获得官方背书或原站接口授权。来源与原始文件哈希记录在快照元信息中。
+此来源未附明确的再分发许可；公开发布含此快照的源码或发行包前，应先确认原作者授权。

@@ -30,7 +30,7 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Bundled egg-move database is incomplete")
     checks["data"] = {"species": len(species.records), "egg_move_routes": route_count}
 
-    for name in ("app-icon.png", "pokemon_atlas.png", "item_atlas.png"):
+    for name in ("app-icon.png", "pokemon_atlas.png", "pokemon_shiny_atlas.png", "item_atlas.png"):
         with Image.open(resource_path("assets", name)) as image:
             image.verify()
     root = tk.Tk()
@@ -42,6 +42,32 @@ def run_checks() -> dict[str, object]:
         root.iconphoto(True, icon)
         root.update_idletasks()
         checks["tkinter"] = {"version": str(root.tk.call("info", "patchlevel")), "assets": "ok"}
+        from guide_data import get_guide_database
+        from guide_views import PAGE_TITLES, QueryPage
+        guide = get_guide_database()
+        if len(guide.species) != 649 or len(guide.hordes) < 4000:
+            raise RuntimeError("Bundled offline guide is incomplete")
+        for mode in PAGE_TITLES:
+            page = QueryPage(root, guide, mode, lambda *_args: None)
+            root.update_idletasks()
+            if not page.table.rows:
+                raise RuntimeError(f"Native query page has no results: {mode}")
+            if mode == "pokedex":
+                page.show_details(guide.by_id[25])
+                portrait = page.portrait
+                normal = portrait.photo
+                portrait.button.invoke()
+                if not portrait.shiny or portrait.photo is None or portrait.photo is normal or portrait.error:
+                    raise RuntimeError("Packaged shiny portrait toggle failed")
+                portrait.button.invoke()
+                if portrait.shiny or portrait.photo is not normal:
+                    raise RuntimeError("Packaged normal portrait toggle failed")
+                for species_id in range(1, 650):
+                    portrait.atlas.crop(species_id)
+                    portrait.atlas.crop(species_id, True)
+                checks["pokedex_portraits"] = {"species": 649, "variants": 2, "toggle": "normal-shiny-normal"}
+            page.destroy()
+        checks["native_guide"] = {"species": len(guide.species), "hordes": len(guide.hordes), "pages": list(PAGE_TITLES)}
     finally:
         root.destroy()
 
@@ -100,6 +126,39 @@ def run_checks() -> dict[str, object]:
     if "12345" not in recognized:
         raise RuntimeError("OCR inference did not recognize the synthetic test number: " + recognized)
     checks["ocr"] = {"text": recognized, "synthetic_image": True}
+    import os
+    import tempfile
+    from unittest.mock import patch
+    from app import App
+    from storage import delete_accounts_and_inventory, load_accounts, load_inventory, save_accounts, save_inventory, undo_last_inventory_deletion
+
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"LOCALAPPDATA": directory}):
+        sample = [Monster(id="delete-test-a", account="DeleteTest", species="皮卡丘"),
+                  Monster(id="delete-test-b", account="KeepTest", species="伊布")]
+        save_accounts(["DeleteTest", "KeepTest", "EmptyTest"])
+        save_inventory(sample)
+        delete_accounts_and_inventory(["DeleteTest", "EmptyTest"], ["KeepTest"], {"delete-test-a"})
+        if load_accounts() != ["KeepTest"] or [record.id for record in load_inventory()] != ["delete-test-b"]:
+            raise RuntimeError("Packaged account deletion failed")
+        undo_last_inventory_deletion()
+        if "EmptyTest" not in load_accounts() or len(load_inventory()) != 2:
+            raise RuntimeError("Packaged account undo failed")
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            app = App(root)
+            app.target_species_var.set("皮卡丘")
+            app.target_nature_var.set("固执")
+            for variable in app.target_iv_vars:
+                variable.set("31")
+            app._clear_plan_state(reset_targets=True)
+            if app.target_species_var.get() or app.target_nature_var.get() or any(variable.get() != "X" for variable in app.target_iv_vars):
+                raise RuntimeError("Packaged target reset failed")
+        finally:
+            for callback in root.tk.call("after", "info"):
+                root.after_cancel(callback)
+            root.destroy()
+    checks["reset_account_delete"] = {"target_reset": True, "delete_and_undo": True, "isolated_data": True}
     return checks
 
 

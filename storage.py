@@ -49,7 +49,7 @@ def load_accounts() -> list[str]:
     """Load user-defined account/character labels, including empty accounts."""
     with closing(_connect()) as connection:
         row = connection.execute("SELECT value FROM metadata WHERE key='accounts'").fetchone()
-    values: list[str] = []
+    values: list[str] = ["主账号"]
     if row is not None:
         try:
             raw = json.loads(row["value"])
@@ -60,10 +60,7 @@ def load_accounts() -> list[str]:
 
 
 def _account_labels(accounts: list[str]) -> list[str]:
-    values = list(dict.fromkeys(str(value).strip() for value in accounts if str(value).strip()))
-    if "主账号" not in values:
-        values.insert(0, "主账号")
-    return values
+    return list(dict.fromkeys(str(value).strip() for value in accounts if str(value).strip()))
 
 
 def save_accounts(accounts: list[str]) -> None:
@@ -262,6 +259,10 @@ def _connect() -> sqlite3.Connection:
         )
         connection.commit()
     _migrate_legacy_json(connection)
+    deletion_columns = {row["name"] for row in connection.execute("PRAGMA table_info(inventory_delete_history)")}
+    if "account_snapshot" not in deletion_columns:
+        connection.execute("ALTER TABLE inventory_delete_history ADD COLUMN account_snapshot TEXT NOT NULL DEFAULT ''")
+        connection.commit()
     return connection
 
 
@@ -359,6 +360,35 @@ def delete_inventory_records(record_ids: list[str] | tuple[str, ...]) -> list[Mo
     return deleted
 
 
+def delete_accounts_and_inventory(accounts: list[str], remaining_order: list[str], expected_ids: set[str]) -> list[Monster]:
+    removed = set(_account_labels(accounts))
+    if not removed:
+        return []
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        records = [Monster.from_dict(json.loads(row["payload"])) for row in connection.execute("SELECT payload FROM inventory ORDER BY rowid")]
+        deleted = [record for record in records if record.account in removed]
+        if {record.id for record in deleted} != expected_ids:
+            raise ValueError("账号素材已变化，请刷新后重新确认删除。")
+        metadata = {row["key"]: json.loads(row["value"]) for row in connection.execute(
+            "SELECT key, value FROM metadata WHERE key IN ('accounts', 'inventory_display_order')")}
+        previous_accounts = _account_labels([*metadata.get("accounts", ["主账号"]), *(record.account for record in records), *accounts])
+        survivors = [record for record in records if record.account not in removed]
+        ordered_accounts = _account_labels([name for name in [*remaining_order, *previous_accounts] if name not in removed])
+        from inventory_order import sorted_inventory_ids
+        order = sorted_inventory_ids(survivors, ordered_accounts)
+        connection.executemany("DELETE FROM inventory WHERE id=?", [(record.id,) for record in deleted])
+        connection.executemany("INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)", [
+            ("accounts", json.dumps(ordered_accounts, ensure_ascii=False)),
+            ("inventory_display_order", json.dumps(order)),
+        ])
+        snapshot = {"accounts": previous_accounts, "removed": list(accounts), "order": metadata.get("inventory_display_order", [])}
+        connection.execute("INSERT INTO inventory_delete_history(occurred_at, records, account_snapshot) VALUES (?, ?, ?)",
+                           (_utc_now(), json.dumps([record.to_dict() for record in deleted], ensure_ascii=False), json.dumps(snapshot, ensure_ascii=False)))
+        connection.commit()
+    return deleted
+
+
 def undo_last_inventory_deletion() -> list[Monster]:
     """Restore the most recent single or bulk inventory deletion."""
     with closing(_connect()) as connection:
@@ -375,6 +405,18 @@ def undo_last_inventory_deletion() -> list[Monster]:
         except (json.JSONDecodeError, TypeError):
             connection.rollback()
             raise ValueError("最近一次删除记录已损坏，无法自动撤销。")
+        if row["account_snapshot"]:
+            snapshot = json.loads(row["account_snapshot"])
+            current = {item["key"]: json.loads(item["value"]) for item in connection.execute(
+                "SELECT key, value FROM metadata WHERE key IN ('accounts', 'inventory_display_order')")}
+            existing_ids = {item["id"] for item in connection.execute("SELECT id FROM inventory")}
+            if existing_ids.intersection(monster.id for monster in restored):
+                raise ValueError("要恢复的素材编号已存在，未覆盖现有素材。")
+            accounts = _account_labels([*snapshot["accounts"], *current.get("accounts", [])])
+            order = list(dict.fromkeys([*snapshot["order"], *current.get("inventory_display_order", []), *(monster.id for monster in restored)]))
+            connection.executemany("INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)", [
+                ("accounts", json.dumps(accounts, ensure_ascii=False)), ("inventory_display_order", json.dumps(order)),
+            ])
         for monster in restored:
             _insert_monster(connection, monster)
         connection.execute("DELETE FROM inventory_delete_history WHERE id=?", (row["id"],))

@@ -24,7 +24,7 @@ def reset_fixture():
     app.plan_exclusion_history = ["protected"]
     app.plan_exclusion_scope_id = 123
     for name in ("plan_summary_var", "plan_purchase_var", "plan_purchase_label", "plan_view_label",
-                 "_update_plan_exclusion_ui", "_set_planner_details_collapsed", "_set_planner_busy"):
+                 "_update_plan_exclusion_ui", "_set_planner_details_collapsed", "_set_planner_busy", "_reset_target_constraints"):
         setattr(app, name, Mock())
     app.plan_map = Mock()
     app.detached_plan_map = Mock()

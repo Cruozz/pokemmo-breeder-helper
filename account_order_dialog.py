@@ -7,9 +7,12 @@ from tkinter import font, ttk
 
 
 class AccountOrderDialog:
-    def __init__(self, window: tk.Toplevel, accounts: list[str], on_save: Callable[[list[str]], bool]) -> None:
+    def __init__(self, window: tk.Toplevel, accounts: list[str], on_save: Callable[[list[str]], bool],
+                 on_save_deletions: Callable[[list[str], list[str]], bool] | None = None) -> None:
         self.window = window
         self.on_save = on_save
+        self.on_save_deletions = on_save_deletions
+        self.removed_accounts: list[str] = []
         self.dragged: str | None = None
         self.drag_y = 0
         self.scroll_timer = None
@@ -24,7 +27,7 @@ class AccountOrderDialog:
         body = ttk.Frame(window, padding=16)
         body.pack(fill="both", expand=True)
         instruction = ttk.Label(
-            body, text="上下拖动账号，或选中后点击上移 / 下移。\n保存后按账号顺序及仓库页、行、列重新排列全部素材。",
+            body, text="拖动或上移 / 下移调整顺序。\n删除账号及其素材在保存时确认，取消不生效。",
             justify="left", wraplength=410,
         )
         instruction.pack(fill="x", pady=(0, 12))
@@ -58,10 +61,15 @@ class AccountOrderDialog:
         self.up_button.pack(side="left", padx=(0, 6))
         self.down_button = ttk.Button(movement, text="下移", command=lambda: self.move_selected(1))
         self.down_button.pack(side="left")
+        self.delete_button = ttk.Button(movement, text="删除账号", style="Danger.TButton", command=self.delete_selected)
+        if on_save_deletions is not None:
+            self.delete_button.pack(side="left", padx=(8, 0))
         self.position = ttk.Label(movement)
         self.position.pack(side="right")
         footer = ttk.Frame(body)
         footer.pack(fill="x")
+        self.deletion_note = ttk.Label(body, text="", style="Muted.TLabel")
+        self.deletion_note.pack(fill="x", pady=(8, 0))
         self.save_button = ttk.Button(footer, text="保存并重新排列", style="Primary.TButton", command=self.save)
         self.save_button.pack(side="right")
         self.cancel_button = ttk.Button(footer, text="取消", command=self.cancel)
@@ -82,6 +90,7 @@ class AccountOrderDialog:
         count = len(self.tree.get_children())
         self.up_button.configure(state="normal" if index > 0 else "disabled")
         self.down_button.configure(state="normal" if 0 <= index < count - 1 else "disabled")
+        self.delete_button.configure(state="normal" if selection else "disabled")
         self.position.configure(text=f"第 {index + 1} / {count} 位" if selection else f"共 {count} 个账号")
 
     def move_selected(self, direction: int) -> str:
@@ -93,6 +102,23 @@ class AccountOrderDialog:
             self.tree.see(item)
             self._update_controls()
         return "break"
+
+    def delete_selected(self) -> None:
+        selected = self.tree.selection()
+        if not selected or self.on_save_deletions is None:
+            return
+        self._release()
+        item = selected[0]
+        index = self.tree.index(item)
+        self.removed_accounts.append(self.tree.item(item, "text"))
+        self.tree.delete(item)
+        remaining = self.tree.get_children()
+        if remaining:
+            item = remaining[min(index, len(remaining) - 1)]
+            self.tree.selection_set(item)
+            self.tree.focus(item)
+        self.deletion_note.configure(text=f"待删除 {len(self.removed_accounts)} 个账号及其素材；保存后生效。")
+        self._update_controls()
 
     def _press(self, event) -> str:
         item = self.tree.identify_row(event.y)
@@ -148,7 +174,9 @@ class AccountOrderDialog:
 
     def save(self) -> None:
         self._release()
-        if self.on_save(self.ordered_accounts()):
+        saved = (self.on_save_deletions(self.ordered_accounts(), self.removed_accounts)
+                 if self.removed_accounts and self.on_save_deletions else self.on_save(self.ordered_accounts()))
+        if saved:
             self.window.destroy()
 
     def cancel(self) -> None:
