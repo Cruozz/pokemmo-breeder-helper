@@ -138,6 +138,52 @@ class GuideDatabase:
         return results
 
 
+@dataclass(frozen=True)
+class HordeSpecies:
+    species_id: int
+    name: str
+    encounters: tuple[Encounter, ...]
+
+    @property
+    def regions(self) -> str:
+        return " / ".join(dict.fromkeys(row.region for row in self.encounters))
+
+    @property
+    def location_count(self) -> int:
+        return len({(row.region, row.location) for row in self.encounters})
+
+    @property
+    def quantities(self) -> str:
+        return " / ".join(f"{size}只" for size in sorted({row.quantity for row in self.encounters}))
+
+
+def group_hordes(encounters: list[Encounter]) -> list[HordeSpecies]:
+    """Group only matching encounters, retaining every season/time condition."""
+    grouped = {}
+    for row in encounters:
+        grouped.setdefault(row.species_id, []).append(row)
+    return [HordeSpecies(species_id, rows[0].name, tuple(rows)) for species_id, rows in sorted(grouped.items())]
+
+
+def horde_locations_text(group: HordeSpecies) -> str:
+    locations = {}
+    for row in group.encounters:
+        conditions = locations.setdefault((row.region, row.location), {})
+        # Merge seasons only when ALL other conditions, including source
+        # chances, match; do not invent season/time combinations.
+        key = (row.quantity, row.level, row.method, row.chances)
+        conditions.setdefault(key, set()).add(row.season)
+    sections = []
+    for (region, location), conditions in locations.items():
+        lines = [f"{region} · {location}"]
+        for (quantity, level, method, chances), seasons in conditions.items():
+            season_text = "全年" if "任意" in seasons else " / ".join(s for s in SEASONS[1:] if s in seasons)
+            periods = " / ".join(period for period, _value in chances) or "时段未标注"
+            lines.append(f"  {quantity}只 · Lv.{level} · {method} · {season_text} · {periods}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
+
+
 @lru_cache(maxsize=1)
 def get_guide_database() -> GuideDatabase:
     with gzip.open(resource_path("data", "guide.json.gz"), "rt", encoding="utf-8") as stream:

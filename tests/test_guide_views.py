@@ -51,15 +51,44 @@ class GuideViewTests(unittest.TestCase):
         page.jump_to_related()
         self.assertEqual(navigations, [("hordes", 25)])
 
-    def test_pagination_and_numeric_sort(self):
+    def test_pokedex_shows_all_species_without_pagination_and_sorts_numerically(self):
         page = QueryPage(self.root, self.database, "pokedex", lambda *_args: None)
         page.table.change_page(1)
-        self.assertEqual(page.table.page, 1)
+        self.assertEqual(page.table.page, 0)
+        self.assertEqual(len(page.table.tree.get_children()), 649)
+        self.assertEqual(page.table.next_button.winfo_manager(), "")
+        self.assertEqual(page.table.previous_button.winfo_manager(), "")
         page.table.sort("total")
         totals = [values[3] for _record, values in page.table.rows]
         self.assertEqual(totals, sorted(totals))
         self.assertEqual(page.table.page, 0)
-        self.assertLessEqual(len(page.table.tree.get_children()), 150)
+        self.assertEqual(len(page.table.tree.get_children()), 649)
+        page.query.set("皮卡丘")
+        page.refresh()
+        self.assertEqual(len(page.table.tree.get_children()), 1)
+        page.reset()
+        self.assertEqual(len(page.table.tree.get_children()), 649)
+
+    def test_hordes_have_one_row_per_species_and_all_matching_locations(self):
+        navigations = []
+        page = QueryPage(self.root, self.database, "hordes", lambda *args: navigations.append(args))
+        records = [record for record, _values in page.table.rows]
+        self.assertEqual(len(records), len({row.species_id for row in self.database.hordes}))
+        multiple = next(record for record in records if len({row.region for row in record.encounters}) > 1)
+        page.show_details(multiple)
+        content = page.details["base"].get("1.0", "end")
+        for region, location in {(row.region, row.location) for row in multiple.encounters}:
+            self.assertEqual(content.count(f"{region} · {location}\n"), 1)
+        page.jump_to_related()
+        self.assertEqual(navigations, [("pokedex", multiple.species_id)])
+        page.variables["region"].set("合众")
+        page.variables["season"].set("冬")
+        page.variables["quantity"].set("5只")
+        page.refresh()
+        self.assertTrue(page.table.rows)
+        for record, _values in page.table.rows:
+            self.assertTrue(all(row.region == "合众" and row.season in {"冬", "任意"} and row.quantity == 5
+                                for row in record.encounters))
 
     def test_effort_filters_keep_the_selected_stat(self):
         page = QueryPage(self.root, self.database, "effort", lambda *_args: None)

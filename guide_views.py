@@ -10,7 +10,7 @@ from pokedex_portrait import PokedexPortrait
 
 from guide_data import (
     PERIOD_KEYS, REGIONS, SEASONS, STAT_LABELS, TYPE_LABELS,
-    GuideDatabase, ev_text, ev_values, get_guide_database,
+    GuideDatabase, ev_text, ev_values, get_guide_database, group_hordes, horde_locations_text,
 )
 
 
@@ -40,8 +40,9 @@ def set_text(widget: tk.Text, content: str) -> None:
 
 
 class ResultTable(ttk.Frame):
-    def __init__(self, parent, columns: list[tuple[str, str, int]], selected) -> None:
+    def __init__(self, parent, columns: list[tuple[str, str, int]], selected, *, paginated=True) -> None:
         super().__init__(parent)
+        self.paginated = paginated
         self.column_keys = [key for key, _label, _width in columns]
         self.rows: list[tuple[object, tuple]] = []
         self.page = 0
@@ -65,9 +66,11 @@ class ResultTable(ttk.Frame):
         self.count = tk.StringVar(self)
         ttk.Label(controls, textvariable=self.count, style="Muted.TLabel").pack(side="left")
         self.next_button = ttk.Button(controls, text="下一页", command=lambda: self.change_page(1))
-        self.next_button.pack(side="right")
+        if paginated:
+            self.next_button.pack(side="right")
         self.previous_button = ttk.Button(controls, text="上一页", command=lambda: self.change_page(-1))
-        self.previous_button.pack(side="right", padx=5)
+        if paginated:
+            self.previous_button.pack(side="right", padx=5)
         self.tree.bind("<<TreeviewSelect>>", self._select)
 
     def set_rows(self, rows: list[tuple[object, tuple]]) -> None:
@@ -89,6 +92,8 @@ class ResultTable(ttk.Frame):
         self.render()
 
     def change_page(self, offset: int) -> None:
+        if not self.paginated:
+            return
         self.page = max(0, min(self.page + offset, max(0, (len(self.rows) - 1) // PAGE_SIZE)))
         self.render()
 
@@ -96,11 +101,22 @@ class ResultTable(ttk.Frame):
         children = self.tree.get_children()
         if children:
             self.tree.delete(*children)
-        start = self.page * PAGE_SIZE
-        for index, (_record, values) in enumerate(self.rows[start:start + PAGE_SIZE], start):
+        start = self.page * PAGE_SIZE if self.paginated else 0
+        visible_rows = self.rows[start:start + PAGE_SIZE] if self.paginated else self.rows
+        for index, (_record, values) in enumerate(visible_rows, start):
             self.tree.insert("", "end", iid=str(index), values=values)
         pages = max(1, math.ceil(len(self.rows) / PAGE_SIZE))
-        self.count.set(f"{len(self.rows):,} 条结果 · 第 {self.page + 1}/{pages} 页" if self.rows else "没有匹配结果；请清空关键词或放宽季节、地区筛选。")
+        show_pages = self.paginated and pages > 1
+        if show_pages:
+            self.next_button.pack(side="right")
+            self.previous_button.pack(side="right", padx=5)
+        else:
+            self.next_button.pack_forget()
+            self.previous_button.pack_forget()
+        self.count.set((f"{len(self.rows):,} 条结果 · 第 {self.page + 1}/{pages} 页" if show_pages else f"{len(self.rows):,} 条结果")
+                       if self.rows else "没有匹配结果；请清空关键词或放宽季节、地区筛选。")
+        if self.rows and not self.paginated:
+            self.count.set(f"{len(self.rows):,} 只精灵")
         self.previous_button.configure(state="normal" if self.page else "disabled")
         self.next_button.configure(state="normal" if self.page + 1 < pages else "disabled")
         if self.rows:
@@ -161,14 +177,19 @@ class QueryPage(ttk.Frame):
         hint = (
             "支持中文名、英文名与编号；选择精灵查看种族值、特性、招式和野外分布。"
             if mode == "pokedex" else
+            "选择精灵查看各地群怪分布。" if mode == "hordes" else
             "选择游戏内季节，不按现实月份推断。可搜索精灵或地点；不同季节、时段单独列出。"
         )
         self.hint = ttk.Label(self, text=hint, style="Muted.TLabel", wraplength=650)
-        self.hint.pack(fill="x", pady=(6, 8))
+        if mode != "hordes":
+            self.hint.pack(fill="x", pady=(6, 8))
         self.bind("<Configure>", lambda event: self.hint.configure(wraplength=max(250, event.width - 30)))
         if mode == "pokedex":
             columns = [("id", "编号", 65), ("name", "精灵", 125), ("types", "属性", 100),
                        ("total", "种族值合计", 95), ("groups", "蛋组", 150)]
+        elif mode == "hordes":
+            columns = [("id", "编号", 65), ("name", "精灵", 125), ("region", "分布地区", 220),
+                       ("locations", "地点数", 70), ("quantity", "群怪数量", 100)]
         else:
             columns = [("name", "精灵", 105), ("region", "地区", 65), ("location", "地点", 230),
                        ("season", "季节", 100), ("period", "时段", 140), ("quantity", "数量", 60),
@@ -177,7 +198,9 @@ class QueryPage(ttk.Frame):
                 columns.insert(2, ("ev", "整群基础值", 100))
         self.body = ttk.Panedwindow(self, orient="vertical")
         self.body.pack(fill="both", expand=True)
-        self.table = ResultTable(self.body, columns, self.show_details)
+        self.table = ResultTable(self.body, columns, self.show_details, paginated=mode != "pokedex")
+        if mode == "hordes":
+            self.table.tree.configure(height=3)
         self.body.add(self.table, weight=3)
         detail_frame = ttk.Frame(self.body)
         actions = ttk.Frame(detail_frame, padding=(0, 4))
@@ -201,7 +224,15 @@ class QueryPage(ttk.Frame):
         else:
             self.details = {"base": readonly_text(detail_frame, height=5)}
         self.body.add(detail_frame, weight=2)
+        if mode == "hordes":
+            self.horde_split_ready = False
+            self.body.bind("<Configure>", self._initialize_horde_split)
         self.refresh()
+
+    def _initialize_horde_split(self, event) -> None:
+        if not self.horde_split_ready and event.height >= 160:
+            self.horde_split_ready = True
+            self.body.sashpos(0, max(125, int(event.height * 0.45)))
 
     def add_filter(self, key, label, values, editable=False) -> None:
         cell = ttk.Frame(self.filters, padding=(0, 3, 8, 3))
@@ -264,12 +295,16 @@ class QueryPage(ttk.Frame):
                 single_stat=values.get("single") == "仅单一努力项精灵",
             )
             rows = []
-            for record in records:
-                display = [record.name, record.region, record.location, record.season_label, record.periods,
-                           record.quantity, record.level, record.method]
-                if stat:
-                    display.insert(2, ev_values(self.database.by_id[record.species_id])[stat] * record.quantity)
-                rows.append((record, tuple(display)))
+            if self.mode == "hordes":
+                rows = [(record, (record.species_id, record.name, record.regions, record.location_count, record.quantities))
+                        for record in group_hordes(records)]
+            else:
+                for record in records:
+                    display = [record.name, record.region, record.location, record.season_label, record.periods,
+                               record.quantity, record.level, record.method]
+                    if stat:
+                        display.insert(2, ev_values(self.database.by_id[record.species_id])[stat] * record.quantity)
+                    rows.append((record, tuple(display)))
         self.table.set_rows(rows)
 
     def show_details(self, record) -> None:
@@ -301,6 +336,9 @@ class QueryPage(ttk.Frame):
             locations = self.database.find_encounters(quantity="全部遭遇", species_id=record["id"])
             lines = [f"{row.region} · {row.location} | {row.method} | {row.quantity}只 | Lv.{row.level} | {row.season_label} | {row.periods}" for row in locations]
             set_text(self.details["locations"], "\n".join(lines) or "暂无普通野外遭遇记录；不代表无法通过其他方式获取。")
+        elif self.mode == "hordes":
+            self.detail_title.set(f"#{record.species_id:03}  {record.name} · {record.location_count} 个地点")
+            set_text(self.details["base"], horde_locations_text(record))
         else:
             species = self.database.by_id[record.species_id]
             self.detail_title.set(f"{record.name} · {record.region}")

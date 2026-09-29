@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import unittest
 
-from guide_data import GuideDatabase, STAT_LABELS, ev_text, ev_values, get_guide_database
+from guide_data import GuideDatabase, STAT_LABELS, ev_text, ev_values, get_guide_database, group_hordes, horde_locations_text
 from scripts.build_guide_data import build
 
 
@@ -73,6 +73,22 @@ class GuideDataTests(unittest.TestCase):
 
     def test_no_duplicate_rows(self):
         self.assertEqual(len(set(self.database.encounters)), len(self.database.encounters))
+
+    def test_horde_grouping_preserves_rows_and_does_not_mix_season_time_conditions(self):
+        source = self.database.find_encounters()
+        grouped = group_hordes(source)
+        self.assertEqual(len(grouped), len({row.species_id for row in source}))
+        self.assertEqual({row for group in grouped for row in group.encounters}, set(source))
+        sample = source[0]
+        spring = replace(sample, season="春", chances=(("清晨", "10%"),))
+        summer = replace(sample, season="夏", chances=(("清晨", "10%"),))
+        winter = replace(sample, season="冬", chances=(("夜晚", "20%"),))
+        group = group_hordes([spring, summer, winter])[0]
+        content = horde_locations_text(group)
+        self.assertEqual(group.location_count, 1)
+        self.assertIn("春 / 夏 · 清晨", content)
+        self.assertIn("冬 · 夜晚", content)
+        self.assertNotIn("春 / 夏 / 冬", content)
 
     def test_builder_rejects_incomplete_input(self):
         with self.assertRaises(ValueError):

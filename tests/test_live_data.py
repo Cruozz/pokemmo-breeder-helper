@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 
 from live_data import (
     AlphaReport, CaveRotation, FeedError, LiveClient, alpha_status, cave_status,
-    load_cache, location_label, parse_alpha, parse_cave, save_cache,
+    load_cache, location_label, parse_alpha, parse_cave, save_cache, next_cave_refresh, cave_refresh_time,
 )
 
 ALPHA_HTML = '''<span id="latestPingTime">2026-09-28 19:24:38 UTC (UTC+00:00)</span>
@@ -27,6 +27,15 @@ CAVE_HTML = '<script id="rotations-data" type="application/json">' + json.dumps(
 
 
 class LiveDataTests(unittest.TestCase):
+    def test_fixed_cave_times_cover_all_slots_midnight_and_exact_boundaries(self):
+        for hour, expected in ((17, "09-29 02:00"), (18, "09-29 08:00"), (23, "09-29 08:00")):
+            instant = datetime(2026, 9, 28, hour, tzinfo=timezone.utc).timestamp()
+            self.assertEqual(cave_refresh_time(next_cave_refresh(instant)), expected)
+        for hour, expected in ((0, "09-29 14:00"), (6, "09-29 20:00"), (12, "09-30 02:00"), (18, "09-30 08:00")):
+            instant = datetime(2026, 9, 29, hour, tzinfo=timezone.utc).timestamp()
+            self.assertEqual(cave_refresh_time(next_cave_refresh(instant)), expected)
+            self.assertEqual(next_cave_refresh(instant - 0.1), instant)
+
     def test_alpha_raw_ampersands_preserve_despawn_timestamp(self):
         report = parse_alpha(ALPHA_HTML)
         self.assertEqual(report.species_id, 373)

@@ -15,6 +15,7 @@ from guide_data import TYPE_LABELS
 from live_data import (
     INTERVALS, SOURCE_URLS, AlphaReport, CaveRotation, FeedError, LiveClient,
     alpha_status, cave_status, load_cache, local_time, location_label, save_cache,
+    next_cave_refresh, cave_refresh_time,
 )
 from pokedex_portrait import PokedexPortrait, PortraitAtlas
 from species_data import get_species_database
@@ -30,6 +31,7 @@ class FeedState:
     failures: int = 0
     next_due: float = 0
     retry_until: float = 0
+    last_request: float = -1000
 
 
 class EncounterSlot(ttk.Frame):
@@ -74,7 +76,7 @@ class LiveWorkspace(ttk.Frame):
         self.in_flight = False
         self.closed = False
         self.network_enabled = autostart
-        self.last_request = -1000.0
+        self.cave_due_at = next_cave_refresh(time.time())
         self.active_kinds = set()
         self.poll_after = None
         self.database = get_species_database()
@@ -99,12 +101,15 @@ class LiveWorkspace(ttk.Frame):
         self.interval_combo.bind("<<ComboboxSelected>>", self.settings_changed)
         self.auto_check = ttk.Checkbutton(controls, text="自动刷新", variable=self.auto_var, command=self.settings_changed)
         self.auto_check.pack(side="right")
+        self.fixed_hint = ttk.Label(controls, text="北京时间 02 / 08 / 14 / 20 点", style="Muted.TLabel")
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True)
         self.alpha_page = ttk.Frame(self.tabs, padding=12)
         self.cave_page = ttk.Frame(self.tabs, padding=12)
+        self.market_page = ttk.Frame(self.tabs)
         self.tabs.add(self.alpha_page, text="当前头目")
         self.tabs.add(self.cave_page, text="变化洞窟")
+        self.tabs.add(self.market_page, text="市场行情")
 
         self.alpha_status = tk.StringVar(self, "正在等待头目资料")
         ttk.Label(self.alpha_page, textvariable=self.alpha_status, style="Field.TLabel", wraplength=590).pack(fill="x", pady=(0, 12))
@@ -142,11 +147,29 @@ class LiveWorkspace(ttk.Frame):
         self._footer(self.cave_page, "cave")
         for kind in self.feeds:
             self.render(kind)
+        self.tabs.bind("<<NotebookTabChanged>>", self._tab_changed)
         self.poll_after = self.after(100, self._tick)
 
     @property
     def interval(self):
         return INTERVALS.get(self.interval_var.get(), 60)
+
+    def current_kind(self):
+        selected = self.tabs.select()
+        return "alpha" if selected == str(self.alpha_page) else "cave" if selected == str(self.cave_page) else None
+
+    def _tab_changed(self, _event=None):
+        kind = self.current_kind()
+        for control in (self.refresh_button, self.interval_combo, self.auto_check, self.fixed_hint):
+            control.pack_forget()
+        if kind is not None:
+            self.refresh_button.pack(side="right")
+        if kind == "alpha":
+            self.interval_combo.pack(side="right", padx=8)
+            self.auto_check.pack(side="right")
+        elif kind == "cave":
+            self.fixed_hint.pack(side="right", padx=12)
+        self._update_refresh_button()
 
     def _slots(self, parent, key, count):
         self.cave_slots[key] = []
@@ -167,8 +190,8 @@ class LiveWorkspace(ttk.Frame):
 
     def settings_changed(self, _event=None):
         now = time.monotonic()
-        for state in self.feeds.values():
-            state.next_due = max(state.retry_until, now + self.interval)
+        state = self.feeds["alpha"]
+        state.next_due = max(state.retry_until, now + self.interval)
         self._save()
 
     def _save(self):
@@ -180,18 +203,38 @@ class LiveWorkspace(ttk.Frame):
 
     def refresh(self, manual=False):
         now = time.monotonic()
-        if self.closed or self.in_flight or now - self.last_request < 15:
+        wall = time.time()
+        if self.closed or self.in_flight:
             return
-        kinds = [kind for kind, state in self.feeds.items()
-                 if now >= state.retry_until and (manual or now >= state.next_due)]
+        candidates = [self.current_kind()] if manual else self.automatic_kinds(wall, now)
+        kinds = [kind for kind in candidates if kind in self.feeds
+                 and now >= self.feeds[kind].retry_until and now - self.feeds[kind].last_request >= 15]
         if not kinds:
             return
         self.in_flight = True
-        self.last_request = now
+        for kind in kinds:
+            self.feeds[kind].last_request = now
+        if "cave" in kinds:
+            # Consume this scheduled slot at dispatch. Failure waits for the
+            # next fixed slot or an explicit manual refresh, never minute polling.
+            self.cave_due_at = next_cave_refresh(wall)
         self.active_kinds = set(kinds)
         self.refresh_button.configure(state="disabled")
         threading.Thread(target=LiveWorkspace._fetch, args=(self.client, self.result_queue, kinds),
                          name="pokemmo-live-info", daemon=True).start()
+
+    def automatic_kinds(self, wall, mono):
+        kinds = ["cave"] if wall >= self.cave_due_at else []
+        if self.auto_var.get() and mono >= self.feeds["alpha"].next_due:
+            kinds.append("alpha")
+        return kinds
+
+    def _update_refresh_button(self):
+        kind = self.current_kind()
+        state = self.feeds.get(kind)
+        now = time.monotonic()
+        enabled = state is not None and not self.in_flight and now - state.last_request >= 15 and now >= state.retry_until
+        self.refresh_button.configure(state="normal" if enabled else "disabled")
 
     @staticmethod
     def _fetch(client, result_queue, kinds):
@@ -219,6 +262,8 @@ class LiveWorkspace(ttk.Frame):
             self._save()
         else:
             state.error = str(error)
+            if kind == "cave":
+                state.error = state.error.replace("稍后自动重试", "请手动刷新或等待下个定时点")
             state.failures += 1
             delay = max(min(900, self.interval * 2 ** min(state.failures, 5)), getattr(error, "retry_after", 0))
             state.next_due = now + delay
@@ -240,10 +285,9 @@ class LiveWorkspace(ttk.Frame):
             else:
                 self._apply_result(kind, report, error)
         now = time.monotonic()
-        if self.network_enabled and self.auto_var.get() and any(now >= state.next_due for state in self.feeds.values()):
+        if self.network_enabled and self.automatic_kinds(time.time(), now):
             self.refresh()
-        can_refresh = not self.in_flight and now - self.last_request >= 15 and any(now >= state.retry_until for state in self.feeds.values())
-        self.refresh_button.configure(state="normal" if can_refresh else "disabled")
+        self._update_refresh_button()
         self.update_status()
         self.poll_after = self.after(250, self._tick)
 
@@ -255,16 +299,18 @@ class LiveWorkspace(ttk.Frame):
             elif state.error:
                 text = state.error + (" 显示上次资料，当前状态待确认。" if state.data else "")
             elif not state.confirmed and state.data is not None:
-                text = "上次缓存 · 当前状态待联网确认"
+                text = "上次缓存 · 当前状态待联网确认" if kind == "alpha" else "已读取上次洞窟资料"
             elif state.data is None:
-                text = "尚未获取资料" if not self.auto_var.get() else "等待刷新…"
-            elif now - state.verified_at > max(180, self.interval * 2 + 30):
+                text = "尚未获取资料，可点击立即刷新" if kind == "cave" else "尚未获取资料" if not self.auto_var.get() else "等待刷新…"
+            elif self._stale(state, now):
                 text = "资料尚未更新 · 当前状态待确认"
             else:
                 text = "Alphapedia 社区上报 · 时间为本机时间"
             self.status_vars[kind].set(text)
             freshness = "最近获取 " + local_time(state.verified_at) if state.verified_at else "尚无成功获取记录"
             cadence = f"{max(0, int(state.next_due - mono))} 秒后刷新" if self.auto_var.get() else "自动刷新已暂停"
+            if kind == "cave":
+                cadence = "下次 " + cave_refresh_time(self.cave_due_at) + "（北京时间）"
             self.clock_vars[kind].set(freshness + "  ·  " + cadence)
         if self.feeds["alpha"].data:
             state = self.feeds["alpha"]
@@ -280,6 +326,8 @@ class LiveWorkspace(ttk.Frame):
             self.cave_status.set(text)
 
     def _stale(self, state, now):
+        if isinstance(state.data, CaveRotation):
+            return bool(state.error) or not state.data.starts_at <= now < state.data.expires_at
         return not state.confirmed or bool(state.error) or now - state.verified_at > max(180, self.interval * 2 + 30)
 
     def render(self, kind):

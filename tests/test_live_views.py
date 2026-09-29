@@ -94,8 +94,9 @@ class LiveViewTests(unittest.TestCase):
                 self.root.update()
                 time.sleep(0.02)
             self.assertFalse(page.in_flight)
-            self.assertEqual(calls, ["alpha", "cave"])
-            self.assertTrue(page.feeds["cave"].confirmed)
+            self.assertEqual(calls, ["alpha"])
+            self.assertTrue(page.feeds["alpha"].confirmed)
+            self.assertFalse(page.feeds["cave"].confirmed)
         finally:
             gate.set()
 
@@ -139,7 +140,7 @@ class LiveViewTests(unittest.TestCase):
             for button in app.workspace_nav_items:
                 self.assertGreater(stacking.index(button), highest_frame,
                                    "Navigation must not be covered by its wrapping frame")
-            for widget in [*app.workspace_nav_items, page.refresh_button, page.interval_combo,
+            for widget in [*app.workspace_nav_items, page.refresh_button, page.fixed_hint,
                            *page.cave_slots["singles"], *page.cave_slots["hordes"]]:
                 x = widget.winfo_rootx() - self.root.winfo_rootx()
                 y = widget.winfo_rooty() - self.root.winfo_rooty()
@@ -158,6 +159,60 @@ class LiveViewTests(unittest.TestCase):
         callback = page.poll_after
         page.destroy()
         self.assertNotIn(callback, self.root.tk.call("after", "info"))
+
+    def test_cave_uses_fixed_slots_even_when_alpha_is_paused(self):
+        page = self.page()
+        page.auto_var.set(False)
+        due = page.cave_due_at
+        self.assertEqual(page.automatic_kinds(due - 0.01, time.monotonic()), [])
+        self.assertEqual(page.automatic_kinds(due, time.monotonic()), ["cave"])
+        page.settings_changed()
+        self.assertEqual(page.cave_due_at, due)
+        page.auto_var.set(True)
+        page.feeds["alpha"].next_due = 0
+        self.assertEqual(page.automatic_kinds(due - 1, time.monotonic()), ["alpha"])
+
+    def test_cave_catchup_is_one_request_and_failure_does_not_minute_poll(self):
+        page = self.page()
+        page.auto_var.set(False)
+        due = page.cave_due_at
+        with patch("live_views.time.time", return_value=due + 21601), patch("live_views.threading.Thread") as worker:
+            page.refresh()
+            self.assertEqual(page.active_kinds, {"cave"})
+            self.assertGreater(page.cave_due_at, due + 21601)
+            worker.assert_called_once()
+            page._apply_result("cave", None, FeedError("连接失败，稍后自动重试。"))
+            self.assertNotIn("自动重试", page.feeds["cave"].error)
+            self.assertEqual(page.automatic_kinds(due + 21601 + 60, time.monotonic() + 60), [])
+
+    def test_manual_refresh_only_current_tab_and_market_is_blank(self):
+        page = self.page()
+        page.tabs.select(page.cave_page)
+        self.root.update()
+        self.assertEqual(page.interval_combo.winfo_manager(), "")
+        self.assertEqual(page.auto_check.winfo_manager(), "")
+        with patch("live_views.threading.Thread"):
+            page.refresh(manual=True)
+        self.assertEqual(page.active_kinds, {"cave"})
+        page.in_flight = False
+        page.active_kinds.clear()
+        page.tabs.select(page.market_page)
+        self.root.update()
+        self.assertEqual(page.market_page.winfo_children(), [])
+        self.assertEqual(page.refresh_button.winfo_manager(), "")
+        with patch("live_views.threading.Thread") as worker:
+            page.refresh(manual=True)
+            worker.assert_not_called()
+        self.assertEqual([page.tabs.tab(tab, "text") for tab in page.tabs.tabs()], ["当前头目", "变化洞窟", "市场行情"])
+
+    def test_cave_does_not_become_stale_after_alpha_interval(self):
+        page = self.page()
+        page._apply_result("cave", self.cave, None)
+        page.feeds["cave"].verified_at = self.cave.starts_at + 1
+        with patch("live_views.time.time", return_value=self.cave.starts_at + 3600):
+            page.update_status()
+        self.assertNotIn("待确认", page.cave_status.get())
+        self.assertIn("北京时间", page.clock_vars["cave"].get())
 
 
 if __name__ == "__main__":

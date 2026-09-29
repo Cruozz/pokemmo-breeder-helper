@@ -52,7 +52,15 @@ def run_checks() -> dict[str, object]:
             root.update_idletasks()
             if not page.table.rows:
                 raise RuntimeError(f"Native query page has no results: {mode}")
+            if mode == "hordes":
+                ids = [record.species_id for record, _values in page.table.rows]
+                if len(ids) != len(set(ids)) or sum(len(record.encounters) for record, _values in page.table.rows) != len(guide.hordes):
+                    raise RuntimeError("Packaged horde grouping lost or duplicated encounters")
+                checks["grouped_hordes"] = {"species": len(ids), "encounters": len(guide.hordes)}
             if mode == "pokedex":
+                if len(page.table.tree.get_children()) != 649 or page.table.next_button.winfo_manager():
+                    raise RuntimeError("Packaged Pokedex still paginates species")
+                checks["pokedex_all_rows"] = 649
                 page.show_details(guide.by_id[25])
                 portrait = page.portrait
                 normal = portrait.photo
@@ -87,8 +95,14 @@ def run_checks() -> dict[str, object]:
                 raise RuntimeError("Packaged live information failed to render")
             if not live.alpha_portrait.photo or len(live.cave_slots["singles"]) != 5:
                 raise RuntimeError("Packaged live portraits or encounter slots are missing")
-            checks["live_information"] = {"pages": ["alpha", "cave"], "offline_fixture": True,
-                                           "isolated_cache": True, "default_interval_seconds": live.interval}
+            if live.market_page.winfo_children():
+                raise RuntimeError("Packaged market placeholder should be empty")
+            live.auto_var.set(False)
+            if live.automatic_kinds(live.cave_due_at, time.monotonic()) != ["cave"]:
+                raise RuntimeError("Packaged cave schedule depends on Alpha auto-refresh")
+            checks["live_information"] = {"pages": ["alpha", "cave", "market"], "offline_fixture": True,
+                                           "isolated_cache": True, "default_interval_seconds": live.interval,
+                                           "cave_schedule_beijing": [2, 8, 14, 20], "market_empty": True}
             live.destroy()
     finally:
         root.destroy()

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from html.parser import HTMLParser
@@ -20,6 +20,18 @@ BASE_URL = "https://alpha.pokemmotools.org"
 SOURCE_URLS = {"alpha": BASE_URL + "/", "cave": BASE_URL + "/rotations"}
 MAX_RESPONSE_BYTES = 3 * 1024 * 1024
 INTERVALS = {"30 秒": 30, "1 分钟": 60, "3 分钟": 180, "5 分钟": 300}
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def next_cave_refresh(now: float) -> float:
+    """Next 02/08/14/20 Beijing time, independent of the PC's timezone."""
+    return (int(now) // 21600 + 1) * 21600.0
+
+
+def cave_refresh_time(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp, BEIJING_TZ).strftime("%m-%d %H:%M")
+
+
 REGION_NAMES = {"Kanto": "关都", "Johto": "城都", "Hoenn": "丰缘", "Sinnoh": "神奥", "Unova": "合众"}
 LOCATION_NAMES = {"Sky Pillar": "天空之柱", "New Mauville": "新紫堇", "Seafoam Islands": "双子岛",
                   "Victory Road": "冠军之路", "Mt. Moon": "月见山", "Rock Tunnel": "岩山隧道",
@@ -220,7 +232,7 @@ class LiveClient:
 
     def fetch(self, kind: str):
         request = Request(SOURCE_URLS[kind], headers={
-            "User-Agent": "PokeMMO-Breeder-Helper/0.2.17 (+https://github.com/Cruozz/pokemmo-breeder-helper)",
+            "User-Agent": "PokeMMO-Breeder-Helper/0.2.18 (+https://github.com/Cruozz/pokemmo-breeder-helper)",
             "Accept": "text/html", "Cache-Control": "no-cache", "Accept-Encoding": "identity",
         })
         try:
