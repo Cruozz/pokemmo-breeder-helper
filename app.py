@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.16"
+APP_VERSION = "0.2.17"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -78,6 +78,7 @@ from models import STATS, Monster, format_box_position, normalize_gender
 from inventory_order import inventory_in_display_order, sorted_inventory_ids
 from account_order_dialog import AccountOrderDialog
 from guide_views import GuideWorkspace, PAGE_TITLES
+from live_views import LiveWorkspace
 from autocomplete import AutocompletePopup
 from nature_data import (
     NATURES,
@@ -320,32 +321,36 @@ class App:
 
         workspace_bar = ttk.Frame(self.root, style="App.TFrame", padding=(12, 8, 12, 0))
         workspace_bar.pack(fill=X)
-        ttk.Label(workspace_bar, text="工作区", style="Field.TLabel").pack(side=LEFT, padx=(0, 8))
+        self.workspace_label = ttk.Label(workspace_bar, text="工作区", style="Field.TLabel")
         self.scan_mode_button = ttk.Button(
             workspace_bar,
             text="扫描素材",
             style="Primary.TButton",
             command=lambda: self._select_workspace_mode("scan"),
         )
-        self.scan_mode_button.pack(side=LEFT, padx=(0, 5))
         self.planner_mode_button = ttk.Button(
             workspace_bar,
             text="孵蛋规划",
             command=lambda: self._select_workspace_mode("planner"),
         )
-        self.planner_mode_button.pack(side=LEFT, padx=(0, 5))
         self.guide_buttons = {}
         self.guide_workspace = None
         for guide_mode, guide_title in PAGE_TITLES.items():
             button = ttk.Button(workspace_bar, text=guide_title, command=lambda mode=guide_mode: self._select_workspace_mode(mode))
-            button.pack(side=LEFT, padx=(0, 5))
             self.guide_buttons[guide_mode] = button
+        self.live_workspace = None
+        self.live_mode_button = ttk.Button(workspace_bar, text="实时情报", command=lambda: self._select_workspace_mode("live"))
         self.author_mode_button = ttk.Button(
             workspace_bar,
             text="作者的话",
             command=lambda: self._select_workspace_mode("author"),
         )
-        self.author_mode_button.pack(side=RIGHT)
+        self.workspace_nav_items = [self.workspace_label, self.scan_mode_button, self.planner_mode_button,
+                                    *self.guide_buttons.values(), self.live_mode_button, self.author_mode_button]
+        self.workspace_nav_rows = [ttk.Frame(workspace_bar, style="App.TFrame") for _ in range(2)]
+        self.workspace_nav_layout = None
+        workspace_bar.bind("<Configure>", self._layout_workspace_nav)
+        self._layout_workspace_nav()
 
         self.scan_status_frame = ttk.Frame(self.root, style="StatusBar.TFrame", padding=(8, 6))
         self.scan_status_frame.pack(fill=X, padx=12, pady=(6, 4))
@@ -370,10 +375,10 @@ class App:
         self.right_panel.bind("<Configure>", self._resize_right_content, add="+")
 
     def _select_workspace_mode(self, mode: str) -> None:
-        mode = mode if mode in {"planner", "author", *PAGE_TITLES} else "scan"
-        labels = {"scan": "扫描素材", "planner": "孵蛋规划", "author": "作者的话", **PAGE_TITLES}
+        mode = mode if mode in {"planner", "author", "live", *PAGE_TITLES} else "scan"
+        labels = {"scan": "扫描素材", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", **PAGE_TITLES}
         self.workspace_mode_var.set(labels[mode])
-        if mode in PAGE_TITLES:
+        if mode in PAGE_TITLES or mode == "live":
             self._schedule_responsive_layout(immediate=True)
             return
         if hasattr(self, "right_tabs"):
@@ -400,7 +405,7 @@ class App:
     def _on_right_tab_changed(self, _event=None) -> None:
         if not hasattr(self, "right_tabs"):
             return
-        if self.workspace_mode_var.get() in PAGE_TITLES.values():
+        if self.workspace_mode_var.get() in {*PAGE_TITLES.values(), "实时情报"}:
             return
         selected = self.right_tabs.nametowidget(self.right_tabs.select())
         if selected is self.planner_tab:
@@ -418,12 +423,42 @@ class App:
         self.scan_mode_button.configure(style="Primary.TButton" if mode == "scan" else "TButton")
         self.planner_mode_button.configure(style="Primary.TButton" if mode == "planner" else "TButton")
         self.author_mode_button.configure(style="Primary.TButton" if mode == "author" else "TButton")
+        if hasattr(self, "live_mode_button"):
+            self.live_mode_button.configure(style="Primary.TButton" if mode == "live" else "TButton")
         for guide_mode, button in getattr(self, "guide_buttons", {}).items():
             button.configure(style="Primary.TButton" if mode == guide_mode else "TButton")
 
     def _navigate_guide(self, mode: str, species_id: int) -> None:
         self._select_workspace_mode(mode)
         self.guide_workspace.show(mode, species_id)
+
+    def _layout_workspace_nav(self, event=None) -> None:
+        available = max(650, (event.width if event is not None else self.root.winfo_width()) - 24)
+        row = column = used = 0
+        layout = []
+        for item in self.workspace_nav_items:
+            width = item.winfo_reqwidth() + 5
+            if used and used + width > available:
+                row += 1
+                column = used = 0
+            layout.append((row, column))
+            column += 1
+            used += width
+        if layout == self.workspace_nav_layout:
+            return
+        self.workspace_nav_layout = layout
+        for item in self.workspace_nav_items:
+            item.pack_forget()
+        while len(self.workspace_nav_rows) <= row:
+            self.workspace_nav_rows.append(ttk.Frame(self.workspace_nav_rows[0].master, style="App.TFrame"))
+        for index, frame in enumerate(self.workspace_nav_rows):
+            if index <= row:
+                frame.pack(fill=X)
+            else:
+                frame.pack_forget()
+        for item, (row, column) in zip(self.workspace_nav_items, layout):
+            item.pack(in_=self.workspace_nav_rows[row], side=LEFT, padx=(0, 5), pady=(0, 4))
+            item.lift()
 
     def build_scan_status_bar(self, parent: ttk.Frame) -> None:
         primary = ttk.Frame(parent)
@@ -880,6 +915,22 @@ class App:
         desired = self._layout_for_width(width)
         density = "tight" if desired == "compact" and height < 780 else "normal"
         workspace_label = self.workspace_mode_var.get()
+        if workspace_label == "实时情报":
+            self.scan_status_frame.pack_forget()
+            self.scan_controls_panel.pack_forget()
+            self.main_pane.pack_forget()
+            if self.guide_workspace is not None:
+                self.guide_workspace.pack_forget()
+            if self.live_workspace is None:
+                self.live_workspace = LiveWorkspace(self.root)
+            self.live_workspace.pack(fill=BOTH, expand=True, padx=12, pady=(8, 10))
+            self.layout_orientation = desired
+            self.applied_workspace_mode = "live"
+            self.applied_layout_density = density
+            self._update_workspace_buttons("live")
+            return
+        if getattr(self, "live_workspace", None) is not None:
+            self.live_workspace.pack_forget()
         guide_mode = next((key for key, label in PAGE_TITLES.items() if label == workspace_label), None)
         if guide_mode is not None:
             self.scan_status_frame.pack_forget()

@@ -1,5 +1,17 @@
 # Third-party notices
 
+## Alphapedia live information (V0.2.17)
+
+The optional live-information workspace reads the public pages at
+https://alpha.pokemmotools.org/ and https://alpha.pokemmotools.org/rotations
+when opened. It displays the latest community-reported Alpha and current
+Altering Cave encounter slots. Remote scripts are not executed or bundled.
+Only the most recent parsed public facts are cached locally; the application
+does not send inventory, account names, screenshots or game information.
+Species names and portraits use the existing bundled PokeAPI-derived resources.
+Alphapedia is credited in the workspace, with links to the original pages.
+Reports and approximate despawn times may be delayed or incomplete.
+
 ## PokeAPI data
 
 The generated `data/species.json`, `data/moves.json` and `data/abilities.json` files use source data from

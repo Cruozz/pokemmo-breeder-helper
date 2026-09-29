@@ -68,6 +68,28 @@ def run_checks() -> dict[str, object]:
                 checks["pokedex_portraits"] = {"species": 649, "variants": 2, "toggle": "normal-shiny-normal"}
             page.destroy()
         checks["native_guide"] = {"species": len(guide.species), "hordes": len(guide.hordes), "pages": list(PAGE_TITLES)}
+        import tempfile
+        from datetime import datetime, timezone
+        from live_data import AlphaReport, CaveRotation
+        from live_views import LiveWorkspace
+        with tempfile.TemporaryDirectory() as live_directory:
+            live = LiveWorkspace(root, cache_path=Path(live_directory) / "live.json", autostart=False)
+            now = time.time()
+            date = datetime.now(timezone.utc)
+            alpha = AlphaReport("Salamence", 373, "Hoenn", "Sky Pillar", now - 60, now + 4400)
+            cave = CaveRotation(date.strftime("%Y%m%d") + "-" + str(date.hour // 6), "Bug",
+                                ("Venomoth", "Ferroseed", "Duosion", "Parasect", "Staryu"),
+                                ("Ninjask", "Larvesta"), ("Shellos", "Pinsir"))
+            live._apply_result("alpha", alpha, None)
+            live._apply_result("cave", cave, None)
+            root.update_idletasks()
+            if live.alpha_name.get() != species.get_by_id(373).display_name or live.gem_type.get() != "宝石属性：虫":
+                raise RuntimeError("Packaged live information failed to render")
+            if not live.alpha_portrait.photo or len(live.cave_slots["singles"]) != 5:
+                raise RuntimeError("Packaged live portraits or encounter slots are missing")
+            checks["live_information"] = {"pages": ["alpha", "cave"], "offline_fixture": True,
+                                           "isolated_cache": True, "default_interval_seconds": live.interval}
+            live.destroy()
     finally:
         root.destroy()
 
