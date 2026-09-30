@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.20"
+APP_VERSION = "0.2.21"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -79,6 +79,7 @@ from inventory_order import inventory_in_display_order, sorted_inventory_ids
 from account_order_dialog import AccountOrderDialog
 from guide_views import GuideWorkspace, PAGE_TITLES
 from live_views import LiveWorkspace
+from window_memory import WindowMemory
 from autocomplete import AutocompletePopup
 from nature_data import (
     NATURES,
@@ -129,6 +130,8 @@ class App:
                 self.app_icon_photo = None
         self.root.geometry("880x920")
         self.root.minsize(700, 600)
+        self.window_memory = WindowMemory(self.root)
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.layout_orientation = ""
         self.applied_workspace_mode = ""
         self.applied_layout_density = ""
@@ -311,6 +314,14 @@ class App:
         self.root.bind("<space>", self._handle_batch_space, add="+")
         self.root.bind("<F8>", self._handle_batch_retry_hotkey, add="+")
         self.root.after_idle(self._apply_responsive_layout)
+
+    def close(self) -> None:
+        try:
+            self.window_memory.save()
+        except OSError:
+            pass
+        finally:
+            self.root.destroy()
 
     def build_ui(self) -> None:
         self._configure_styles()

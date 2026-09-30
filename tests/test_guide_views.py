@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from app import App
-from guide_data import get_guide_database
+from guide_data import SEASONS, ev_values, get_guide_database
 from guide_views import PAGE_TITLES, QueryPage
 
 
@@ -118,22 +118,40 @@ class GuideViewTests(unittest.TestCase):
         self.assertIn("纯点", page.detail_title.get())
         self.assertIn("整群基础值：特攻", content)
         for row in multiple.encounters:
-            other_species = {other.species_id for other in self.database.hordes if other.point_key == row.point_key}
-            self.assertEqual(other_species, {multiple.species_id})
+            for season in SEASONS[1:] if row.season == "任意" else (row.season,):
+                for period, _ in row.chances:
+                    members = {other.species_id for other in self.database.hordes
+                               if other.point_key == row.point_key and other.available(season, period)}
+                    self.assertEqual({key for identifier in members for key, value in ev_values(self.database.by_id[identifier]).items() if value}, {"sp_attack"})
             self.assertIn(f"{row.region} · {row.location} · 纯点", content)
         page.jump_to_related()
         self.assertEqual(navigations, [("pokedex", multiple.species_id)])
 
     def test_effort_mixed_point_stays_empty_even_after_name_and_stat_filters(self):
-        page = QueryPage(self.root, self.database, "effort", lambda *_args: None)
-        page.variables["stat"].set("特攻")
-        page.query.set("203 214号道路")
+        from tests.test_effort_spots import database, species, location
+        db = database(species(1, "hp", [location("混点")]), species(4, "attack", [location("混点", quantity=3)]))
+        page = QueryPage(self.root, db, "effort", lambda *_args: None)
+        page.query.set("1 混点")
+        page.variables["quantity"].set("5只")
         page.refresh()
         self.root.update()
         self.assertEqual(page.table.rows, [])
         self.assertIn("纯点", page.table.count.get())
         self.assertIn("纯点", page.details["base"].get("1.0", "end"))
         self.assertEqual(str(page.jump["state"]), "disabled")
+
+    def test_effort_defense_points_are_visible_and_aggregated(self):
+        page = QueryPage(self.root, self.database, "effort", lambda *_args: None)
+        page.variables["stat"].set("防御")
+        page.query.set("小拳石")
+        page.refresh()
+        self.root.update()
+        self.assertEqual(len(page.table.rows), 1)
+        group, values = page.table.rows[0]
+        self.assertEqual(group.species_id, 74)
+        self.assertGreater(group.location_count, 1)
+        self.assertEqual(values[1], "纯点")
+        self.assertIn("防御", page.details["base"].get("1.0", "end"))
 
     def test_workspace_roundtrip_preserves_inventory_and_filters(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"LOCALAPPDATA": directory}):

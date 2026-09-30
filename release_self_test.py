@@ -42,7 +42,7 @@ def run_checks() -> dict[str, object]:
         root.iconphoto(True, icon)
         root.update_idletasks()
         checks["tkinter"] = {"version": str(root.tk.call("info", "patchlevel")), "assets": "ok"}
-        from guide_data import STAT_LABELS, ev_values, get_guide_database
+        from guide_data import SEASONS, STAT_LABELS, ev_values, get_guide_database
         from guide_views import PAGE_TITLES, QueryPage
         guide = get_guide_database()
         if len(guide.species) != 649 or len(guide.hordes) < 4000:
@@ -58,27 +58,33 @@ def run_checks() -> dict[str, object]:
                     raise RuntimeError("Packaged horde grouping lost or duplicated encounters")
                 checks["grouped_hordes"] = {"species": len(ids), "encounters": len(guide.hordes)}
             if mode == "effort":
-                pool_by_point = {}
+                pools = {}
                 for row in guide.hordes:
-                    pool_by_point.setdefault(row.point_key, set()).add(row.species_id)
+                    for season in SEASONS[1:] if row.season == "任意" else (row.season,):
+                        for period, _ in row.chances:
+                            pools.setdefault((row.point_key, season, period), set()).add(row.species_id)
                 counts = {}
                 for stat, label in STAT_LABELS.items():
                     page.variables["stat"].set(label)
                     page.refresh()
                     ids = [group.species_id for group, _values in page.table.rows]
-                    if len(ids) != len(set(ids)):
+                    if not ids or len(ids) != len(set(ids)):
                         raise RuntimeError("Packaged effort guide repeats species")
                     for group, values in page.table.rows:
                         yields = ev_values(guide.by_id[group.species_id])
                         if values[1] != "纯点" or not yields[stat] or sum(value > 0 for value in yields.values()) != 1:
                             raise RuntimeError("Packaged effort guide contains mixed EV yields or lacks pure labels")
-                        if any(pool_by_point[row.point_key] != {group.species_id} for row in group.encounters):
-                            raise RuntimeError("Packaged effort guide contains a mixed horde point")
+                        for row in group.encounters:
+                            for season in SEASONS[1:] if row.season == "任意" else (row.season,):
+                                for period, _ in row.chances:
+                                    members = pools[row.point_key, season, period]
+                                    if {key for identifier in members for key, value in ev_values(guide.by_id[identifier]).items() if value} != {stat}:
+                                        raise RuntimeError("Packaged effort guide contains a mixed EV point")
                         page.show_details(group)
                         if "纯点" not in page.detail_title.get() or "整群基础值：" not in page.details["base"].get("1.0", "end"):
                             raise RuntimeError("Packaged effort guide omits grouped location yields")
                     counts[label] = len(ids)
-                checks["pure_effort_spots"] = {"species_per_stat": counts, "complete_pool_checked": True}
+                checks["pure_effort_spots"] = {"species_per_stat": counts, "season_time_pools_checked": True}
             if mode == "pokedex":
                 if len(page.table.tree.get_children()) != 649 or page.table.next_button.winfo_manager():
                     raise RuntimeError("Packaged Pokedex still paginates species")
@@ -215,6 +221,25 @@ def run_checks() -> dict[str, object]:
         finally:
             for callback in root.tk.call("after", "info"):
                 root.after_cancel(callback)
+            root.destroy()
+        from window_memory import WindowMemory
+        window_path = Path(directory) / "window-test.json"
+        root = tk.Tk()
+        try:
+            memory = WindowMemory(root, window_path)
+            root.geometry("800x650+100+70")
+            root.update()
+            memory.save()
+        finally:
+            root.destroy()
+        root = tk.Tk()
+        try:
+            WindowMemory(root, window_path)
+            root.update()
+            if root.geometry() != "800x650+100+70":
+                raise RuntimeError("Packaged main window did not restore its position and size")
+            checks["window_memory"] = {"reopen_geometry": root.geometry(), "isolated_settings": True}
+        finally:
             root.destroy()
     checks["reset_account_delete"] = {"target_reset": True, "delete_and_undo": True, "isolated_data": True}
     return checks

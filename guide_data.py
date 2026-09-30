@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 import gzip
 import json
@@ -42,10 +42,12 @@ class Encounter:
     min_level: int
     max_level: int
     chances: tuple[tuple[str, str], ...]
+    location_id: int | None = None
 
     @property
-    def point_key(self) -> tuple[str, str, str]:
-        return self.region, self.location, self.method
+    def point_key(self) -> tuple[str, int | str, str]:
+        # Source IDs keep different floors/areas with the same display name apart.
+        return self.region, self.location_id if self.location_id is not None else self.location, self.method
 
     @property
     def periods(self) -> str:
@@ -91,20 +93,38 @@ class GuideDatabase:
                 for quantity in quantities:
                     row = Encounter(record["id"], record["name"], location["region_name"], location["location"],
                                     location["type"], location["season"], quantity,
-                                    location["min_level"], location["max_level"], chances)
+                                    location["min_level"], location["max_level"], chances, location.get("location_id"))
                     if row not in seen:
                         seen.add(row)
                         encounters.append(row)
         self.encounters = tuple(encounters)
         self.hordes = tuple(row for row in self.encounters if row.quantity > 1)
-        species_by_point: dict[tuple[str, str, str], set[int]] = {}
+        self.horde_pools: dict[tuple, set[int]] = {}
         for row in self.hordes:
-            species_by_point.setdefault(row.point_key, set()).add(row.species_id)
-        # Classify against the complete horde pool before ANY user filter.
-        # Another season, time, quantity or EV yield must not disappear from
-        # this test and make a mixed point look pure.
-        self.pure_horde_points = frozenset(key for key, ids in species_by_point.items() if len(ids) == 1)
-        self.pure_hordes = tuple(row for row in self.hordes if row.point_key in self.pure_horde_points)
+            for season in SEASONS[1:] if row.season == "任意" else (row.season,):
+                for period in dict(row.chances) or PERIOD_KEYS:
+                    self.horde_pools.setdefault((row.point_key, season, period), set()).add(row.species_id)
+        # EV purity depends on all horde members at the concrete season/time,
+        # including other quantities and names, before any search/EV filter.
+        self.pure_effort_conditions = frozenset(
+            key for key, ids in self.horde_pools.items()
+            if len({stat for identifier in ids for stat, value in ev_values(self.by_id[identifier]).items() if value}) == 1
+            and all(any(ev_values(self.by_id[identifier]).values()) for identifier in ids)
+        )
+        pure_rows = []
+        for row in self.hordes:
+            seasons = SEASONS[1:] if row.season == "任意" else (row.season,)
+            variants = []
+            for season in seasons:
+                chances = tuple((period, chance) for period, chance in row.chances
+                                if (row.point_key, season, period) in self.pure_effort_conditions)
+                if chances:
+                    variants.append(replace(row, season=season, chances=chances))
+            if row.season == "任意" and len(variants) == 4 and all(r.chances == row.chances for r in variants):
+                pure_rows.append(row)
+            else:
+                pure_rows.extend(variants)
+        self.pure_hordes = tuple(dict.fromkeys(pure_rows))
 
     def find_species(self, query: str = "", pokemon_type: str = "全部属性", egg_group: str = "全部蛋组", ability: str = "") -> list[dict]:
         query = normalized(query.lstrip("#"))
@@ -203,7 +223,7 @@ def horde_locations_text(group: HordeSpecies, *, effort_species: dict | None = N
     for (region, location), conditions in locations.items():
         lines = [f"{region} · {location}" + (" · 纯点" if effort_species is not None else "")]
         for (quantity, level, method, chances), seasons in conditions.items():
-            season_text = "全年" if "任意" in seasons else " / ".join(s for s in SEASONS[1:] if s in seasons)
+            season_text = "全年" if "任意" in seasons or seasons == set(SEASONS[1:]) else " / ".join(s for s in SEASONS[1:] if s in seasons)
             periods = " / ".join(period for period, _value in chances) or "时段未标注"
             yield_text = f" · 整群基础值：{ev_text(effort_species, quantity)}" if effort_species is not None else ""
             lines.append(f"  {quantity}只{yield_text} · Lv.{level} · {method} · {season_text} · {periods}")

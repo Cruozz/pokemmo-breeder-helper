@@ -177,7 +177,7 @@ class QueryPage(ttk.Frame):
             "支持中文名、英文名与编号；选择精灵查看种族值、特性、招式和野外分布。"
             if mode == "pokedex" else
             "选择精灵查看各地群怪分布。" if mode == "hordes" else
-            "纯点：同一地点、同一遭遇方式只出现一种群怪，且只提供一项努力值。"
+            "仅显示对应季节、时段下只提供一项努力值的群怪地点。"
         )
         self.hint = ttk.Label(self, text=hint, style="Muted.TLabel", wraplength=650)
         if mode != "hordes":
