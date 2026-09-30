@@ -115,10 +115,10 @@ class GuideViewTests(unittest.TestCase):
             self.assertIn("hordes", app.guide_workspace.pages)
             page = app.guide_workspace.pages["hordes"]
             page.variables["season"].set("冬")
-            for mode in ("effort", "pokedex", "planner", "author", "scan", "hordes"):
+            for mode in ("effort", "pokedex", "inventory", "planner", "author", "scan", "hordes"):
                 app._select_workspace_mode(mode)
                 self.root.update()
-                expected = PAGE_TITLES.get(mode, {"planner": "孵蛋规划", "author": "作者的话", "scan": "扫描素材"}.get(mode))
+                expected = PAGE_TITLES.get(mode, {"inventory": "素材库存", "planner": "孵蛋规划", "author": "作者的话", "scan": "扫描素材"}.get(mode))
                 self.assertEqual(app.workspace_mode_var.get(), expected)
                 if mode in PAGE_TITLES:
                     self.assertEqual(app.main_pane.winfo_manager(), "")
@@ -135,7 +135,7 @@ class GuideViewTests(unittest.TestCase):
             self.root.geometry("700x600")
             self.root.deiconify()
             self.root.update()
-            buttons = [app.scan_mode_button, app.planner_mode_button, *app.guide_buttons.values(), app.author_mode_button]
+            buttons = [app.scan_mode_button, app.inventory_mode_button, app.planner_mode_button, *app.guide_buttons.values(), app.author_mode_button]
             for button in buttons:
                 self.assertGreater(button.winfo_width(), 40)
                 self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), self.root.winfo_rootx() + self.root.winfo_width())

@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.18"
+APP_VERSION = "0.2.19"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -328,6 +328,11 @@ class App:
             style="Primary.TButton",
             command=lambda: self._select_workspace_mode("scan"),
         )
+        self.inventory_mode_button = ttk.Button(
+            workspace_bar,
+            text="素材库存",
+            command=lambda: self._select_workspace_mode("inventory"),
+        )
         self.planner_mode_button = ttk.Button(
             workspace_bar,
             text="孵蛋规划",
@@ -345,7 +350,7 @@ class App:
             text="作者的话",
             command=lambda: self._select_workspace_mode("author"),
         )
-        self.workspace_nav_items = [self.workspace_label, self.scan_mode_button, self.planner_mode_button,
+        self.workspace_nav_items = [self.workspace_label, self.scan_mode_button, self.inventory_mode_button, self.planner_mode_button,
                                     *self.guide_buttons.values(), self.live_mode_button, self.author_mode_button]
         self.workspace_nav_rows = [ttk.Frame(workspace_bar, style="App.TFrame") for _ in range(2)]
         self.workspace_nav_layout = None
@@ -375,52 +380,32 @@ class App:
         self.right_panel.bind("<Configure>", self._resize_right_content, add="+")
 
     def _select_workspace_mode(self, mode: str) -> None:
-        mode = mode if mode in {"planner", "author", "live", *PAGE_TITLES} else "scan"
-        labels = {"scan": "扫描素材", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", **PAGE_TITLES}
+        mode = mode if mode in {"inventory", "planner", "author", "live", *PAGE_TITLES} else "scan"
+        labels = {"scan": "扫描素材", "inventory": "素材库存", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", **PAGE_TITLES}
         self.workspace_mode_var.set(labels[mode])
-        if mode in PAGE_TITLES or mode == "live":
-            self._schedule_responsive_layout(immediate=True)
-            return
-        if hasattr(self, "right_tabs"):
-            self._set_author_workspace_visible(mode == "author")
-            if mode != "author":
-                target_tab = self.planner_tab if mode == "planner" else self.current_tab
-                self.right_tabs.select(target_tab)
         if mode == "scan":
             self.compact_scan_view = "result"
         self._schedule_responsive_layout(immediate=True)
 
-    def _set_author_workspace_visible(self, visible: bool) -> None:
-        if not hasattr(self, "right_tabs") or not hasattr(self, "author_page"):
-            return
-        if visible:
-            self.right_tabs.pack_forget()
-            if not self.author_page.winfo_manager():
-                self.author_page.pack(fill=BOTH, expand=True)
-            return
-        self.author_page.pack_forget()
-        if not self.right_tabs.winfo_manager():
-            self.right_tabs.pack(fill=BOTH, expand=True)
-
-    def _on_right_tab_changed(self, _event=None) -> None:
-        if not hasattr(self, "right_tabs"):
-            return
-        if self.workspace_mode_var.get() in {*PAGE_TITLES.values(), "实时情报"}:
-            return
-        selected = self.right_tabs.nametowidget(self.right_tabs.select())
-        if selected is self.planner_tab:
-            label = "孵蛋规划"
-        elif selected is self.inventory_tab:
-            label = "素材库存"
-        else:
-            label = "扫描素材"
-        self.workspace_mode_var.set(label)
-        self._schedule_responsive_layout(immediate=True)
+    def _show_workspace_page(self, mode: str) -> None:
+        pages = {
+            "scan": self.current_tab,
+            "inventory": self.inventory_tab,
+            "planner": self.planner_tab,
+            "author": self.author_page,
+        }
+        for page_mode, page in pages.items():
+            if page_mode == mode:
+                if not page.winfo_manager():
+                    page.pack(fill=BOTH, expand=True)
+            else:
+                page.pack_forget()
 
     def _update_workspace_buttons(self, mode: str) -> None:
         if not hasattr(self, "scan_mode_button"):
             return
         self.scan_mode_button.configure(style="Primary.TButton" if mode == "scan" else "TButton")
+        self.inventory_mode_button.configure(style="Primary.TButton" if mode == "inventory" else "TButton")
         self.planner_mode_button.configure(style="Primary.TButton" if mode == "planner" else "TButton")
         self.author_mode_button.configure(style="Primary.TButton" if mode == "author" else "TButton")
         if hasattr(self, "live_mode_button"):
@@ -521,10 +506,6 @@ class App:
 
     def _set_compact_scan_view(self, view: str) -> None:
         self.compact_scan_view = "preview" if view == "preview" else "result"
-        if self.compact_scan_view == "result" and hasattr(self, "right_tabs"):
-            selected = self.right_tabs.nametowidget(self.right_tabs.select())
-            if selected is self.planner_tab:
-                self.right_tabs.select(self.current_tab)
         self.layout_orientation = ""
         if hasattr(self, "root") and hasattr(self, "main_pane"):
             self._schedule_responsive_layout(immediate=True)
@@ -959,6 +940,7 @@ class App:
             if workspace_label == "作者的话"
             else "scan"
         )
+        self._show_workspace_page(mode)
         if (
             desired == self.layout_orientation
             and mode == self.applied_workspace_mode
@@ -1366,26 +1348,18 @@ class App:
         self.canvas.bind("<Configure>", self._schedule_preview_redraw, add="+")
 
     def build_right_panel(self, parent: ttk.Frame) -> None:
-        tabs = ttk.Notebook(parent)
-        tabs.pack(fill=BOTH, expand=True)
-        self.right_tabs = tabs
-
-        current_tab = ttk.Frame(tabs, padding=8)
+        current_tab = ttk.Frame(parent, padding=8)
         self.current_tab = current_tab
-        inventory_tab = ttk.Frame(tabs, padding=8)
-        planner_tab = ttk.Frame(tabs, padding=8)
+        inventory_tab = ttk.Frame(parent, padding=8)
+        planner_tab = ttk.Frame(parent, padding=8)
         self.inventory_tab = inventory_tab
         self.planner_tab = planner_tab
-        tabs.add(current_tab, text="识别当前")
-        tabs.add(inventory_tab, text="素材库存")
-        tabs.add(planner_tab, text="孵蛋规划")
         self.build_current_tab(current_tab)
         self.build_inventory_tab(inventory_tab)
         self.build_planner_tab(planner_tab)
-        tabs.bind("<<NotebookTabChanged>>", self._on_right_tab_changed, add="+")
-
         self.author_page = ttk.Frame(parent, style="Panel.TFrame", padding=8)
         self.build_author_tab(self.author_page)
+        self._show_workspace_page("scan")
 
     def build_author_tab(self, parent: ttk.Frame) -> None:
         strip = ttk.Frame(parent, style="Toolbar.TFrame", padding=(14, 10))
@@ -3675,7 +3649,7 @@ class App:
         self.batch_saved_count = 0
         self.page_var.set(str(page))
         self.slot_var.set(str(slot))
-        self.right_tabs.select(self.current_tab)
+        self._select_workspace_mode("scan")
         self.batch_start_button.configure(state="disabled")
         self.batch_stop_button.configure(state="normal")
         self.save_monster_button.configure(text="等待识别结果…")
@@ -4973,9 +4947,7 @@ class App:
         self.inventory_type_filter_var.set("全部类别")
         self.inventory_account_filter_var.set("全部账号")
         self.refresh_inventory_tree()
-        self.workspace_mode_var.set("素材库存")
-        self.right_tabs.select(self.inventory_tab)
-        self._set_compact_scan_view("result")
+        self._select_workspace_mode("inventory")
         if self.inventory_tree.exists(record_id):
             self.inventory_tree.selection_set(record_id)
             self.inventory_tree.focus(record_id)
@@ -4991,7 +4963,7 @@ class App:
             self.inventory_tree.focus(row_id)
         self.inventory_selected()
         if self.inventory_tree.selection():
-            self.right_tabs.select(self.current_tab)
+            self._select_workspace_mode("scan")
             self.current_form_expanded = True
             self._set_compact_scan_view("result")
             if hasattr(self, "current_species_entry"):
