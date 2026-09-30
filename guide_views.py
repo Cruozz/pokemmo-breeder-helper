@@ -10,7 +10,7 @@ from pokedex_portrait import PokedexPortrait
 
 from guide_data import (
     PERIOD_KEYS, REGIONS, SEASONS, STAT_LABELS, TYPE_LABELS,
-    GuideDatabase, ev_text, ev_values, get_guide_database, group_hordes, horde_locations_text,
+    GuideDatabase, ev_text, get_guide_database, group_hordes, horde_locations_text,
 )
 
 
@@ -170,7 +170,6 @@ class QueryPage(ttk.Frame):
             self.add_filter("quantity", "群怪数量", ("全部群怪", "3只", "5只"))
             if mode == "effort":
                 self.add_filter("stat", "努力项", tuple(STAT_LABELS.values()))
-                self.add_filter("single", "收益类型", ("全部收益", "仅单一努力项精灵"))
             else:
                 methods = sorted({row.method for row in database.hordes})
                 self.add_filter("method", "遭遇方式", ("全部方式", *methods))
@@ -178,7 +177,7 @@ class QueryPage(ttk.Frame):
             "支持中文名、英文名与编号；选择精灵查看种族值、特性、招式和野外分布。"
             if mode == "pokedex" else
             "选择精灵查看各地群怪分布。" if mode == "hordes" else
-            "选择游戏内季节，不按现实月份推断。可搜索精灵或地点；不同季节、时段单独列出。"
+            "纯点：同一地点、同一遭遇方式只出现一种群怪，且只提供一项努力值。"
         )
         self.hint = ttk.Label(self, text=hint, style="Muted.TLabel", wraplength=650)
         if mode != "hordes":
@@ -191,15 +190,12 @@ class QueryPage(ttk.Frame):
             columns = [("id", "编号", 65), ("name", "精灵", 125), ("region", "分布地区", 220),
                        ("locations", "地点数", 70), ("quantity", "群怪数量", 100)]
         else:
-            columns = [("name", "精灵", 105), ("region", "地区", 65), ("location", "地点", 230),
-                       ("season", "季节", 100), ("period", "时段", 140), ("quantity", "数量", 60),
-                       ("level", "等级", 75), ("method", "方式", 90)]
-            if mode == "effort":
-                columns.insert(2, ("ev", "整群基础值", 100))
+            columns = [("name", "精灵", 125), ("pure", "类型", 70), ("ev", "单只基础值", 110),
+                       ("region", "分布地区", 140), ("locations", "地点数", 70), ("quantity", "群怪数量", 100)]
         self.body = ttk.Panedwindow(self, orient="vertical")
         self.body.pack(fill="both", expand=True)
-        self.table = ResultTable(self.body, columns, self.show_details, paginated=mode != "pokedex")
-        if mode == "hordes":
+        self.table = ResultTable(self.body, columns, self.show_details, paginated=mode == "hordes")
+        if mode in {"hordes", "effort"}:
             self.table.tree.configure(height=3)
         self.body.add(self.table, weight=3)
         detail_frame = ttk.Frame(self.body)
@@ -224,7 +220,7 @@ class QueryPage(ttk.Frame):
         else:
             self.details = {"base": readonly_text(detail_frame, height=5)}
         self.body.add(detail_frame, weight=2)
-        if mode == "hordes":
+        if mode in {"hordes", "effort"}:
             self.horde_split_ready = False
             self.body.bind("<Configure>", self._initialize_horde_split)
         self.refresh()
@@ -287,25 +283,24 @@ class QueryPage(ttk.Frame):
             records = self.database.find_species(self.query.get(), values["type"], values["egg_group"], values["ability"])
             rows = [(record, (record["id"], record["name"], "/".join(TYPE_LABELS.get(value, value) for value in record["types"]),
                               sum(record["stats"].values()), "/".join(record["egg_groups"]))) for record in records]
+        elif self.mode == "effort":
+            stat = next(key for key, label in STAT_LABELS.items() if label == values["stat"])
+            records = self.database.find_effort_spots(
+                self.query.get(), region=values["region"], season=values["season"], period=values["period"],
+                quantity=values["quantity"], stat=stat,
+            )
+            rows = [(record, (record.name, "纯点", ev_text(self.database.by_id[record.species_id]),
+                              record.regions, record.location_count, record.quantities)) for record in records]
         else:
-            stat = next((key for key, label in STAT_LABELS.items() if label == values.get("stat")), "")
             records = self.database.find_encounters(
                 self.query.get(), region=values["region"], season=values["season"], period=values["period"],
-                quantity=values["quantity"], method=values.get("method", "全部方式"), stat=stat,
-                single_stat=values.get("single") == "仅单一努力项精灵",
+                quantity=values["quantity"], method=values["method"],
             )
-            rows = []
-            if self.mode == "hordes":
-                rows = [(record, (record.species_id, record.name, record.regions, record.location_count, record.quantities))
-                        for record in group_hordes(records)]
-            else:
-                for record in records:
-                    display = [record.name, record.region, record.location, record.season_label, record.periods,
-                               record.quantity, record.level, record.method]
-                    if stat:
-                        display.insert(2, ev_values(self.database.by_id[record.species_id])[stat] * record.quantity)
-                    rows.append((record, tuple(display)))
+            rows = [(record, (record.species_id, record.name, record.regions, record.location_count, record.quantities))
+                    for record in group_hordes(records)]
         self.table.set_rows(rows)
+        if self.mode == "effort" and not rows:
+            self.table.count.set("没有符合条件的纯点；请清空关键词或放宽地区、季节、时段筛选。")
 
     def show_details(self, record) -> None:
         self.selected_record = record
@@ -315,7 +310,8 @@ class QueryPage(ttk.Frame):
                 self.portrait.set_species(None)
             self.detail_title.set("没有匹配记录")
             for text in self.details.values():
-                set_text(text, "请清空关键词，或尝试其他地区、季节与时段。")
+                set_text(text, "没有符合条件的纯点。请尝试其他地区、季节与时段。" if self.mode == "effort"
+                         else "请清空关键词，或尝试其他地区、季节与时段。")
             return
         if self.mode == "pokedex":
             self.portrait.set_species(record["id"], record["name"])
@@ -341,11 +337,9 @@ class QueryPage(ttk.Frame):
             set_text(self.details["base"], horde_locations_text(record))
         else:
             species = self.database.by_id[record.species_id]
-            self.detail_title.set(f"{record.name} · {record.region}")
-            chance = "；".join(f"{period} {value}" for period, value in record.chances) or "未标注"
-            content = f"地点：{record.location}\n方式：{record.method}    数量：{record.quantity}只    等级：{record.level}\n"
-            content += f"季节：{record.season_label}    时段：{record.periods}\n源标遭遇权重/概率：{chance}（不作为甜甜香气成功率）\n"
-            content += f"单只努力值：{ev_text(species)}    同种整群基础值：{ev_text(species, record.quantity)}"
+            self.detail_title.set(f"#{record.species_id:03}  {record.name} · 纯点 · {record.location_count} 个地点")
+            content = f"单只努力值：{ev_text(species)}\n\n"
+            content += horde_locations_text(record, effort_species=species)
             set_text(self.details["base"], content)
 
     @staticmethod

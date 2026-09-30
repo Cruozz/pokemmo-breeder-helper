@@ -42,7 +42,7 @@ def run_checks() -> dict[str, object]:
         root.iconphoto(True, icon)
         root.update_idletasks()
         checks["tkinter"] = {"version": str(root.tk.call("info", "patchlevel")), "assets": "ok"}
-        from guide_data import get_guide_database
+        from guide_data import STAT_LABELS, ev_values, get_guide_database
         from guide_views import PAGE_TITLES, QueryPage
         guide = get_guide_database()
         if len(guide.species) != 649 or len(guide.hordes) < 4000:
@@ -57,6 +57,28 @@ def run_checks() -> dict[str, object]:
                 if len(ids) != len(set(ids)) or sum(len(record.encounters) for record, _values in page.table.rows) != len(guide.hordes):
                     raise RuntimeError("Packaged horde grouping lost or duplicated encounters")
                 checks["grouped_hordes"] = {"species": len(ids), "encounters": len(guide.hordes)}
+            if mode == "effort":
+                pool_by_point = {}
+                for row in guide.hordes:
+                    pool_by_point.setdefault(row.point_key, set()).add(row.species_id)
+                counts = {}
+                for stat, label in STAT_LABELS.items():
+                    page.variables["stat"].set(label)
+                    page.refresh()
+                    ids = [group.species_id for group, _values in page.table.rows]
+                    if len(ids) != len(set(ids)):
+                        raise RuntimeError("Packaged effort guide repeats species")
+                    for group, values in page.table.rows:
+                        yields = ev_values(guide.by_id[group.species_id])
+                        if values[1] != "纯点" or not yields[stat] or sum(value > 0 for value in yields.values()) != 1:
+                            raise RuntimeError("Packaged effort guide contains mixed EV yields or lacks pure labels")
+                        if any(pool_by_point[row.point_key] != {group.species_id} for row in group.encounters):
+                            raise RuntimeError("Packaged effort guide contains a mixed horde point")
+                        page.show_details(group)
+                        if "纯点" not in page.detail_title.get() or "整群基础值：" not in page.details["base"].get("1.0", "end"):
+                            raise RuntimeError("Packaged effort guide omits grouped location yields")
+                    counts[label] = len(ids)
+                checks["pure_effort_spots"] = {"species_per_stat": counts, "complete_pool_checked": True}
             if mode == "pokedex":
                 if len(page.table.tree.get_children()) != 649 or page.table.next_button.winfo_manager():
                     raise RuntimeError("Packaged Pokedex still paginates species")

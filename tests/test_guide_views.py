@@ -98,8 +98,42 @@ class GuideViewTests(unittest.TestCase):
         page.refresh()
         self.root.update()
         self.assertTrue(page.table.rows)
-        self.assertTrue(all(record.season in {"冬", "任意"} and record.quantity == 5 for record, _values in page.table.rows))
+        self.assertTrue(all(row.season in {"冬", "任意"} and row.quantity == 5
+                            for record, _values in page.table.rows for row in record.encounters))
         self.assertIn("速度", page.details["base"].get("1.0", "end"))
+
+    def test_effort_has_one_marked_row_per_species_and_combines_only_pure_locations(self):
+        navigations = []
+        page = QueryPage(self.root, self.database, "effort", lambda *args: navigations.append(args))
+        page.variables["stat"].set("特攻")
+        page.refresh()
+        records = [record for record, _values in page.table.rows]
+        self.assertEqual(len(records), len({record.species_id for record in records}))
+        self.assertTrue(all(values[1] == "纯点" for _record, values in page.table.rows))
+        self.assertNotIn("single", page.variables)
+        self.assertEqual(len(page.table.tree.get_children()), len(records))
+        multiple = next(record for record in records if record.location_count > 1)
+        page.show_details(multiple)
+        content = page.details["base"].get("1.0", "end")
+        self.assertIn("纯点", page.detail_title.get())
+        self.assertIn("整群基础值：特攻", content)
+        for row in multiple.encounters:
+            other_species = {other.species_id for other in self.database.hordes if other.point_key == row.point_key}
+            self.assertEqual(other_species, {multiple.species_id})
+            self.assertIn(f"{row.region} · {row.location} · 纯点", content)
+        page.jump_to_related()
+        self.assertEqual(navigations, [("pokedex", multiple.species_id)])
+
+    def test_effort_mixed_point_stays_empty_even_after_name_and_stat_filters(self):
+        page = QueryPage(self.root, self.database, "effort", lambda *_args: None)
+        page.variables["stat"].set("特攻")
+        page.query.set("203 214号道路")
+        page.refresh()
+        self.root.update()
+        self.assertEqual(page.table.rows, [])
+        self.assertIn("纯点", page.table.count.get())
+        self.assertIn("纯点", page.details["base"].get("1.0", "end"))
+        self.assertEqual(str(page.jump["state"]), "disabled")
 
     def test_workspace_roundtrip_preserves_inventory_and_filters(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"LOCALAPPDATA": directory}):
