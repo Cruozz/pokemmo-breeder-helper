@@ -434,7 +434,9 @@ def make_report_with_candidates(
                 else "百变怪策略：本次不使用百变怪。"
             )
         if convert_maternal_with_ditto:
-            lines.append("转性别保护：百变怪档位不得低于原素材，子代须保留原有有效 IV 且不降档；不使用 3V 公＋2V 百变怪硬转母。")
+            lines.append("转性别保护：目标素材与百变怪必须同档位，子代须保留原有有效 IV 且不降档；不使用 2V＋3V 或 3V＋2V 转母。")
+            if nature and str(nature_strategy).strip().lower() == "chain":
+                lines.append("不变石链：目标性格公体转母时携带不变之石，保留性格与原有有效 IV；转母候选按性格分别比较。")
             if candidates and candidates[0].root.maternal_conversion:
                 lines.append(
                     "母体转换：比较候选后，已单独使用目标公体＋百变怪锁母建立母系；"

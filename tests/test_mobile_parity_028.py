@@ -60,3 +60,13 @@ class MobileParity028Tests(unittest.TestCase):
             self.assertTrue(response["ok"], response)
             for step in response["plan"]["steps"]:
                 self.assertFalse({step["parent_a_id"], step["parent_b_id"]} == {"male", "ditto"} and step["child"]["gender"] == "F")
+
+    def test_bridge_never_converts_two_v_male_with_three_v_ditto(self):
+        inventory = [Monster(id="male", species="伊布", gender="M", ivs=[31,31,1,1,1,1]).to_dict(),
+                     Monster(id="ditto", species="百变怪", gender="N", ivs=[31,31,31,1,1,1]).to_dict()]
+        request = dict(species="伊布", ivs=["31","31","31","X","X","X"], lock_gender=True,
+                       target_gender="F", convert_maternal_with_ditto=True)
+        response = json.loads(bridge.generate_plan(json.dumps(inventory), json.dumps(request)))
+        self.assertTrue(response["ok"], response)
+        for step in response["plan"]["steps"]:
+            self.assertFalse({step["parent_a_id"], step["parent_b_id"]} == {"male", "ditto"} and step["child"]["gender"] == "F")

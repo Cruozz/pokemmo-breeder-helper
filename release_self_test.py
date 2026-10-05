@@ -165,7 +165,37 @@ def run_checks() -> dict[str, object]:
     profile = SpeciesProfile("伊布", "伊布", ("陆上",), False, ("F", "M"))
     if _forced_child(parent, ditto, profile, "F", brace_a=2) is not None:
         raise RuntimeError("Packaged planner allowed 3V male + 2V Ditto gender conversion")
-    checks["ditto_conversion"] = "lower-tier gender conversion rejected"
+    from chain_planner import _maternal_conversion_candidates
+    nature_parent = ChainState("伊布", "M", ("陆上",), 3, True, "固执", False,
+                               frozenset({"nature-source"}), 0, 0, 0, 0)
+    higher_ditto = ChainState("百变怪", "N", (), 7, False, "", False, frozenset({"higher-ditto"}), 0, 0, 0, 0)
+    if _forced_child(nature_parent, higher_ditto, profile, "F", brace_b=2, everstone_a=True) is not None:
+        raise RuntimeError("Packaged planner allowed 2V male + 3V Ditto gender conversion")
+    converted = _maternal_conversion_candidates([nature_parent], [ditto], profile, 7, preserve_nature=True)
+    if not converted or any(not state.has_nature or state.action.item_a != "不变之石" for state in converted):
+        raise RuntimeError("Packaged maternal bootstrap did not preserve its target nature")
+    sample = []
+    for key, name, gender, mask, nature in (
+        ("selftest-adamant-ambipom", "双尾怪手", "M", 6, "固执"),
+        ("selftest-ditto2", "百变怪", "N", 6, ""),
+        ("selftest-donor3", "伊布", "M", 7, ""),
+        ("selftest-donor4", "伊布", "M", 23, ""),
+        ("selftest-donor5", "伊布", "M", 55, ""),
+        ("selftest-weak-female", "长尾怪手", "F", 33, ""),
+    ):
+        sample.append(Monster(id=key, species=name, gender=gender, nature=nature, is_alpha=True,
+                              ivs=[31 if mask & (1 << i) else 1 for i in range(6)]))
+    report, routes = make_report_with_candidates(sample, "长尾怪手", "", "固执", "31/31/31/x/31/31", ["陆上"],
+        target_alpha=True, allow_ditto=False, nature_strategy="chain", convert_maternal_with_ditto=True)
+    if not routes:
+        raise RuntimeError("Packaged natured maternal chain has no route: " + report)
+    plan = build_execution_plan(routes[0])
+    conversion = next((step for step in plan.steps if "selftest-ditto2" in (step.parent_a_id, step.parent_b_id)), None)
+    if (conversion is None or conversion.child.nature != "固执" or conversion.child.gender != "F"
+            or conversion.child.species != "长尾怪手" or plan.steps[-1].child.nature != "固执"):
+        raise RuntimeError("Packaged planner did not use the natured evolved inventory as its maternal seed")
+    checks["ditto_conversion"] = {"unequal_tiers_rejected": True, "maternal_everstone": True,
+                                  "evolved_nature_seed": True, "synthetic_data": True}
 
     from account_order_dialog import AccountOrderDialog
     from inventory_order import inventory_in_display_order, sorted_inventory_ids

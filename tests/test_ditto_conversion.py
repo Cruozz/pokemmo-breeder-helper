@@ -32,6 +32,30 @@ class DittoConversionTests(unittest.TestCase):
         self.assertIsNotNone(child)
         self.assertEqual(child.mask, 15)
 
+    def test_higher_tier_ditto_cannot_flip_two_iv_breeder(self):
+        for gender, output in (("M", "F"), ("F", "M")):
+            for reversed_parents in (False, True):
+                with self.subTest(gender=gender, reversed_parents=reversed_parents):
+                    breeder, ditto = state("source", 3, gender), state("ditto", 7, "N")
+                    child = (_forced_child(ditto, breeder, self.profile, output, brace_a=2)
+                             if reversed_parents else _forced_child(breeder, ditto, self.profile, output, brace_b=2))
+                    self.assertIsNone(child)
+
+    def test_same_sex_nature_upgrade_with_higher_tier_ditto_remains_valid(self):
+        child = _forced_child(state("source", 3, "F", True), state("ditto", 7, "N"),
+                              self.profile, "F", brace_b=2, everstone_a=True)
+        self.assertIsNotNone(child)
+        self.assertEqual(child.mask, 7)
+        self.assertTrue(child.has_nature)
+
+    def test_one_parent_cannot_hold_an_everstone_and_a_brace(self):
+        for reversed_parents in (False, True):
+            with self.subTest(reversed_parents=reversed_parents):
+                holder, donor = state("holder", 3, "F", True), state("donor", 6)
+                child = (_forced_child(donor, holder, self.profile, "F", brace_b=0, everstone_b=True)
+                         if reversed_parents else _forced_child(holder, donor, self.profile, "F", brace_a=0, everstone_a=True))
+                self.assertIsNone(child)
+
     def test_same_tier_conversion_cannot_drop_original_iv(self):
         child = _forced_child(state("male", 7), state("ditto", 25, "N"), self.profile, "F", 1, 3)
         self.assertIsNone(child)

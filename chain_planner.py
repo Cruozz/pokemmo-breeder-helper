@@ -821,6 +821,9 @@ def _forced_child(
 ) -> ChainState | None:
     if parent_a.used_ids & parent_b.used_ids:
         return None
+    if (everstone_a and brace_a is not None) or (everstone_b and brace_b is not None):
+        # One parent has one item slot; an Everstone cannot also lock an IV.
+        return None
     if brace_a is not None and not parent_a.mask & (1 << brace_a):
         return None
     if brace_b is not None and not parent_b.mask & (1 << brace_b):
@@ -830,14 +833,14 @@ def _forced_child(
         mask |= 1 << brace_a
     if brace_b is not None:
         mask |= 1 << brace_b
-    # Gender conversion is not a reason to burn a high-tier breeder with a
-    # lower-tier Ditto, or to discard its guaranteed IVs. Apply this at the
+    # Gender conversion uses breeders of the same tier and never discards
+    # the source's guaranteed IVs. Apply this at the
     # common constructor so direct, maternal and nature searches agree.
     if is_ditto(parent_a.species) != is_ditto(parent_b.species):
         source, ditto = (parent_b, parent_a) if is_ditto(parent_a.species) else (parent_a, parent_b)
         if source.gender in {"F", "M"} and output_gender in {"F", "M"} and source.gender != output_gender:
             if (
-                ditto.effective_material_v < source.effective_material_v
+                ditto.effective_material_v != source.effective_material_v
                 or mask & source.mask != source.mask
                 or mask.bit_count() < max(source.effective_material_v, ditto.effective_material_v)
             ):
@@ -902,6 +905,58 @@ def _forced_child(
     )
     child.action = ChainAction(parent_a, parent_b, item_a, item_b)
     return child
+
+
+def _maternal_conversion_candidates(
+    males: list[ChainState], dittos: list[ChainState], profile: SpeciesProfile,
+    target_mask: int, strategy: str = "inventory", *, preserve_nature: bool = False,
+) -> list[ChainState]:
+    """Build real same-tier, male-to-female eggs with valid held items."""
+    def diverse_sources(states: list[ChainState]) -> list[ChainState]:
+        counts = Counter()
+        result = []
+        for state in sorted(states, key=lambda s: _search_rank(s, strategy, target_mask, preserve_nature)):
+            key = (state.mask, state.effective_material_v, state.has_nature,
+                   state.has_hidden_ability, state.inherited_moves)
+            if counts[key] < 3:
+                result.append(state)
+                counts[key] += 1
+        return result
+
+    candidates = []
+    stats = [index for index in range(6) if target_mask & (1 << index)]
+    for male in diverse_sources(males):
+        lock_nature = preserve_nature and male.has_nature
+        # A target-nature source must hold the Everstone in chain mode.
+        male_braces = [None] if lock_nature else [None, *(i for i in stats if male.mask & (1 << i))]
+        for ditto in diverse_sources(dittos):
+            if male.effective_material_v != ditto.effective_material_v:
+                continue
+            lock_ditto_nature = preserve_nature and not lock_nature and ditto.has_nature
+            ditto_braces = [None] if lock_ditto_nature else [None, *(i for i in stats if ditto.mask & (1 << i))]
+            for brace_male in male_braces:
+                for brace_ditto in ditto_braces:
+                    if brace_male is not None and brace_male == brace_ditto:
+                        continue
+                    child = _forced_child(male, ditto, profile, "F", brace_male, brace_ditto,
+                                          everstone_a=lock_nature, everstone_b=lock_ditto_nature)
+                    if child is not None:
+                        child.force_gender_lock = True
+                        child.maternal_conversion = True
+                        candidates.append(child)
+    candidates.sort(key=lambda s: _search_rank(s, strategy, target_mask, preserve_nature))
+    result = []
+    seen = set()
+    counts = Counter()
+    for state in candidates:
+        shape = (state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves)
+        signature = (state.used_ids, *shape)
+        if signature in seen or counts[shape] >= 4:
+            continue
+        seen.add(signature)
+        counts[shape] += 1
+        result.append(state)
+    return result
 
 
 def _egg_move_seed_states(
@@ -3568,59 +3623,10 @@ def find_chain_candidates(
         ]
         if not ditto_sources:
             ditto_sources = virtual_conversion_dittos()
-        def diverse_conversion_sources(states):
-            # A global ID-ordered cutoff can discard the only complementary
-            # IV shape. Keep alternatives per shape, including HA/move state.
-            counts = Counter()
-            result = []
-            for state in sorted(states, key=lambda s: _search_rank(s, strategy, target_mask, False)):
-                key = (state.mask, state.has_hidden_ability, state.inherited_moves)
-                if counts[key] < 3:
-                    result.append(state)
-                    counts[key] += 1
-            return result
-
-        male_sources = diverse_conversion_sources(actual_target_males)
-        ditto_sources = diverse_conversion_sources(ditto_sources)
-        required_stats = [index for index in range(6) if target_mask & (1 << index)]
-        for male in male_sources:
-            male_braces = [None, *(stat for stat in required_stats if male.mask & (1 << stat))]
-            for ditto in ditto_sources:
-                ditto_braces = [None, *(stat for stat in required_stats if ditto.mask & (1 << stat))]
-                for brace_male in male_braces:
-                    for brace_ditto in ditto_braces:
-                        if brace_male is not None and brace_male == brace_ditto:
-                            continue
-                        child = _forced_child(
-                            male,
-                            ditto,
-                            target_profile,
-                            "F",
-                            brace_a=brace_male,
-                            brace_b=brace_ditto,
-                        )
-                        if child is None:
-                            continue
-                        child.force_gender_lock = True
-                        child.maternal_conversion = True
-                        conversion_states.append(child)
-        conversion_states.sort(
-            key=lambda state: _search_rank(state, strategy, target_mask, False)
+        conversion_states = _maternal_conversion_candidates(
+            actual_target_males, ditto_sources, target_profile, target_mask, strategy,
+            preserve_nature=requested_need_nature and nature_strategy_key == "chain",
         )
-        unique_conversion_states: list[ChainState] = []
-        seen_conversion: set[tuple[object, ...]] = set()
-        shape_counts = Counter()
-        for state in conversion_states:
-            signature = (state.used_ids, state.mask, state.has_hidden_ability, state.inherited_moves)
-            if signature in seen_conversion:
-                continue
-            seen_conversion.add(signature)
-            shape = (state.mask, state.has_hidden_ability, state.inherited_moves)
-            if shape_counts[shape] >= 4:
-                continue
-            shape_counts[shape] += 1
-            unique_conversion_states.append(state)
-        conversion_states = unique_conversion_states
         if conversion_states:
             if not allow_ditto:
                 all_leaf_states = [state for state in all_leaf_states if not is_ditto(state.species)]
