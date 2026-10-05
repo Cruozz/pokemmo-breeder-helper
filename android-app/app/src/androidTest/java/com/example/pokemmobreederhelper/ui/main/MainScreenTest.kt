@@ -40,6 +40,7 @@ class MainScreenTest {
     composeTestRule.onNodeWithText("高级规则").performScrollTo().assertIsDisplayed()
     composeTestRule.onNodeWithText("展开").performScrollTo().performClick()
     composeTestRule.onNodeWithText("孵化头目成品").assertExists()
-    composeTestRule.onNodeWithText("允许使用百变怪").assertExists()
+    composeTestRule.onNodeWithText("百变怪用途").performScrollTo().assertIsDisplayed()
+    composeTestRule.onNodeWithText("仅转母").assertExists()
   }
 }

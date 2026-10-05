@@ -35,7 +35,7 @@ class DesktopParityTest {
     val repository = InventoryRepository(app)
     val parent = MonsterRecord(id = "parent")
     val child = MonsterRecord(id = "completed-child")
-    val response = PlannerResponse(ok = true, rulesVersion = "0.2.8")
+    val response = PlannerResponse(ok = true, rulesVersion = com.example.pokemmobreederhelper.BuildConfig.PLANNER_RULES_VERSION)
     repository.replace(WorkspaceSnapshot(listOf(parent), SavedPlanSession(response)))
     repository.replace(WorkspaceSnapshot(listOf(child), SavedPlanSession(response)))
     repository.clearPlanSession()

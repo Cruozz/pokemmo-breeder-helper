@@ -59,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +76,7 @@ import com.example.pokemmobreederhelper.data.ExecutionStepRecord
 import com.example.pokemmobreederhelper.data.MonsterRecord
 import com.example.pokemmobreederhelper.data.SpeciesSuggestion
 import com.example.pokemmobreederhelper.data.genderLabel
+import com.example.pokemmobreederhelper.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +85,7 @@ fun MainScreen(
   viewModel: MainScreenViewModel = viewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val tabStates = rememberSaveableStateHolder()
   var pendingImport by rememberSaveable { mutableStateOf<String?>(null) }
   var confirmUndo by rememberSaveable { mutableStateOf(false) }
   val importer =
@@ -102,7 +105,8 @@ fun MainScreen(
           Row(verticalAlignment = Alignment.CenterVertically) {
             PokemonPortrait(null, Modifier.size(28.dp))
             Spacer(Modifier.width(10.dp))
-            Text("PokeMMO 孵蛋助手", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("PokeMMO 孵蛋助手", style = MaterialTheme.typography.titleLarge,
+              fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
           }
         },
         actions = {
@@ -137,10 +141,12 @@ fun MainScreen(
           onDismiss = viewModel::clearMessage,
         )
       }
-      when (state.tab) {
-        MainTab.Inventory ->
-          PokedexInventory(state, viewModel) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
-        MainTab.Planner -> PlannerScreen(state, viewModel)
+      tabStates.SaveableStateProvider(state.tab.name) {
+        when (state.tab) {
+          MainTab.Inventory ->
+            PokedexInventory(state, viewModel) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
+          MainTab.Planner -> PlannerScreen(state, viewModel)
+        }
       }
     }
   }
@@ -278,22 +284,21 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
   val listState = rememberLazyListState()
   var formExpanded by rememberSaveable { mutableStateOf(plan == null) }
   var stepFilter by rememberSaveable { mutableStateOf(PlanStepFilter.Actionable) }
-  var planView by rememberSaveable { mutableStateOf(PlanViewMode.MindMap) }
+  val initialPlanView = if (LocalConfiguration.current.screenWidthDp >= 600) PlanViewMode.MindMap else PlanViewMode.Steps
+  var planView by rememberSaveable { mutableStateOf(initialPlanView) }
   var showColorGuide by rememberSaveable { mutableStateOf(false) }
   var showMaterials by rememberSaveable { mutableStateOf(false) }
+  var lastDisplayedPlanId by rememberSaveable { mutableStateOf<String?>(null) }
   val mapHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).coerceIn(300f, 560f).dp
-  LaunchedEffect(state.pendingResponse?.plan?.id) {
-    if (state.pendingResponse != null) listState.scrollToItem(0)
-  }
   LaunchedEffect(state.planningFailure, state.isPlanning) {
     if (state.planningFailure != null || state.isPlanning) listState.scrollToItem(0)
   }
 
   LaunchedEffect(plan?.id) {
-    if (plan != null) {
+    if (plan != null && plan.id != lastDisplayedPlanId) {
+      lastDisplayedPlanId = plan.id
       formExpanded = false
       stepFilter = if (preview) PlanStepFilter.All else PlanStepFilter.Actionable
-      planView = PlanViewMode.MindMap
       listState.scrollToItem(0)
     }
   }
@@ -371,9 +376,12 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
     displayedResponse?.let { response ->
       val responsePlan = response.plan
       if (responsePlan != null) {
+        val staleRules = response.rulesVersion != BuildConfig.PLANNER_RULES_VERSION
+        val paused = responsePlan.needsReplan || staleRules
+        val presentationPlan = if (staleRules) responsePlan.copy(needsReplan = true) else responsePlan
         val visibleSteps = responsePlan.steps.filter { step ->
           val complete = step.child.id in displayedCompleted
-          val ready = !preview && !state.isPlanning && !responsePlan.needsReplan && !complete && displayedCompleted.containsAll(step.dependencies)
+          val ready = !preview && !state.isPlanning && !paused && !complete && displayedCompleted.containsAll(step.dependencies)
           when (stepFilter) {
             PlanStepFilter.All -> true
             PlanStepFilter.Actionable -> ready
@@ -383,19 +391,20 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
         }
         item {
           PlanSummary(
-            plan = responsePlan,
+            plan = presentationPlan,
             candidateCount = response.candidateCount,
             completed = displayedCompleted,
             onEdit = { formExpanded = !formExpanded },
             preview = preview,
           )
         }
-        if (!preview && (responsePlan.needsReplan || response.rulesVersion != "0.2.8")) {
+        if (!preview && paused) {
           item {
             OutlinedCard {
               Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("路线已暂停", style = MaterialTheme.typography.titleMedium)
-                Text(responsePlan.replanReason.ifBlank { "请重新生成路线。" })
+                Text(if (staleRules) "孵蛋规则已更新，请按原目标重算。库存和已完成步骤保留。"
+                  else responsePlan.replanReason.ifBlank { "请重新生成路线。" })
                 Button(onClick = viewModel::suggestNext, enabled = !state.isPlanning) { Text("按原目标生成建议") }
               }
             }
@@ -437,7 +446,7 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
           }
           item {
             BreedingMindMap(
-              plan = responsePlan,
+              plan = presentationPlan,
               completed = displayedCompleted,
               onToggleStep = viewModel::toggleStep,
               modifier = Modifier.fillMaxWidth().height(mapHeight),
@@ -452,7 +461,7 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
           item {
             PlanStepFilters(
               selected = stepFilter,
-              plan = responsePlan,
+              plan = presentationPlan,
               completed = displayedCompleted,
               onSelect = { stepFilter = it },
             )
@@ -464,7 +473,7 @@ internal fun PlannerScreen(state: MainScreenUiState, viewModel: MainScreenViewMo
         if (planView == PlanViewMode.Steps) {
           items(if (preview) responsePlan.steps else visibleSteps, key = { it.child.id }) { step ->
             val complete = step.child.id in displayedCompleted
-            val ready = !preview && !state.isPlanning && !responsePlan.needsReplan && !complete && displayedCompleted.containsAll(step.dependencies)
+            val ready = !preview && !state.isPlanning && !paused && !complete && displayedCompleted.containsAll(step.dependencies)
             PlanStepCard(step, complete, ready, preview = preview) { viewModel.toggleStep(step) }
           }
         }
@@ -501,12 +510,10 @@ private fun PlanViewChooser(selected: PlanViewMode, onSelect: (PlanViewMode) -> 
 @Composable
 private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel) {
   var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+  var movesExpanded by rememberSaveable(state.selectedSpecies?.id) { mutableStateOf(false) }
   val activeAdvancedOptions = listOf(
-    state.natureStrategy == "chain",
     state.intermediateGenderStrategy != "lock_all",
     state.targetAlpha,
-    state.allowDitto,
-    state.convertMaternalWithDitto,
     state.allowAlphaMaterials,
     state.needHiddenAbility,
     state.lockGender,
@@ -540,20 +547,39 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
         TextButton(onClick = viewModel::showSpeciesReference) { Text("查看分布与遗传来源") }
       }
       NaturePicker(state.nature, viewModel::setNature)
-      Text("遗传技能（${state.targetMoves.size}/4）", fontWeight = FontWeight.SemiBold)
+      OptionSwitch("全程锁性格", if (state.nature.isBlank()) "先选择目标性格，再设置不变石链"
+        else "母系每步用不变石保留 ${state.nature}，转母也保留性格",
+        state.natureStrategy == "chain", enabled = !state.isPlanning && state.nature.isNotBlank()) {
+        viewModel.setNatureStrategy(if (it) "chain" else "late")
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("遗传技能（${state.targetMoves.size}/4）", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+        TextButton(onClick = { movesExpanded = !movesExpanded }) { Text(if (movesExpanded) "收起技能" else "选择技能") }
+      }
       if (state.availableMoves.isEmpty() && state.targetMoves.isEmpty()) {
         Text("选择搜索结果中的精灵后，可查看可遗传技能。", style = MaterialTheme.typography.bodySmall)
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        (state.availableMoves + state.targetMoves).distinct().forEach { move ->
+        (if (movesExpanded) (state.availableMoves + state.targetMoves).distinct() else state.targetMoves).forEach { move ->
           FilterChip(selected = move in state.targetMoves, onClick = { viewModel.toggleTargetMove(move) },
             label = { Text(move) })
         }
       }
       Text("目标个体值", fontWeight = FontWeight.SemiBold)
+      val presets = listOf(
+        "5V 物攻" to listOf("31", "31", "31", "X", "31", "31"),
+        "5V 特攻" to listOf("31", "X", "31", "31", "31", "31"),
+        "6V" to List(6) { "31" },
+      )
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        presets.forEach { (label, values) ->
+          FilterChip(selected = state.ivs == values, onClick = { viewModel.setIvPreset(values) },
+            enabled = !state.isPlanning, label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp))
+        }
+      }
       IvFields(state.ivs, viewModel::setIv)
       Text("计算策略", fontWeight = FontWeight.SemiBold)
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
           selected = state.strategy == "inventory",
           onClick = { viewModel.setStrategy("inventory") },
@@ -565,6 +591,20 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
           label = { Text("步骤优先") },
         )
       }
+      Text("百变怪用途", fontWeight = FontWeight.SemiBold)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(Triple("不使用", false, false), Triple("仅转母", false, true), Triple("全部可用", true, true))
+          .forEach { (label, allow, convert) ->
+            FilterChip(selected = state.allowDitto == allow && (allow || state.convertMaternalWithDitto == convert),
+              onClick = { viewModel.setDittoMode(allow, convert) }, enabled = !state.isPlanning,
+              label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp))
+          }
+      }
+      Text(when {
+        state.allowDitto -> "允许使用百变怪参与各条支线。"
+        state.convertMaternalWithDitto -> "仅用于目标公体转母；IV 匹配时可同时保性格升 V。"
+        else -> "本次规划不使用百变怪。"
+      }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       HorizontalDivider()
       Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -581,9 +621,6 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
       }
       if (advancedExpanded) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          OptionSwitch("全程锁性格", "不变石链；关闭时逐级尝试目标性格", state.natureStrategy == "chain") {
-            viewModel.setNatureStrategy(if (it) "chain" else "late")
-          }
           Text("中间代性别", fontWeight = FontWeight.SemiBold)
           FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("lock_all" to "全程锁定", "smart" to "智能锁定", "minimal" to "尽量不锁").forEach { (key, label) ->
@@ -591,22 +628,19 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
                 onClick = { viewModel.setIntermediateGenderStrategy(key) }, label = { Text(label) })
             }
           }
-          OptionSwitch("孵化头目成品", "关闭时只规划普通成品", state.targetAlpha, viewModel::setTargetAlpha)
-          OptionSwitch("允许使用百变怪", "可参与母体或其他支线", state.allowDitto, viewModel::setAllowDitto)
-          OptionSwitch(
-            "使用百变怪转换母体",
-            "即使关闭上项，也允许一次目标公体转母体",
-            state.convertMaternalWithDitto,
-            viewModel::setConvertMaternal,
-          )
+          OptionSwitch("孵化头目成品", "关闭时只规划普通成品", state.targetAlpha,
+            enabled = !state.isPlanning, onCheckedChange = viewModel::setTargetAlpha)
           OptionSwitch(
             "普通目标允许使用头目素材",
             "最终仍为普通，但会消耗头目库存",
             state.allowAlphaMaterials,
-            viewModel::setAllowAlphaMaterials,
+            enabled = !state.isPlanning,
+            onCheckedChange = viewModel::setAllowAlphaMaterials,
           )
-          OptionSwitch("成品保留梦特", "要求目标母系携带梦特潜力", state.needHiddenAbility, viewModel::setNeedHiddenAbility)
-          OptionSwitch("锁定成品性别", "不勾选表示公母都可以；特殊进化会自动锁定", state.lockGender, viewModel::setLockGender)
+          OptionSwitch("成品保留梦特", "要求目标母系携带梦特潜力", state.needHiddenAbility,
+            enabled = !state.isPlanning, onCheckedChange = viewModel::setNeedHiddenAbility)
+          OptionSwitch("锁定成品性别", "不勾选表示公母都可以；特殊进化会自动锁定", state.lockGender,
+            enabled = !state.isPlanning, onCheckedChange = viewModel::setLockGender)
           if (state.lockGender) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               FilterChip(selected = state.targetGender == "F", onClick = { viewModel.setTargetGender("F") }, label = { Text("母") })
@@ -679,12 +713,12 @@ private fun IvField(index: Int, label: String, value: String, onChange: (Int, St
 }
 
 @Composable
-private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onCheckedChange: (Boolean) -> Unit) {
   Row(
     Modifier
       .fillMaxWidth()
       .heightIn(min = 64.dp)
-      .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+      .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
       .padding(vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -693,7 +727,7 @@ private fun OptionSwitch(title: String, subtitle: String, checked: Boolean, onCh
       Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Spacer(Modifier.width(10.dp))
-    Switch(checked = checked, onCheckedChange = null)
+    Switch(checked = checked, enabled = enabled, onCheckedChange = null)
   }
 }
 
@@ -774,9 +808,8 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
     border = BorderStroke(if (ready || complete) 1.5.dp else 1.dp, border),
   ) {
     Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("步骤 ${step.number}", fontWeight = FontWeight.Bold, color = if (ready || complete) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(8.dp))
         StatusPill(
           when {
             preview -> "预览 · 未启用"
@@ -787,16 +820,19 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
           },
           ready || complete,
         )
-        Spacer(Modifier.weight(1f))
         if (step.requiresPurchase) Text("含采购", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
       }
       Text(when (step.routeRole) { "maternal" -> "母体主线"; "nature" -> "性格手"; else -> "IV 素材" })
       if (step.routeMoves.isNotEmpty()) Text("遗传技能：${step.routeMoves.joinToString("、")}")
-      Text("父母 A：${step.parentALabel}\n携带：${step.itemA.ifBlank { "无需道具" }}")
-      Text("父母 B：${step.parentBLabel}\n携带：${step.itemB.ifBlank { "无需道具" }}")
+      StepParentCard("父母 A", step.parentALabel, step.parentARecord, step.parentASpeciesId, step.itemA)
+      StepParentCard("父母 B", step.parentBLabel, step.parentBRecord, step.parentBSpeciesId, step.itemB)
       HorizontalDivider()
-      Text("道具：${step.itemText}")
-      Text("子代：${step.child.species} · ${step.child.ivText} · ${step.genderInstruction}", fontWeight = FontWeight.SemiBold)
+      Text("子代：${step.child.species} · ${step.child.perfectIvCount}V · ${step.child.ivText}", fontWeight = FontWeight.SemiBold)
+      Text(step.genderInstruction)
+      val lockedNature = (step.itemA == "不变之石" || step.itemB == "不变之石") && step.child.nature.isNotBlank()
+      Text(if (lockedNature) "性格保证：${step.child.nature}（不变石）"
+        else if (step.shouldCheckNature) "性格随机，孵完后记录实际结果"
+        else "性格：${step.child.nature.ifBlank { "随机" }}", color = MaterialTheme.colorScheme.secondary)
       if (step.shouldCheckNature) {
         Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(8.dp)) {
           Text(
@@ -812,6 +848,23 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
       ) {
         Text(if (complete) "已核销 · 可用顶部撤销恢复" else if (ready) "核对本步并记录结果" else "尚不可执行")
+      }
+    }
+  }
+}
+
+@Composable
+private fun StepParentCard(title: String, label: String, record: MonsterRecord?, speciesId: Int?, item: String) {
+  Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(12.dp)) {
+    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+      PokemonPortrait(speciesId, Modifier.size(44.dp))
+      Spacer(Modifier.width(8.dp))
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        if (record != null) Text("${record.perfectIvCount}V · ${genderLabel(record.gender)} · ${record.nature.ifBlank { "性格未知" }}",
+          style = MaterialTheme.typography.bodySmall)
+        Text("携带：${item.ifBlank { "无需道具" }}", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
       }
     }
   }

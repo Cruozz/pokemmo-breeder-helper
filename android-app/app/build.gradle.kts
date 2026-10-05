@@ -5,6 +5,9 @@ plugins {
   id("com.chaquo.python")
 }
 
+val plannerRulesVersion = Regex("(?m)^RULES_VERSION = \"([^\"]+)\"")
+    .find(file("src/main/python/mobile_bridge.py").readText())!!.groupValues[1]
+
 android {
     namespace = "com.example.pokemmobreederhelper"
     compileSdk = 36
@@ -12,8 +15,9 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.5.0"
+        versionCode = 11
+        versionName = "0.5.1"
+        buildConfigField("String", "PLANNER_RULES_VERSION", "\"$plannerRulesVersion\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
           abiFilters += listOf("arm64-v8a", "x86_64")
@@ -33,7 +37,7 @@ android {
     buildFeatures {
       compose = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
@@ -68,7 +72,8 @@ val syncPlannerPython by tasks.registering(Sync::class) {
 chaquopy {
   defaultConfig {
     version = "3.12"
-    buildPython(rootProject.projectDir.parentFile.resolve(".runtime/python312/python.exe").absolutePath)
+    buildPython(providers.gradleProperty("plannerBuildPython").getOrElse(
+      rootProject.projectDir.parentFile.resolve(".runtime/python312/python.exe").absolutePath))
   }
   sourceSets {
     getByName("main") {

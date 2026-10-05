@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -47,6 +48,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
   var showFilters by rememberSaveable { mutableStateOf(false) }
   var confirmDelete by remember { mutableStateOf<Set<String>?>(null) }
   var confirmClear by remember { mutableStateOf(false) }
+  val listState = rememberLazyListState()
   LaunchedEffect(state.inventory) { selected = selected.intersect(state.inventory.map { it.id }.toSet()) }
   val accounts = remember(state.inventory) { listOf("全部账号") + state.inventory.map { it.account }.distinct().sorted() }
   val filtered = remember(state.inventory, state.inventoryQuery, state.accountFilter, status, category) {
@@ -59,7 +61,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
         m.moves.joinToString(" "),m.eggGroups.joinToString(" ")).any { query in it.lowercase() })
     }
   }
-  LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+  LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item {
       Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -92,6 +94,14 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
       item { FilterStrip(accounts, state.accountFilter, vm::setAccountFilter) }
       item { FilterStrip(listOf("全部状态","已确认","待核对"), status) { status = it } }
       item { FilterStrip(listOf("全部类别","普通","头目"), category) { category = it } }
+    }
+    if (state.inventoryQuery.isNotBlank() || state.accountFilter != "全部账号" || status != "全部状态" || category != "全部类别") {
+      item {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text("找到 ${filtered.size} / ${state.inventory.size} 只", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+          TextButton(onClick = { vm.setInventoryQuery(""); vm.setAccountFilter("全部账号"); status = "全部状态"; category = "全部类别" }) { Text("重置筛选") }
+        }
+      }
     }
     if (state.isPlanning) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
     item {

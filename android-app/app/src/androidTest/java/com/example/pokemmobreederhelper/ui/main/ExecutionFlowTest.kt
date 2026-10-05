@@ -65,7 +65,7 @@ class ExecutionFlowTest {
     val bridge = PlannerBridge(ApplicationProvider.getApplicationContext())
     var response = bridge.generatePlan("[]", PlanRequest("索罗亚克", ivs = listOf("31", "31", "31", "X", "X", "X"), allowDitto = false))
     assertTrue(response.ok)
-    assertEquals("0.2.8", response.rulesVersion)
+    assertEquals(com.example.pokemmobreederhelper.BuildConfig.PLANNER_RULES_VERSION, response.rulesVersion)
     var inventory = "[]"
     val originalId = response.plan!!.id
     val steps = response.plan!!.steps

@@ -32,7 +32,7 @@ class MobileExecutionTests(unittest.TestCase):
         _, candidates = make_report_with_candidates([], "索罗亚克", "", "", "31/31/31/x/x/x", [], allow_ditto=False)
         desktop = build_execution_plan(candidates[0])
         mobile = response["plan"]
-        self.assertEqual(response["rules_version"], "0.2.8")
+        self.assertEqual(response["rules_version"], "0.2.23")
         self.assertEqual([(s.child.species, s.child.ivs, s.gender_policy, s.item_a, s.item_b) for s in desktop.steps],
                          [(s["child"]["species"], s["child"]["ivs"], s["gender_policy"], s["item_a"], s["item_b"]) for s in mobile["steps"]])
 
@@ -97,6 +97,17 @@ class MobileExecutionTests(unittest.TestCase):
         response = self.generate()
         response.pop("rules_version")
         self.assertFalse(self.complete(response, [], response["plan"]["steps"][0])["ok"])
+
+    def test_v028_route_cannot_consume_inventory_under_new_maternal_rules(self):
+        inventory = [Monster(id="old-mother", species="索罗亚", gender="F", ivs=[31,31,None,None,None,None]).to_dict(),
+                     Monster(id="old-father", species="长毛狗", gender="M", ivs=[31,None,31,None,None,None]).to_dict()]
+        response = self.generate(inventory)
+        response["rules_version"] = "0.2.8"
+        original = deepcopy(inventory)
+        result = self.complete(response, inventory, response["plan"]["steps"][0])
+        self.assertFalse(result["ok"])
+        self.assertNotIn("inventory", result)
+        self.assertEqual(inventory, original)
 
     def test_full_nature_lifecycle_keeps_final_target_and_reaches_finished_product(self):
         for target, alpha, level, hidden in (

@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pokemmobreederhelper.data.ExecutionStepRecord
+import com.example.pokemmobreederhelper.BuildConfig
 import com.example.pokemmobreederhelper.data.InventoryRepository
 import com.example.pokemmobreederhelper.data.MonsterRecord
 import com.example.pokemmobreederhelper.data.PlanRequest
@@ -303,6 +304,15 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
+  fun setIvPreset(values: List<String>) {
+    if (values.size != 6 || values.any { it !in listOf("31", "X") }) return
+    _uiState.update { it.copy(ivs = values.toList()) }
+  }
+
+  fun setDittoMode(allow: Boolean, convert: Boolean) = _uiState.update {
+    it.copy(allowDitto = allow, convertMaternalWithDitto = convert)
+  }
+
   fun setStrategy(value: String) = _uiState.update { it.copy(strategy = value) }
   fun setTargetAlpha(value: Boolean) = _uiState.update { it.copy(targetAlpha = value) }
   fun setAllowDitto(value: Boolean) = _uiState.update { it.copy(allowDitto = value) }
@@ -437,7 +447,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     val activeStep = state.plannerResponse?.plan?.steps?.firstOrNull {
       it.child.id == step.child.id && it.number == step.number
     } ?: return
-    if (state.plannerResponse?.rulesVersion != "0.2.8") {
+    if (state.plannerResponse?.rulesVersion != BuildConfig.PLANNER_RULES_VERSION) {
       _uiState.update { it.copy(error = "请重新生成并启用路线。") }; return
     }
     if (state.plannerResponse.plan?.needsReplan == true || activeStep.child.id in state.completedChildIds ||

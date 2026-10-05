@@ -50,6 +50,7 @@ class PreviewPlanningTest {
     rule.setContent { MainScreen(viewModel = vm) }
     awaitPlan(vm)
     assertNull(InventoryRepository(app).loadPlanSession())
+    rule.onNodeWithText("思维导图").performScrollTo().performClick()
     rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("孵蛋路线思维导图", substring = true))
     rule.onNodeWithContentDescription("孵蛋路线思维导图", substring = true).assertIsDisplayed()
     rule.onNode(hasScrollAction()).performScrollToNode(hasText("本轮素材 · 2 只"))
