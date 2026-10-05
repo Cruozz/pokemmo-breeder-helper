@@ -32,14 +32,28 @@ class DittoConversionTests(unittest.TestCase):
         self.assertIsNotNone(child)
         self.assertEqual(child.mask, 15)
 
-    def test_higher_tier_ditto_cannot_flip_two_iv_breeder(self):
+    def test_higher_tier_ditto_can_upgrade_and_flip_a_natured_two_iv_breeder(self):
         for gender, output in (("M", "F"), ("F", "M")):
             for reversed_parents in (False, True):
                 with self.subTest(gender=gender, reversed_parents=reversed_parents):
-                    breeder, ditto = state("source", 3, gender), state("ditto", 7, "N")
-                    child = (_forced_child(ditto, breeder, self.profile, output, brace_a=2)
-                             if reversed_parents else _forced_child(breeder, ditto, self.profile, output, brace_b=2))
-                    self.assertIsNone(child)
+                    breeder, ditto = state("source", 3, gender, True), state("ditto", 7, "N")
+                    child = (_forced_child(ditto, breeder, self.profile, output, brace_a=2, everstone_b=True)
+                             if reversed_parents else
+                             _forced_child(breeder, ditto, self.profile, output, brace_b=2, everstone_a=True))
+                    self.assertIsNotNone(child)
+                    self.assertEqual(child.mask, 7)
+                    self.assertEqual(child.gender, output)
+                    self.assertEqual(child.nature, "固执")
+                    self.assertTrue(child.has_nature)
+
+    def test_higher_tier_ditto_conversion_cannot_waste_its_extra_ivs(self):
+        for ditto_mask in (7, 15):
+            with self.subTest(ditto_mask=ditto_mask):
+                # No brace drops a 3V Ditto to 2V; one brace cannot retain a 4V Ditto.
+                child = _forced_child(state("source", 3, nature=True), state("ditto", ditto_mask, "N"),
+                                      self.profile, "F", brace_b=None if ditto_mask == 7 else 2,
+                                      everstone_a=True)
+                self.assertIsNone(child)
 
     def test_same_sex_nature_upgrade_with_higher_tier_ditto_remains_valid(self):
         child = _forced_child(state("source", 3, "F", True), state("ditto", 7, "N"),

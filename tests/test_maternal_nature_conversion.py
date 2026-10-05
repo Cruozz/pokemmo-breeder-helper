@@ -35,6 +35,24 @@ class MaternalNatureConversionTests(unittest.TestCase):
                     [source("ditto", 5, ditto=True)], self.profile, 55, preserve_nature=True)
         self.assertEqual(states, [])
 
+    def test_matching_three_iv_ditto_upgrades_natured_source_and_locks_female(self):
+        states = _maternal_conversion_candidates([source("male", 6, nature=True)],
+                    [source("ditto", 7, ditto=True)], self.profile, 55, preserve_nature=True)
+        self.assertTrue(states)
+        for child in states:
+            self.assertEqual(child.mask, 7)
+            self.assertEqual(child.gender, "F")
+            self.assertEqual(child.nature, "固执")
+            self.assertTrue(child.has_nature)
+            self.assertEqual(child.action.item_a, "不变之石")
+            self.assertEqual(child.action.item_b, "HP护腕")
+            self.assertTrue(child.force_gender_lock)
+
+    def test_mismatched_three_iv_ditto_cannot_drop_a_natured_sources_iv(self):
+        states = _maternal_conversion_candidates([source("male", 6, nature=True)],
+                    [source("ditto", 25, ditto=True)], self.profile, 55, preserve_nature=True)
+        self.assertEqual(states, [])
+
     def test_non_chain_conversion_may_use_two_braces_without_locking_nature(self):
         states = _maternal_conversion_candidates([source("male", 6, nature=True)],
                     [source("ditto", 5, ditto=True)], self.profile, 55)
@@ -74,18 +92,31 @@ class MaternalNatureConversionTests(unittest.TestCase):
                     nature_strategy="chain", strategy=strategy, convert_maternal_with_ditto=True)
                 self.assertTrue(candidates, report)
                 plan = build_execution_plan(candidates[0])
-                conversions = [step for step in plan.steps if "ditto-2v" in (step.parent_a_id, step.parent_b_id)]
+                conversions = [step for step in plan.steps if "ditto-3v" in (step.parent_a_id, step.parent_b_id)]
                 self.assertEqual(len(conversions), 1)
                 step = conversions[0]
-                self.assertEqual({step.parent_a_id, step.parent_b_id}, {"adamant-ambipom", "ditto-2v"})
+                self.assertEqual({step.parent_a_id, step.parent_b_id}, {"adamant-ambipom", "ditto-3v"})
                 self.assertEqual(step.child.species, "长尾怪手")
                 self.assertEqual(step.child.gender, "F")
                 self.assertEqual(step.child.nature, "固执")
-                self.assertEqual([i for i, value in enumerate(step.child.ivs) if value == 31], [1, 2])
-                self.assertNotIn("ditto-3v", candidates[0].root.used_ids)
+                self.assertEqual([i for i, value in enumerate(step.child.ivs) if value == 31], [0, 1, 2])
+                self.assertNotIn("ditto-2v", candidates[0].root.used_ids)
                 self.assertEqual(candidates[0].root.purchases, 0)
-                self.assertEqual(candidates[0].root.breeds, 4)
+                self.assertEqual(candidates[0].root.breeds, 3)
                 self.assertEqual(plan.steps[-1].child.nature, "固执")
+
+    def test_five_iv_chain_can_still_start_with_same_tier_ditto(self):
+        inventory = [monster for monster in self.inventory() if monster.id != "ditto-3v"]
+        report, candidates = make_report_with_candidates(inventory, "长尾怪手", "", "固执",
+            "31/31/31/x/31/31", ["陆上"], target_alpha=True, allow_ditto=False,
+            nature_strategy="chain", strategy="inventory", convert_maternal_with_ditto=True)
+        self.assertTrue(candidates, report)
+        plan = build_execution_plan(candidates[0])
+        conversion = next(step for step in plan.steps if "ditto-2v" in (step.parent_a_id, step.parent_b_id))
+        self.assertEqual(conversion.child.nature, "固执")
+        self.assertEqual(conversion.child.gender, "F")
+        self.assertEqual(candidates[0].root.breeds, 4)
+        self.assertEqual(candidates[0].root.purchases, 0)
 
     def test_steps_first_can_choose_a_shorter_market_route_without_forcing_conversion(self):
         report, candidates = make_report_with_candidates(self.inventory(), "长尾怪手", "", "固执",

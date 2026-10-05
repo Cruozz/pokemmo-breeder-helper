@@ -833,14 +833,15 @@ def _forced_child(
         mask |= 1 << brace_a
     if brace_b is not None:
         mask |= 1 << brace_b
-    # Gender conversion uses breeders of the same tier and never discards
-    # the source's guaranteed IVs. Apply this at the
+    # Gender conversion preserves the source's guaranteed IVs and must not
+    # waste either parent's tier. A higher-tier Ditto may also upgrade IVs.
+    # Apply this at the
     # common constructor so direct, maternal and nature searches agree.
     if is_ditto(parent_a.species) != is_ditto(parent_b.species):
         source, ditto = (parent_b, parent_a) if is_ditto(parent_a.species) else (parent_a, parent_b)
         if source.gender in {"F", "M"} and output_gender in {"F", "M"} and source.gender != output_gender:
             if (
-                ditto.effective_material_v != source.effective_material_v
+                ditto.effective_material_v < source.effective_material_v
                 or mask & source.mask != source.mask
                 or mask.bit_count() < max(source.effective_material_v, ditto.effective_material_v)
             ):
@@ -911,7 +912,7 @@ def _maternal_conversion_candidates(
     males: list[ChainState], dittos: list[ChainState], profile: SpeciesProfile,
     target_mask: int, strategy: str = "inventory", *, preserve_nature: bool = False,
 ) -> list[ChainState]:
-    """Build real same-tier, male-to-female eggs with valid held items."""
+    """Build male-to-female eggs, optionally upgrading IVs, with valid held items."""
     def diverse_sources(states: list[ChainState]) -> list[ChainState]:
         counts = Counter()
         result = []
@@ -930,7 +931,7 @@ def _maternal_conversion_candidates(
         # A target-nature source must hold the Everstone in chain mode.
         male_braces = [None] if lock_nature else [None, *(i for i in stats if male.mask & (1 << i))]
         for ditto in diverse_sources(dittos):
-            if male.effective_material_v != ditto.effective_material_v:
+            if ditto.effective_material_v < male.effective_material_v:
                 continue
             lock_ditto_nature = preserve_nature and not lock_nature and ditto.has_nature
             ditto_braces = [None] if lock_ditto_nature else [None, *(i for i in stats if ditto.mask & (1 << i))]

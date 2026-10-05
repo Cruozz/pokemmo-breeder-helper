@@ -61,12 +61,17 @@ class MobileParity028Tests(unittest.TestCase):
             for step in response["plan"]["steps"]:
                 self.assertFalse({step["parent_a_id"], step["parent_b_id"]} == {"male", "ditto"} and step["child"]["gender"] == "F")
 
-    def test_bridge_never_converts_two_v_male_with_three_v_ditto(self):
-        inventory = [Monster(id="male", species="伊布", gender="M", ivs=[31,31,1,1,1,1]).to_dict(),
+    def test_bridge_upgrades_natured_two_v_male_with_three_v_ditto_and_locks_female(self):
+        inventory = [Monster(id="male", species="伊布", gender="M", nature="固执", ivs=[31,31,1,1,1,1]).to_dict(),
                      Monster(id="ditto", species="百变怪", gender="N", ivs=[31,31,31,1,1,1]).to_dict()]
         request = dict(species="伊布", ivs=["31","31","31","X","X","X"], lock_gender=True,
-                       target_gender="F", convert_maternal_with_ditto=True)
+                       target_gender="F", convert_maternal_with_ditto=True, allow_ditto=False,
+                       nature="固执", nature_strategy="chain")
         response = json.loads(bridge.generate_plan(json.dumps(inventory), json.dumps(request)))
         self.assertTrue(response["ok"], response)
-        for step in response["plan"]["steps"]:
-            self.assertFalse({step["parent_a_id"], step["parent_b_id"]} == {"male", "ditto"} and step["child"]["gender"] == "F")
+        self.assertEqual(len(response["plan"]["steps"]), 1)
+        step = response["plan"]["steps"][0]
+        self.assertEqual({step["parent_a_id"], step["parent_b_id"]}, {"male", "ditto"})
+        self.assertEqual(step["child"]["gender"], "F")
+        self.assertEqual(step["child"]["nature"], "固执")
+        self.assertEqual(step["child"]["ivs"].count(31), 3)
