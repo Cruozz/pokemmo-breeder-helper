@@ -32,6 +32,30 @@ class DittoConversionTests(unittest.TestCase):
         self.assertIsNotNone(child)
         self.assertEqual(child.mask, 15)
 
+    def test_higher_tier_ditto_cannot_flip_without_preserving_target_nature(self):
+        for gender, output in (("M", "F"), ("F", "M")):
+            for reversed_parents in (False, True):
+                for nature in (False, True):
+                    with self.subTest(gender=gender, reversed=reversed_parents, nature=nature):
+                        breeder = state("source", 40, gender, nature)
+                        ditto = state("ditto", 41, "N")
+                        child = (_forced_child(ditto, breeder, self.profile, output, brace_a=0)
+                                 if reversed_parents else
+                                 _forced_child(breeder, ditto, self.profile, output, brace_b=0))
+                        self.assertIsNone(child)
+
+    def test_everstone_on_a_non_target_nature_cannot_bypass_conversion_policy(self):
+        child = _forced_child(state("source", 40), state("ditto", 41, "N"),
+                              self.profile, "F", brace_b=0, everstone_a=True)
+        self.assertIsNone(child)
+
+    def test_same_sex_plain_upgrade_with_higher_tier_ditto_remains_valid(self):
+        child = _forced_child(state("source", 40, "F"), state("ditto", 41, "N"),
+                              self.profile, "F", brace_b=0)
+        self.assertIsNotNone(child)
+        self.assertEqual(child.mask, 41)
+        self.assertFalse(child.has_nature)
+
     def test_higher_tier_ditto_can_upgrade_and_flip_a_natured_two_iv_breeder(self):
         for gender, output in (("M", "F"), ("F", "M")):
             for reversed_parents in (False, True):

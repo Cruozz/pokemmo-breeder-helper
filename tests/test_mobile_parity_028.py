@@ -75,3 +75,16 @@ class MobileParity028Tests(unittest.TestCase):
         self.assertEqual(step["child"]["gender"], "F")
         self.assertEqual(step["child"]["nature"], "固执")
         self.assertEqual(step["child"]["ivs"].count(31), 3)
+
+    def test_bridge_rejects_reported_plain_milotic_two_v_three_v_conversion(self):
+        inventory = [Monster(id="male", species="美纳斯", gender="M", nature="爽朗", is_alpha=True,
+                             ivs=[9, 27, 30, 31, 29, 31]).to_dict(),
+                     Monster(id="ditto", species="百变怪", gender="N", nature="认真", is_alpha=True,
+                             ivs=[31, 1, 28, 31, 10, 31]).to_dict()]
+        request = dict(species="美纳斯", ivs=["31", "X", "31", "31", "31", "31"],
+                       nature="内敛", target_alpha=True, nature_strategy="late", allow_ditto=False,
+                       convert_maternal_with_ditto=True)
+        response = json.loads(bridge.generate_plan(json.dumps(inventory), json.dumps(request)))
+        self.assertTrue(response["ok"], response)
+        for step in response["plan"]["steps"]:
+            self.assertNotEqual({step["parent_a_id"], step["parent_b_id"]}, {"male", "ditto"})

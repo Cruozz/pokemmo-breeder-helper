@@ -178,6 +178,14 @@ def run_checks() -> dict[str, object]:
     upgraded = _maternal_conversion_candidates([nature_parent], [higher_ditto], profile, 7, preserve_nature=True)
     if not upgraded or any(state.mask != 7 or not state.has_nature for state in upgraded):
         raise RuntimeError("Packaged maternal bootstrap omitted a valid higher-tier Ditto upgrade")
+    milotic_parent = ChainState("丑丑鱼", "M", ("水中1", "龙"), 40, False, "爽朗", True,
+                               frozenset({"selftest-milotic"}), 0, 0, 0, 0)
+    milotic_ditto = ChainState("百变怪", "N", (), 41, False, "认真", True,
+                              frozenset({"selftest-milotic-ditto"}), 0, 0, 0, 0)
+    milotic_profile = SpeciesProfile("丑丑鱼", "丑丑鱼", ("水中1", "龙"), False, ("F", "M"))
+    if (_forced_child(milotic_parent, milotic_ditto, milotic_profile, "F", brace_b=0) is not None
+            or _maternal_conversion_candidates([milotic_parent], [milotic_ditto], milotic_profile, 61)):
+        raise RuntimeError("Packaged planner allowed random-nature 2V Milotic + 3V Ditto conversion")
     sample = []
     for key, name, gender, mask, nature in (
         ("selftest-adamant-ambipom", "双尾怪手", "M", 6, "固执"),
@@ -201,6 +209,7 @@ def run_checks() -> dict[str, object]:
             or routes[0].root.breeds != 3 or plan.steps[-1].child.nature != "固执"):
         raise RuntimeError("Packaged planner did not use the natured evolved inventory as its maternal seed")
     checks["ditto_conversion"] = {"lower_tier_conversion_rejected": True, "higher_tier_nature_upgrade": True,
+                                  "random_nature_higher_tier_conversion_rejected": True,
                                   "maternal_everstone": True,
                                   "evolved_nature_seed": True, "synthetic_data": True}
 

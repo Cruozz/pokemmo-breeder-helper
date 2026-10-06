@@ -833,15 +833,20 @@ def _forced_child(
         mask |= 1 << brace_a
     if brace_b is not None:
         mask |= 1 << brace_b
-    # Gender conversion preserves the source's guaranteed IVs and must not
-    # waste either parent's tier. A higher-tier Ditto may also upgrade IVs.
-    # Apply this at the
-    # common constructor so direct, maternal and nature searches agree.
+    # Plain gender conversion uses equal-tier materials. A higher-tier Ditto
+    # is reserved for an upgrade which also guarantees the requested nature
+    # with an Everstone. This is a material-use policy, not mating legality.
+    # Enforce it here so direct, maternal and nature searches agree.
     if is_ditto(parent_a.species) != is_ditto(parent_b.species):
         source, ditto = (parent_b, parent_a) if is_ditto(parent_a.species) else (parent_a, parent_b)
         if source.gender in {"F", "M"} and output_gender in {"F", "M"} and source.gender != output_gender:
+            preserves_target_nature = (
+                (everstone_a and parent_a.has_nature)
+                or (everstone_b and parent_b.has_nature)
+            )
             if (
                 ditto.effective_material_v < source.effective_material_v
+                or (ditto.effective_material_v > source.effective_material_v and not preserves_target_nature)
                 or mask & source.mask != source.mask
                 or mask.bit_count() < max(source.effective_material_v, ditto.effective_material_v)
             ):

@@ -58,6 +58,68 @@ class MaternalNatureConversionTests(unittest.TestCase):
                     [source("ditto", 5, ditto=True)], self.profile, 55)
         self.assertTrue(any(child.mask == 7 and not child.has_nature for child in states))
 
+    def test_reported_milotic_conversion_uses_same_tier_ditto_without_nature_lock(self):
+        profile = SpeciesProfile("丑丑鱼", "丑丑鱼", ("水中1", "龙"), False, ("F", "M"))
+        male = source("milotic", 40)
+        male.species, male.egg_groups = "丑丑鱼", profile.egg_groups
+        for preserve_nature in (False, True):
+            with self.subTest(preserve_nature=preserve_nature):
+                states = _maternal_conversion_candidates([male],
+                    [source("ditto-3v", 41, ditto=True), source("ditto-2v", 40, ditto=True)],
+                    profile, 61, preserve_nature=preserve_nature)
+                self.assertTrue(states)
+                for child in states:
+                    self.assertEqual(child.used_ids, frozenset({"milotic", "ditto-2v"}))
+                    self.assertEqual(child.mask, 40)
+                    self.assertEqual(child.gender, "F")
+                    self.assertFalse(child.has_nature)
+                    self.assertTrue(child.force_gender_lock)
+
+    def test_plain_milotic_has_no_higher_tier_conversion_fallback(self):
+        profile = SpeciesProfile("丑丑鱼", "丑丑鱼", ("水中1", "龙"), False, ("F", "M"))
+        male = source("milotic", 40)
+        male.species, male.egg_groups = "丑丑鱼", profile.egg_groups
+        states = _maternal_conversion_candidates([male], [source("ditto-3v", 41, ditto=True)],
+                                                profile, 61)
+        self.assertEqual(states, [])
+
+    def test_five_iv_modest_alpha_milotic_never_uses_plain_higher_tier_gender_conversion(self):
+        def material(key, species, gender, mask, nature=""):
+            return Monster(id=key, species=species, gender=gender, nature=nature, is_alpha=True,
+                           ivs=[31 if mask & (1 << i) else 1 for i in range(6)])
+
+        inventory = [material("milotic", "美纳斯", "M", 40, "爽朗"),
+                     material("ditto-3v", "百变怪", "N", 41, "认真"),
+                     material("ditto-2v", "百变怪", "N", 40),
+                     material("donor-2v", "宝贝龙", "M", 24),
+                     material("donor-3v", "快龙", "M", 52),
+                     material("donor-4v", "七夕青鸟", "M", 57)]
+        for allow_ditto in (False, True):
+            for strategy in ("inventory", "steps"):
+                with self.subTest(allow_ditto=allow_ditto, strategy=strategy):
+                    report, candidates = make_report_with_candidates(inventory, "美纳斯", "", "内敛",
+                        "31/x/31/31/31/31", ["水中1", "龙"], target_alpha=True,
+                        allow_ditto=allow_ditto, strategy=strategy, nature_strategy="late",
+                        convert_maternal_with_ditto=True)
+                    self.assertTrue(candidates, report)
+                    for candidate in candidates:
+                        pending = [candidate.root]
+                        while pending:
+                            node = pending.pop()
+                            if node.action is None:
+                                continue
+                            parents = (node.action.parent_a, node.action.parent_b)
+                            pending.extend(parents)
+                            if sum(parent.species == "百变怪" for parent in parents) != 1:
+                                continue
+                            ditto = next(parent for parent in parents if parent.species == "百变怪")
+                            breeder = next(parent for parent in parents if parent.species != "百变怪")
+                            if breeder.gender != node.gender and not node.has_nature:
+                                self.assertEqual(breeder.effective_material_v, ditto.effective_material_v)
+                    if strategy == "inventory" and not allow_ditto:
+                        self.assertIn("ditto-2v", candidates[0].root.used_ids)
+                        self.assertNotIn("ditto-3v", candidates[0].root.used_ids)
+
     def test_large_plain_pool_does_not_prune_the_only_nature_source(self):
         males = [source(f"aaa-plain-{i}", 6) for i in range(12)] + [source("zzz-nature", 6, nature=True)]
         states = _maternal_conversion_candidates(males, [source("ditto", 6, ditto=True)],

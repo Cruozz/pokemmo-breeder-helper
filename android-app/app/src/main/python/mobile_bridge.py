@@ -19,7 +19,7 @@ from reference_data import get_reference_database
 from route_roles import RouteSource, classify_routes
 from chain_planner import is_ditto
 
-RULES_VERSION = "0.2.23"
+RULES_VERSION = "0.2.25"
 
 
 def inventory_duplicates(inventory_json: str) -> str:

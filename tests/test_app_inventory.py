@@ -275,6 +275,32 @@ class AppInventoryFlowTests(unittest.TestCase):
         self.assertEqual(updated, [True])
         self.assertEqual(generated, [True])
 
+    def test_three_ditto_exclusions_accumulate_across_same_family_replans(self) -> None:
+        app = App.__new__(App)
+        app.plan_worker_busy = False
+        app.inventory = [Monster(id=f"ditto-{i}", species="百变怪") for i in range(3)]
+        app.plan_excluded_ids = set()
+        app.plan_exclusion_history = []
+        app.plan_exclusion_scope_id = None
+        app.active_plan = None
+        app.proposed_plan = object()
+        app.plan_status_var = StubVariable()
+        app.species_db = get_species_database()
+        app._update_plan_exclusion_ui = lambda: None
+        snapshots = []
+
+        def replan():
+            # Both evolved and hatch names resolve to the same exclusion scope.
+            name = "美纳斯" if len(snapshots) % 2 == 0 else "丑丑鱼"
+            App._sync_plan_exclusion_scope(app, app.species_db.get(name))
+            snapshots.append(frozenset(app.plan_excluded_ids))
+
+        app.generate_plan = replan
+        for i in range(3):
+            self.assertEqual(App.exclude_plan_material(app, f"ditto-{i}"), "break")
+            self.assertEqual(snapshots[-1], frozenset(f"ditto-{j}" for j in range(i + 1)))
+        self.assertEqual(app.plan_exclusion_history, [f"ditto-{i}" for i in range(3)])
+
     def test_purchase_step_can_be_activated_without_ocr_import(self) -> None:
         step = ExecutionStep(
             number=1,
