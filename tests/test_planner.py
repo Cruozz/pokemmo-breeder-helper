@@ -980,7 +980,7 @@ class PlannerTests(unittest.TestCase):
                 "ALPHA-DITTO",
                 "百变怪",
                 "N",
-                [1, 31, 31, 1, 1, 31],
+                [1, 31, 1, 1, 1, 31],
                 groups=(),
                 is_alpha=True,
             ),

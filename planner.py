@@ -154,6 +154,7 @@ def find_candidates(
     target_ivs = parse_iv_requirements(iv_string)
     nature_key = normalize_nature(nature)
     missing: list[str] = []
+    inventory = [monster for monster in inventory if not monster.has_unrequested_perfect_iv(target_ivs)]
 
     females = [m for m in inventory if normalize_gender(m.gender) == "F" and normalize_text(m.species) == species_key]
     if not females:
@@ -254,9 +255,13 @@ def make_report_with_candidates(
         # while its breeding parent has the actual usable egg groups.
         resolved_groups = list(breeding_parent.egg_groups) if breeding_parent else resolved_groups
 
+    target_ivs = parse_iv_requirements(iv_string)
     excluded_id_set = {str(value) for value in (excluded_ids or ()) if str(value)}
-    planning_inventory = [monster for monster in inventory if monster.id not in excluded_id_set]
-    excluded_count = len(inventory) - len(planning_inventory)
+    available_inventory = [monster for monster in inventory if monster.id not in excluded_id_set]
+    excluded_count = len(inventory) - len(available_inventory)
+    iv_protected_count = sum(monster.has_unrequested_perfect_iv(target_ivs) for monster in available_inventory)
+    planning_inventory = [monster for monster in available_inventory
+                          if not monster.has_unrequested_perfect_iv(target_ivs)]
 
     for monster in planning_inventory:
         record = species_db.get(monster.species, fuzzy=True)
@@ -311,7 +316,6 @@ def make_report_with_candidates(
         )
     ]
 
-    target_ivs = parse_iv_requirements(iv_string)
     nature_key = normalize_nature(nature)
     reference_db = get_reference_database()
     try:
@@ -366,6 +370,11 @@ def make_report_with_candidates(
     lines: list[str] = []
     if excluded_count:
         lines.append(f"本次规划已排除 {excluded_count} 只受保护库存素材；记录仍保留在素材库存中。")
+        lines.append("")
+    if iv_protected_count:
+        protected_stats = "、".join(STAT_NAMES[i] for i, value in enumerate(target_ivs) if value is None)
+        lines.append(f"完整素材保护：目标 X 项（{protected_stats}）为 31 的 {iv_protected_count} 只库存素材"
+                     "不参与本次规划，避免将多 V 素材按少 V 消耗；库存记录仍保留。")
         lines.append("")
     if target_record:
         ratio = (

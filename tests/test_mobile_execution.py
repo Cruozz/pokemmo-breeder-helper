@@ -32,7 +32,7 @@ class MobileExecutionTests(unittest.TestCase):
         _, candidates = make_report_with_candidates([], "索罗亚克", "", "", "31/31/31/x/x/x", [], allow_ditto=False)
         desktop = build_execution_plan(candidates[0])
         mobile = response["plan"]
-        self.assertEqual(response["rules_version"], "0.2.25")
+        self.assertEqual(response["rules_version"], "0.2.26")
         self.assertEqual([(s.child.species, s.child.ivs, s.gender_policy, s.item_a, s.item_b) for s in desktop.steps],
                          [(s["child"]["species"], s["child"]["ivs"], s["gender_policy"], s["item_a"], s["item_b"]) for s in mobile["steps"]])
 

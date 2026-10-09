@@ -213,6 +213,28 @@ def run_checks() -> dict[str, object]:
                                   "maternal_everstone": True,
                                   "evolved_nature_seed": True, "synthetic_data": True}
 
+    protected_sample = [
+        Monster(id="selftest-attack-gengar", species="耿鬼", gender="M", nature="慎重",
+                ivs=[31, 31, 13, 4, 18, 6]),
+        Monster(id="selftest-attack-ditto", species="百变怪", gender="N", nature="爽朗",
+                ivs=[19, 31, 0, 9, 3, 31]),
+    ]
+    before = [list(monster.ivs) for monster in protected_sample]
+    report, routes = make_report_with_candidates(protected_sample, "耿鬼", "", "内敛",
+        "31/x/31/31/31/31", [], allow_ditto=False, convert_maternal_with_ditto=True)
+    protected_ids = {monster.id for monster in protected_sample}
+    if not routes or any(route.root.used_ids & protected_ids for route in routes) or "完整素材保护" not in report:
+        raise RuntimeError("Packaged planner consumed inventory perfect IVs on a target X stat")
+    if before != [monster.ivs for monster in protected_sample]:
+        raise RuntimeError("Packaged material protection changed inventory IVs")
+    report, attack_routes = make_report_with_candidates(protected_sample, "耿鬼", "", "",
+        "31/31/x/x/x/31", [], allow_ditto=False, convert_maternal_with_ditto=True)
+    if not attack_routes or attack_routes[0].root.used_ids != frozenset(protected_ids):
+        raise RuntimeError("Packaged planner could not reuse protected materials for an attack target")
+    checks["iv_material_protection"] = {"perfect_ivs_on_x_stats_excluded": True,
+                                        "inventory_preserved": True, "later_attack_target": True,
+                                        "synthetic_data": True}
+
     from account_order_dialog import AccountOrderDialog
     from inventory_order import inventory_in_display_order, sorted_inventory_ids
     display_inventory = [

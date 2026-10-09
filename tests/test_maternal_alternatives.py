@@ -62,14 +62,15 @@ class MaternalAlternativeTests(unittest.TestCase):
         self.assertEqual(candidate.root.purchases, 0)
         self.assertEqual(candidate.root.breeds, 4)
 
-    def test_useful_female_with_extra_attack_stat_is_not_discarded(self):
+    def test_six_iv_female_is_protected_for_a_five_iv_target(self):
         inventory = self.inventory()
         inventory[0].ivs = [31, 31, 31, 31, 31, 31]
         candidate = self.plan(inventory, nature='')
         self.assertEqual(candidate.root.purchases, 0)
-        self.assertEqual(candidate.root.breeds, 0)
-        self.assertFalse(candidate.root.maternal_conversion)
-        self.assertEqual(candidate.root.used_ids, frozenset({'female'}))
+        self.assertEqual(candidate.root.breeds, 4)
+        self.assertTrue(candidate.root.maternal_conversion)
+        self.assertNotIn('female', candidate.root.used_ids)
+        self.assertEqual(inventory[0].ivs, [31, 31, 31, 31, 31, 31])
 
     def test_complementary_ditto_survives_many_irrelevant_candidates(self):
         inventory = self.inventory()

@@ -97,6 +97,11 @@ class Monster:
     def iv_string(self) -> str:
         return "/".join("x" if value is None else str(value) for value in self.ivs)
 
+    def has_unrequested_perfect_iv(self, target_ivs: list[int | None]) -> bool:
+        """Protect whole materials with a 31 on a target X stat."""
+        return any(value == 31 and required is None
+                   for value, required in zip(self.ivs, target_ivs))
+
     @property
     def group_string(self) -> str:
         return ", ".join(self.egg_groups)

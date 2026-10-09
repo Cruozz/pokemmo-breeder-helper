@@ -3389,6 +3389,7 @@ def find_chain_candidates(
         monster for monster in inventory
         if monster.verified
         and not monster.gender_unconfirmed
+        and not monster.has_unrequested_perfect_iv(target_ivs)
         and (
             monster.is_alpha
             if target_alpha
