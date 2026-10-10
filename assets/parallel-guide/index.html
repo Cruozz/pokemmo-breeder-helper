@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a2d">
+  <title>平行五通攻略</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="reader.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><p class="brand-kicker">POKEMMO</p><h1>平行五通</h1></div></div>
+      <button class="overview-btn" id="overviewBtn" type="button"><span class="nav-icon">◈</span> 攻略总览</button>
+      <div class="sidebar-heading"><span>通关顺序</span><span id="phaseCountLabel">26</span></div>
+      <nav class="phase-nav" id="phaseNav" aria-label="攻略阶段"></nav>
+      <div class="sidebar-footer"><span class="source-stamp">阅读版 · 2026.10.11</span><details class="reader-credits"><summary>资料来源</summary><p>等级和剧情以游戏当前提示为准。总览连线表示地点顺序，洞内走法见步骤配图。</p><a href="https://www.bilibili.com/video/BV1FwxmzmEeR/" target="_blank" rel="noreferrer">原流程视频 ↗</a><a href="https://pokemmo.info/maps" target="_blank" rel="noreferrer">地区地图 ↗</a><a href="assets/atlas/SOURCES.md" target="_blank" rel="noreferrer">分层地图来源</a><a href="assets/routes/SOURCES.md" target="_blank" rel="noreferrer">路线图来源</a></details></div>
+    </aside>
+    <main class="main-content">
+      <header class="topbar"><button class="mobile-menu" id="mobileMenu" type="button" aria-label="打开导航">☰</button><div class="breadcrumb"><span>平行五通</span><b>/</b><span id="breadcrumbLabel">攻略总览</span></div><div class="topbar-actions"><label class="search-wrap" aria-label="搜索攻略内容"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="搜索地点、道馆或道具"></label><button class="top-action" id="printBtn" type="button">打印</button></div></header>
+      <div id="appView" aria-live="polite"></div>
+    </main>
+  </div>
+  <script src="reader-data.js"></script>
+  <script src="reader-progress.js"></script>
+  <script src="image-markup-core.js"></script>
+  <script src="step-visual-renderer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

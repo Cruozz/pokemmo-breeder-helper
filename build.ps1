@@ -74,6 +74,8 @@ $speciesData = Join-Path $project 'data'
 $uiAssets = Join-Path $project 'assets'
 $appIcon = Join-Path $uiAssets 'app-icon.ico'
 $versionFile = Join-Path $project 'version_info.txt'
+$guideRuntime = Join-Path $project '.runtime/parallel-guide-package'
+& (Join-Path $project 'scripts/build-parallel-guide-host.ps1') -OutputDirectory $guideRuntime
 foreach ($required in @($tkinterBinary, $tclBinary, $tkBinary, $tclData, $tkData)) {
     if (-not (Test-Path $required)) {
         throw "The selected Python is missing a Tk runtime file: $required"
@@ -146,6 +148,8 @@ $pyinstallerArgs = @(
     "${speciesData};data",
     '--add-data',
     "${uiAssets};assets",
+    '--add-data',
+    "${guideRuntime};parallel-guide-runtime",
     (Join-Path $project 'app.py')
 )
 

@@ -1,5 +1,22 @@
 # Third-party notices
 
+## 平行五通攻略与 WebView2 (V0.2.27)
+
+`assets/parallel-guide/` contains the author's completed read-only guide from
+https://github.com/Cruozz/pokemmo-parallel-five-guide (2026-10-11; 26 phases, 132 steps).
+The published draft SHA-256 and every bundled file hash are recorded in its manifest.
+Original video, region-map, layered-map and route-map credits remain in the reader,
+including `assets/atlas/SOURCES.md` and `assets/routes/SOURCES.md` inside that folder.
+Third-party image and map rights remain with their respective owners.
+
+The embedded reader uses Microsoft Edge WebView2 SDK 1.0.4258.31 from the official
+NuGet package. The pinned SDK SHA-256 is
+`56f7f4b8bf9aee4b8efefbbdd4f67d5f74ebd1b100ed0806da71bf76af481aa9`.
+Microsoft's SDK LICENSE.txt and NOTICE.txt are bundled alongside the reader host.
+The Microsoft Edge WebView2 Evergreen Runtime is a separate system prerequisite;
+it is not redistributed in the EXE. The official installation page is
+https://developer.microsoft.com/microsoft-edge/webview2/ .
+
 ## Alphapedia live information (V0.2.17)
 
 The optional live-information workspace reads the public pages at

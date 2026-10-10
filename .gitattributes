@@ -1,0 +1,2 @@
+# Keep published offline resources byte-identical to their SHA-256 manifest.
+assets/parallel-guide/** text=auto eol=lf

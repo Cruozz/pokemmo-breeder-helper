@@ -105,6 +105,9 @@ def run_checks() -> dict[str, object]:
             page.destroy()
         checks["native_guide"] = {"species": len(guide.species), "hordes": len(guide.hordes), "pages": list(PAGE_TITLES)}
         import tempfile
+        from parallel_guide import run_guide_self_test
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as guide_directory:
+            checks["parallel_guide"] = run_guide_self_test(root, Path(guide_directory))
         from datetime import datetime, timezone
         from live_data import AlphaReport, CaveRotation
         from live_views import LiveWorkspace

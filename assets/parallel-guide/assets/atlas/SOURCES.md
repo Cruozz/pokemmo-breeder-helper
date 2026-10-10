@@ -1,0 +1,276 @@
+# 全图素材来源与标注范围
+
+收录日期：2026-10-05。共 258 张图片，来自 Bulbagarden Archives 的地图文件页；本地保留原始图片，网页以 SVG 叠加编号和路线。
+
+图片是 Pokémon 游戏地形素材，权利归游戏权利人及各图原作者；来源页包含上传者和版权说明。本项目不宣称图片原创，也不将网站文字许可当作游戏图片再分发许可。
+
+版本：关东火红／叶绿、城都心金／魂银、丰缘绿宝石、神奥白金、合众黑／白。RSE、DPPt、BWB2W2 仅用于对应版本共用地形。PokeMMO 的 NPC、队伍、等级和事件仍以游戏为准。
+
+77 张地图加入可见地点或目标标记。雪花市有去馆路线及可选回复支线；雪花道馆有 6 名训练家、3 个开关和分段滑冰动作，其青色箭头只连接跳台与台阶。其余图没有全部逐格标出路线或核实必打 NPC。
+
+走法参考：[PokeMMO 合众剧情攻略](https://forums.pokemmo.com/index.php?/topic/73906-unova-storyline-guide/)；雪花道馆地形交叉核对：[黑／白攻略第 9 部分](https://bulbapedia.bulbagarden.net/wiki/Walkthrough:Pok%C3%A9mon_Black_and_White/Part_9)。满充家和鹿子镇房屋交叉核对：[橙华市](https://bulbapedia.bulbagarden.net/wiki/Petalburg_City)、[鹿子镇](https://bulbapedia.bulbagarden.net/wiki/Nuvema_Town)。
+
+完整下载地址、像素尺寸及 SHA-256 在 [manifest.json](manifest.json)。已有 13 张社区路线图另见 [社区来源](../routes/SOURCES.md)。
+
+2026-10-05 节点修正：鹿子镇出发流程和三曜市“学校 → 道馆 → 真菰研究所 → 梦之遗迹”顺序依据 [PokeMMO 平行通关攻略](https://forums.pokemmo.com/index.php?/topic/187806-complete-all-regions-with-a-single-team-simultaneously-guide/)。2 号路沿途第一处训练家与出口前白露两战依据 [PokeMMO 五地区剧情攻略](https://forums.pokemmo.com/index.php?/topic/76529-storyline-guide-kanto-johto-hoenn-sinnoh-unova-complete-walkthrough-all-items-hidden-items/) 的绕过其余训练家路线。建筑位置按用户标注图复核，并与 [三曜市资料](https://bulbapedia.bulbagarden.net/wiki/Striaton_City) 交叉核对；学校在 PC 左侧，道馆在 PC 右侧，真菰所在建筑从最右侧房屋的北侧入口进入。标记为建筑定位，不推断未核实 NPC 的精确位置。
+
+## 逐图来源
+
+- [Accumula Town Spring BW.png](https://archives.bulbagarden.net/wiki/File:Accumula_Town_Spring_BW.png) → [本地图片](accumula-town-spring-bw.png) · 700 × 620
+- [Aqua Hideout 1F SE.png](https://archives.bulbagarden.net/wiki/File:Aqua_Hideout_1F_SE.png) → [本地图片](aqua-hideout-1f-se.png) · 448 × 480
+- [Aqua Hideout B1F SE.png](https://archives.bulbagarden.net/wiki/File:Aqua_Hideout_B1F_SE.png) → [本地图片](aqua-hideout-b1f-se.png) · 816 × 384
+- [Aqua Hideout B2F SE.png](https://archives.bulbagarden.net/wiki/File:Aqua_Hideout_B2F_SE.png) → [本地图片](aqua-hideout-b2f-se.png) · 544 × 384
+- [Azalea Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Azalea_Gym_HGSS.png) → [本地图片](azalea-gym-hgss.png) · 384 × 550
+- [Bell Tower 10F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_10F_HGSS.png) → [本地图片](bell-tower-10f-hgss.png) · 384 × 384
+- [Bell Tower 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_1F_HGSS.png) → [本地图片](bell-tower-1f-hgss.png) · 384 × 352
+- [Bell Tower 2F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_2F_HGSS.png) → [本地图片](bell-tower-2f-hgss.png) · 384 × 352
+- [Bell Tower 3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_3F_HGSS.png) → [本地图片](bell-tower-3f-hgss.png) · 384 × 352
+- [Bell Tower 4F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_4F_HGSS.png) → [本地图片](bell-tower-4f-hgss.png) · 384 × 352
+- [Bell Tower 5F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_5F_HGSS.png) → [本地图片](bell-tower-5f-hgss.png) · 384 × 352
+- [Bell Tower 6F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_6F_HGSS.png) → [本地图片](bell-tower-6f-hgss.png) · 384 × 352
+- [Bell Tower 7F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_7F_HGSS.png) → [本地图片](bell-tower-7f-hgss.png) · 384 × 352
+- [Bell Tower 8F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_8F_HGSS.png) → [本地图片](bell-tower-8f-hgss.png) · 384 × 384
+- [Bell Tower 9F HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_9F_HGSS.png) → [本地图片](bell-tower-9f-hgss.png) · 384 × 384
+- [Bell Tower Summit HGSS.png](https://archives.bulbagarden.net/wiki/File:Bell_Tower_Summit_HGSS.png) → [本地图片](bell-tower-summit-hgss.png) · 448 × 574
+- [Blackthorn Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Blackthorn_Gym_HGSS.png) → [本地图片](blackthorn-gym-hgss.png) · 400 × 1136
+- [Canalave City Pt.png](https://archives.bulbagarden.net/wiki/File:Canalave_City_Pt.png) → [本地图片](canalave-city-pt.png) · 496 × 775
+- [Canalave Gym 1F DPPt.png](https://archives.bulbagarden.net/wiki/File:Canalave_Gym_1F_DPPt.png) → [本地图片](canalave-gym-1f-dppt.png) · 400 × 258
+- [Canalave Gym 2F DPPt.png](https://archives.bulbagarden.net/wiki/File:Canalave_Gym_2F_DPPt.png) → [本地图片](canalave-gym-2f-dppt.png) · 480 × 331
+- [Canalave Gym 3F DPPt.png](https://archives.bulbagarden.net/wiki/File:Canalave_Gym_3F_DPPt.png) → [本地图片](canalave-gym-3f-dppt.png) · 480 × 332
+- [Canalave Gym 4F DPPt.png](https://archives.bulbagarden.net/wiki/File:Canalave_Gym_4F_DPPt.png) → [本地图片](canalave-gym-4f-dppt.png) · 480 × 334
+- [Castelia City Map BW.png](https://archives.bulbagarden.net/wiki/File:Castelia_City_Map_BW.png) → [本地图片](castelia-city-map-bw.png) · 1130 × 1070
+- [Castelia Gym BW.png](https://archives.bulbagarden.net/wiki/File:Castelia_Gym_BW.png) → [本地图片](castelia-gym-bw.png) · 640 × 768
+- [Cave of Origin 1F E.png](https://archives.bulbagarden.net/wiki/File:Cave_of_Origin_1F_E.png) → [本地图片](cave-of-origin-1f-e.png) · 368 × 368
+- [Celadon City FRLG.png](https://archives.bulbagarden.net/wiki/File:Celadon_City_FRLG.png) → [本地图片](celadon-city-frlg.png) · 960 × 640
+- [Celadon Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Celadon_Gym_FRLG.png) → [本地图片](celadon-gym-frlg.png) · 208 × 308
+- [Celestial Tower 1F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Celestial_Tower_1F_BWB2W2.png) → [本地图片](celestial-tower-1f-bwb2w2.png) · 435 × 440
+- [Celestial Tower Rooftop BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Celestial_Tower_Rooftop_BWB2W2.png) → [本地图片](celestial-tower-rooftop-bwb2w2.png) · 582 × 550
+- [Celestic Town Pt.png](https://archives.bulbagarden.net/wiki/File:Celestic_Town_Pt.png) → [本地图片](celestic-town-pt.png) · 512 × 468
+- [Cerulean City FRLG.png](https://archives.bulbagarden.net/wiki/File:Cerulean_City_FRLG.png) → [本地图片](cerulean-city-frlg.png) · 768 × 640
+- [Cerulean Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Cerulean_Gym_FRLG.png) → [本地图片](cerulean-gym-frlg.png) · 256 × 308
+- [Chargestone Cave BW.png](https://archives.bulbagarden.net/wiki/File:Chargestone_Cave_BW.png) → [本地图片](chargestone-cave-bw.png) · 256 × 192
+- [Cherrygrove City HGSS.png](https://archives.bulbagarden.net/wiki/File:Cherrygrove_City_HGSS.png) → [本地图片](cherrygrove-city-hgss.png) · 1034 × 370
+- [Cianwood City HGSS.png](https://archives.bulbagarden.net/wiki/File:Cianwood_City_HGSS.png) → [本地图片](cianwood-city-hgss.png) · 550 × 671
+- [Cianwood Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Cianwood_Gym_HGSS.png) → [本地图片](cianwood-gym-hgss.png) · 416 × 368
+- [Cinnabar Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Cinnabar_Gym_FRLG.png) → [本地图片](cinnabar-gym-frlg.png) · 480 × 388
+- [Cinnabar Island FRLG.png](https://archives.bulbagarden.net/wiki/File:Cinnabar_Island_FRLG.png) → [本地图片](cinnabar-island-frlg.png) · 384 × 320
+- [Cold Storage BW.png](https://archives.bulbagarden.net/wiki/File:Cold_Storage_BW.png) → [本地图片](cold-storage-bw.png) · 529 × 555
+- [Desert Resort BW.png](https://archives.bulbagarden.net/wiki/File:Desert_Resort_BW.png) → [本地图片](desert-resort-bw.png) · 1578 × 1157
+- [Dewford Gym E.png](https://archives.bulbagarden.net/wiki/File:Dewford_Gym_E.png) → [本地图片](dewford-gym-e.png) · 288 × 448
+- [Dewford Town E.png](https://archives.bulbagarden.net/wiki/File:Dewford_Town_E.png) → [本地图片](dewford-town-e.png) · 320 × 320
+- [Distortion World 1F Pt.png](https://archives.bulbagarden.net/wiki/File:Distortion_World_1F_Pt.png) → [本地图片](distortion-world-1f-pt.png) · 688 × 632
+- [Distortion World B7F Giratina Pt.png](https://archives.bulbagarden.net/wiki/File:Distortion_World_B7F_Giratina_Pt.png) → [本地图片](distortion-world-b7f-giratina-pt.png) · 352 × 444
+- [Dragons Den HGSS.png](https://archives.bulbagarden.net/wiki/File:Dragons_Den_HGSS.png) → [本地图片](dragons-den-hgss.png) · 929 × 766
+- [Dragonspiral Tower 1F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_1F_BWB2W2.png) → [本地图片](dragonspiral-tower-1f-bwb2w2.png) · 352 × 493
+- [Dragonspiral Tower 2F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_2F_BWB2W2.png) → [本地图片](dragonspiral-tower-2f-bwb2w2.png) · 464 × 486
+- [Dragonspiral Tower 3F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_3F_BWB2W2.png) → [本地图片](dragonspiral-tower-3f-bwb2w2.png) · 761 × 1129
+- [Dragonspiral Tower 4F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_4F_BWB2W2.png) → [本地图片](dragonspiral-tower-4f-bwb2w2.png) · 508 × 725
+- [Dragonspiral Tower 5F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_5F_BWB2W2.png) → [本地图片](dragonspiral-tower-5f-bwb2w2.png) · 483 × 483
+- [Dragonspiral Tower 6F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_6F_BWB2W2.png) → [本地图片](dragonspiral-tower-6f-bwb2w2.png) · 845 × 933
+- [Dragonspiral Tower 7F BWB2W2.png](https://archives.bulbagarden.net/wiki/File:Dragonspiral_Tower_7F_BWB2W2.png) → [本地图片](dragonspiral-tower-7f-bwb2w2.png) · 618 × 760
+- [Dreamyard Ruins Spring BW.png](https://archives.bulbagarden.net/wiki/File:Dreamyard_Ruins_Spring_BW.png) → [本地图片](dreamyard-ruins-spring-bw.png) · 896 × 743
+- [Driftveil City Spring BW.png](https://archives.bulbagarden.net/wiki/File:Driftveil_City_Spring_BW.png) → [本地图片](driftveil-city-spring-bw.png) · 1504 × 820
+- [Driftveil Gym Bottom BW.png](https://archives.bulbagarden.net/wiki/File:Driftveil_Gym_Bottom_BW.png) → [本地图片](driftveil-gym-bottom-bw.png) · 240 × 336
+- [Driftveil Gym BW.png](https://archives.bulbagarden.net/wiki/File:Driftveil_Gym_BW.png) → [本地图片](driftveil-gym-bw.png) · 368 × 560
+- [Ecruteak City HGSS.png](https://archives.bulbagarden.net/wiki/File:Ecruteak_City_HGSS.png) → [本地图片](ecruteak-city-hgss.png) · 1032 × 785
+- [Ecruteak Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Ecruteak_Gym_HGSS.png) → [本地图片](ecruteak-gym-hgss.png) · 256 × 656
+- [Eterna Forest Pt.png](https://archives.bulbagarden.net/wiki/File:Eterna_Forest_Pt.png) → [本地图片](eterna-forest-pt.png) · 1535 × 1168
+- [Eterna Gym Pt.png](https://archives.bulbagarden.net/wiki/File:Eterna_Gym_Pt.png) → [本地图片](eterna-gym-pt.png) · 336 × 381
+- [Ever Grande City E.png](https://archives.bulbagarden.net/wiki/File:Ever_Grande_City_E.png) → [本地图片](ever-grande-city-e.png) · 640 × 1280
+- [Ever Grande City League Lobby E.png](https://archives.bulbagarden.net/wiki/File:Ever_Grande_City_League_Lobby_E.png) → [本地图片](ever-grande-city-league-lobby-e.png) · 304 × 192
+- [Floaroma Meadow Pt.png](https://archives.bulbagarden.net/wiki/File:Floaroma_Meadow_Pt.png) → [本地图片](floaroma-meadow-pt.png) · 1023 × 802
+- [Fortree City E.png](https://archives.bulbagarden.net/wiki/File:Fortree_City_E.png) → [本地图片](fortree-city-e.png) · 640 × 320
+- [Fortree Gym E.png](https://archives.bulbagarden.net/wiki/File:Fortree_Gym_E.png) → [本地图片](fortree-gym-e.png) · 320 × 400
+- [Fuchsia Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Fuchsia_Gym_FRLG.png) → [本地图片](fuchsia-gym-frlg.png) · 240 × 356
+- [Galactic Eterna Building Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_Eterna_Building_Pt.png) → [本地图片](galactic-eterna-building-pt.png) · 256 × 192
+- [Galactic HQ 1F Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_HQ_1F_Pt.png) → [本地图片](galactic-hq-1f-pt.png) · 848 × 299
+- [Galactic HQ 2F Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_HQ_2F_Pt.png) → [本地图片](galactic-hq-2f-pt.png) · 848 × 299
+- [Galactic HQ 3F Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_HQ_3F_Pt.png) → [本地图片](galactic-hq-3f-pt.png) · 848 × 299
+- [Galactic HQ 4F Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_HQ_4F_Pt.png) → [本地图片](galactic-hq-4f-pt.png) · 369 × 249
+- [Galactic Warehouse 1F DPPt.png](https://archives.bulbagarden.net/wiki/File:Galactic_Warehouse_1F_DPPt.png) → [本地图片](galactic-warehouse-1f-dppt.png) · 256 × 164
+- [Galactic Warehouse B1F Pt.png](https://archives.bulbagarden.net/wiki/File:Galactic_Warehouse_B1F_Pt.png) → [本地图片](galactic-warehouse-b1f-pt.png) · 224 × 125
+- [Glitter Lighthouse 6F HGSS.png](https://archives.bulbagarden.net/wiki/File:Glitter_Lighthouse_6F_HGSS.png) → [本地图片](glitter-lighthouse-6f-hgss.png) · 309 × 272
+- [Glitter Lighthouse HGSS.png](https://archives.bulbagarden.net/wiki/File:Glitter_Lighthouse_HGSS.png) → [本地图片](glitter-lighthouse-hgss.png) · 256 × 192
+- [Goldenrod City HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_City_HGSS.png) → [本地图片](goldenrod-city-hgss.png) · 1330 × 885
+- [Goldenrod Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Gym_HGSS.png) → [本地图片](goldenrod-gym-hgss.png) · 508 × 356
+- [Goldenrod Radio Tower 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Radio_Tower_1F_HGSS.png) → [本地图片](goldenrod-radio-tower-1f-hgss.png) · 432 × 192
+- [Goldenrod Radio Tower 3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Radio_Tower_3F_HGSS.png) → [本地图片](goldenrod-radio-tower-3f-hgss.png) · 432 × 192
+- [Goldenrod Radio Tower 4F HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Radio_Tower_4F_HGSS.png) → [本地图片](goldenrod-radio-tower-4f-hgss.png) · 432 × 192
+- [Goldenrod Radio Tower 5F HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Radio_Tower_5F_HGSS.png) → [本地图片](goldenrod-radio-tower-5f-hgss.png) · 368 × 216
+- [Goldenrod Tunnel Basement HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Tunnel_Basement_HGSS.png) → [本地图片](goldenrod-tunnel-basement-hgss.png) · 480 × 208
+- [Goldenrod Tunnel HGSS.png](https://archives.bulbagarden.net/wiki/File:Goldenrod_Tunnel_HGSS.png) → [本地图片](goldenrod-tunnel-hgss.png) · 432 × 462
+- [Hearthome City Pt.png](https://archives.bulbagarden.net/wiki/File:Hearthome_City_Pt.png) → [本地图片](hearthome-city-pt.png) · 1031 × 788
+- [Hearthome Gym Pt.png](https://archives.bulbagarden.net/wiki/File:Hearthome_Gym_Pt.png) → [本地图片](hearthome-gym-pt.png) · 448 × 784
+- [Hoenn Route 116 E.png](https://archives.bulbagarden.net/wiki/File:Hoenn_Route_116_E.png) → [本地图片](hoenn-route-116-e.png) · 1600 × 320
+- [Hoenn Route 119 E.png](https://archives.bulbagarden.net/wiki/File:Hoenn_Route_119_E.png) → [本地图片](hoenn-route-119-e.png) · 640 × 2240
+- [Ice Path 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Ice_Path_1F_HGSS.png) → [本地图片](ice-path-1f-hgss.png) · 896 × 768
+- [Ice Path B1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Ice_Path_B1F_HGSS.png) → [本地图片](ice-path-b1f-hgss.png) · 544 × 640
+- [Ice Path B2F HGSS.png](https://archives.bulbagarden.net/wiki/File:Ice_Path_B2F_HGSS.png) → [本地图片](ice-path-b2f-hgss.png) · 992 × 384
+- [Ice Path B3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Ice_Path_B3F_HGSS.png) → [本地图片](ice-path-b3f-hgss.png) · 512 × 224
+- [Icirrus City Spring BW.png](https://archives.bulbagarden.net/wiki/File:Icirrus_City_Spring_BW.png) → [本地图片](icirrus-city-spring-bw.png) · 1024 × 849
+- [Icirrus Gym BW.png](https://archives.bulbagarden.net/wiki/File:Icirrus_Gym_BW.png) → [本地图片](icirrus-gym-bw.png) · 1422 × 1026
+- [Ilex Forest HGSS.png](https://archives.bulbagarden.net/wiki/File:Ilex_Forest_HGSS.png) → [本地图片](ilex-forest-hgss.png) · 836 × 968
+- [Indigo Plateau FRLG.png](https://archives.bulbagarden.net/wiki/File:Indigo_Plateau_FRLG.png) → [本地图片](indigo-plateau-frlg.png) · 384 × 320
+- [Indigo Plateau HGSS.png](https://archives.bulbagarden.net/wiki/File:Indigo_Plateau_HGSS.png) → [本地图片](indigo-plateau-hgss.png) · 480 × 391
+- [Johto Route 30 HGSS.png](https://archives.bulbagarden.net/wiki/File:Johto_Route_30_HGSS.png) → [本地图片](johto-route-30-hgss.png) · 563 × 1196
+- [Jubilife City Pt.png](https://archives.bulbagarden.net/wiki/File:Jubilife_City_Pt.png) → [本地图片](jubilife-city-pt.png) · 1056 × 798
+- [Kanto Route 16 FRLG.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_16_FRLG.png) → [本地图片](kanto-route-16-frlg.png) · 768 × 320
+- [Kanto Route 17 FRLG.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_17_FRLG.png) → [本地图片](kanto-route-17-frlg.png) · 384 × 2560
+- [Kanto Route 21 FRLG.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_21_FRLG.png) → [本地图片](kanto-route-21-frlg.png) · 384 × 1600
+- [Kanto Route 25 FRLG.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_25_FRLG.png) → [本地图片](kanto-route-25-frlg.png) · 1152 × 320
+- [Kanto Route 26 HGSS.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_26_HGSS.png) → [本地图片](kanto-route-26-hgss.png) · 512 × 2118
+- [Kanto Route 27 HGSS.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_27_HGSS.png) → [本地图片](kanto-route-27-hgss.png) · 3152 × 480
+- [Kanto Route 9 FRLG.png](https://archives.bulbagarden.net/wiki/File:Kanto_Route_9_FRLG.png) → [本地图片](kanto-route-9-frlg.png) · 1152 × 320
+- [Lake Acuity Pt.png](https://archives.bulbagarden.net/wiki/File:Lake_Acuity_Pt.png) → [本地图片](lake-acuity-pt.png) · 752 × 612
+- [Lake of Rage HGSS wet.png](https://archives.bulbagarden.net/wiki/File:Lake_of_Rage_HGSS_wet.png) → [本地图片](lake-of-rage-hgss-wet.png) · 1309 × 929
+- [Lake Valor Dry Pt.png](https://archives.bulbagarden.net/wiki/File:Lake_Valor_Dry_Pt.png) → [本地图片](lake-valor-dry-pt.png) · 928 × 660
+- [Lake Verity Pt.png](https://archives.bulbagarden.net/wiki/File:Lake_Verity_Pt.png) → [本地图片](lake-verity-pt.png) · 864 × 648
+- [Lavaridge Gym 1F E.png](https://archives.bulbagarden.net/wiki/File:Lavaridge_Gym_1F_E.png) → [本地图片](lavaridge-gym-1f-e.png) · 272 × 304
+- [Lavaridge Gym B1F E.png](https://archives.bulbagarden.net/wiki/File:Lavaridge_Gym_B1F_E.png) → [本地图片](lavaridge-gym-b1f-e.png) · 272 × 304
+- [Lavender Town FRLG.png](https://archives.bulbagarden.net/wiki/File:Lavender_Town_FRLG.png) → [本地图片](lavender-town-frlg.png) · 384 × 320
+- [Lilycove City E.png](https://archives.bulbagarden.net/wiki/File:Lilycove_City_E.png) → [本地图片](lilycove-city-e.png) · 1280 × 640
+- [Magma Hideout 1F E.png](https://archives.bulbagarden.net/wiki/File:Magma_Hideout_1F_E.png) → [本地图片](magma-hideout-1f-e.png) · 592 × 608
+- [Magma Hideout 2F1R E.png](https://archives.bulbagarden.net/wiki/File:Magma_Hideout_2F1R_E.png) → [本地图片](magma-hideout-2f1r-e.png) · 528 × 624
+- [Magma Hideout 4F E.png](https://archives.bulbagarden.net/wiki/File:Magma_Hideout_4F_E.png) → [本地图片](magma-hideout-4f-e.png) · 944 × 448
+- [Mahogany Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Mahogany_Gym_HGSS.png) → [本地图片](mahogany-gym-hgss.png) · 208 × 768
+- [Mahogany Town HGSS.png](https://archives.bulbagarden.net/wiki/File:Mahogany_Town_HGSS.png) → [本地图片](mahogany-town-hgss.png) · 567 × 412
+- [Mauville City E.png](https://archives.bulbagarden.net/wiki/File:Mauville_City_E.png) → [本地图片](mauville-city-e.png) · 640 × 320
+- [Mauville Gym E.png](https://archives.bulbagarden.net/wiki/File:Mauville_Gym_E.png) → [本地图片](mauville-gym-e.png) · 160 × 336
+- [Meteor Falls 1F1R E.png](https://archives.bulbagarden.net/wiki/File:Meteor_Falls_1F1R_E.png) → [本地图片](meteor-falls-1f1r-e.png) · 480 × 672
+- [Mistralton City Spring B.png](https://archives.bulbagarden.net/wiki/File:Mistralton_City_Spring_B.png) → [本地图片](mistralton-city-spring-b.png) · 1024 × 1230
+- [Mistralton Gym BW.png](https://archives.bulbagarden.net/wiki/File:Mistralton_Gym_BW.png) → [本地图片](mistralton-gym-bw.png) · 576 × 828
+- [Mossdeep City E.png](https://archives.bulbagarden.net/wiki/File:Mossdeep_City_E.png) → [本地图片](mossdeep-city-e.png) · 1280 × 640
+- [Mossdeep City Space Center 1F RSE.png](https://archives.bulbagarden.net/wiki/File:Mossdeep_City_Space_Center_1F_RSE.png) → [本地图片](mossdeep-city-space-center-1f-rse.png) · 256 × 160
+- [Mossdeep City Space Center 2F RSE.png](https://archives.bulbagarden.net/wiki/File:Mossdeep_City_Space_Center_2F_RSE.png) → [本地图片](mossdeep-city-space-center-2f-rse.png) · 256 × 160
+- [Mossdeep Gym E.png](https://archives.bulbagarden.net/wiki/File:Mossdeep_Gym_E.png) → [本地图片](mossdeep-gym-e.png) · 416 × 576
+- [Mt Chimney E.png](https://archives.bulbagarden.net/wiki/File:Mt_Chimney_E.png) → [本地图片](mt-chimney-e.png) · 640 × 752
+- [Mt Coronet 1F south Pt.png](https://archives.bulbagarden.net/wiki/File:Mt_Coronet_1F_south_Pt.png) → [本地图片](mt-coronet-1f-south-pt.png) · 429 × 334
+- [Mt Moon 1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Mt_Moon_1F_FRLG.png) → [本地图片](mt-moon-1f-frlg.png) · 768 × 640
+- [Mt Moon B2F FRLG.png](https://archives.bulbagarden.net/wiki/File:Mt_Moon_B2F_FRLG.png) → [本地图片](mt-moon-b2f-frlg.png) · 768 × 640
+- [Mt Pyre Summit E.png](https://archives.bulbagarden.net/wiki/File:Mt_Pyre_Summit_E.png) → [本地图片](mt-pyre-summit-e.png) · 800 × 592
+- [N Castle Throne Room BW.png](https://archives.bulbagarden.net/wiki/File:N_Castle_Throne_Room_BW.png) → [本地图片](n-castle-throne-room-bw.png) · 464 × 789
+- [Nacrene City Spring BW.png](https://archives.bulbagarden.net/wiki/File:Nacrene_City_Spring_BW.png) → [本地图片](nacrene-city-spring-bw.png) · 1024 × 450
+- [Nacrene Gym Basement BW.png](https://archives.bulbagarden.net/wiki/File:Nacrene_Gym_Basement_BW.png) → [本地图片](nacrene-gym-basement-bw.png) · 208 × 352
+- [Nacrene Gym Library BW.png](https://archives.bulbagarden.net/wiki/File:Nacrene_Gym_Library_BW.png) → [本地图片](nacrene-gym-library-bw.png) · 400 × 560
+- [New Bark Town HGSS.png](https://archives.bulbagarden.net/wiki/File:New_Bark_Town_HGSS.png) → [本地图片](new-bark-town-hgss.png) · 493 × 397
+- [Nimbasa City Spring BW.png](https://archives.bulbagarden.net/wiki/File:Nimbasa_City_Spring_BW.png) → [本地图片](nimbasa-city-spring-bw.png) · 441 × 209
+- [Nimbasa Gym BW.png](https://archives.bulbagarden.net/wiki/File:Nimbasa_Gym_BW.png) → [本地图片](nimbasa-gym-bw.png) · 1216 × 832
+- [Nuvema Town Spring BW.png](https://archives.bulbagarden.net/wiki/File:Nuvema_Town_Spring_BW.png) → [本地图片](nuvema-town-spring-bw.png) · 512 × 576
+- [Oldale Town E.png](https://archives.bulbagarden.net/wiki/File:Oldale_Town_E.png) → [本地图片](oldale-town-e.png) · 320 × 320
+- [Olivine City HGSS.png](https://archives.bulbagarden.net/wiki/File:Olivine_City_HGSS.png) → [本地图片](olivine-city-hgss.png) · 1035 × 858
+- [Olivine Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Olivine_Gym_HGSS.png) → [本地图片](olivine-gym-hgss.png) · 192 × 352
+- [Opelucid City B.png](https://archives.bulbagarden.net/wiki/File:Opelucid_City_B.png) → [本地图片](opelucid-city-b.png) · 1024 × 820
+- [Opelucid Gym B.png](https://archives.bulbagarden.net/wiki/File:Opelucid_Gym_B.png) → [本地图片](opelucid-gym-b.png) · 825 × 700
+- [Oreburgh City DPPt.png](https://archives.bulbagarden.net/wiki/File:Oreburgh_City_DPPt.png) → [本地图片](oreburgh-city-dppt.png) · 1024 × 832
+- [Oreburgh Gym DPPt.png](https://archives.bulbagarden.net/wiki/File:Oreburgh_Gym_DPPt.png) → [本地图片](oreburgh-gym-dppt.png) · 260 × 418
+- [Pallet Town FRLG.png](https://archives.bulbagarden.net/wiki/File:Pallet_Town_FRLG.png) → [本地图片](pallet-town-frlg.png) · 384 × 320
+- [Pastoria City Pt.png](https://archives.bulbagarden.net/wiki/File:Pastoria_City_Pt.png) → [本地图片](pastoria-city-pt.png) · 1024 × 840
+- [Pastoria Gym DPPt.png](https://archives.bulbagarden.net/wiki/File:Pastoria_Gym_DPPt.png) → [本地图片](pastoria-gym-dppt.png) · 416 × 548
+- [Petalburg City E.png](https://archives.bulbagarden.net/wiki/File:Petalburg_City_E.png) → [本地图片](petalburg-city-e.png) · 480 × 480
+- [Petalburg Gym E.png](https://archives.bulbagarden.net/wiki/File:Petalburg_Gym_E.png) → [本地图片](petalburg-gym-e.png) · 516 × 748
+- [Petalburg Woods E.png](https://archives.bulbagarden.net/wiki/File:Petalburg_Woods_E.png) → [本地图片](petalburg-woods-e.png) · 768 × 704
+- [Pewter Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Pewter_Gym_FRLG.png) → [本地图片](pewter-gym-frlg.png) · 192 × 244
+- [Pinwheel Forest Spring BW.png](https://archives.bulbagarden.net/wiki/File:Pinwheel_Forest_Spring_BW.png) → [本地图片](pinwheel-forest-spring-bw.png) · 1856 × 973
+- [Pokémon League BW.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_League_BW.png) → [本地图片](pok-mon-league-bw.png) · 256 × 192
+- [Pokémon Mansion 1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_Mansion_1F_FRLG.png) → [本地图片](pok-mon-mansion-1f-frlg.png) · 608 × 560
+- [Pokémon Mansion 2F FRLG.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_Mansion_2F_FRLG.png) → [本地图片](pok-mon-mansion-2f-frlg.png) · 608 × 608
+- [Pokémon Mansion 3F FRLG.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_Mansion_3F_FRLG.png) → [本地图片](pok-mon-mansion-3f-frlg.png) · 608 × 400
+- [Pokémon Mansion B1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_Mansion_B1F_FRLG.png) → [本地图片](pok-mon-mansion-b1f-frlg.png) · 608 × 560
+- [Pokémon Tower FRLG.png](https://archives.bulbagarden.net/wiki/File:Pok%C3%A9mon_Tower_FRLG.png) → [本地图片](pok-mon-tower-frlg.png) · 110 × 240
+- [Relic Castle 1F L BW.png](https://archives.bulbagarden.net/wiki/File:Relic_Castle_1F_L_BW.png) → [本地图片](relic-castle-1f-l-bw.png) · 408 × 364
+- [Relic Castle B1F B2F B3F L BW.png](https://archives.bulbagarden.net/wiki/File:Relic_Castle_B1F_B2F_B3F_L_BW.png) → [本地图片](relic-castle-b1f-b2f-b3f-l-bw.png) · 408 × 348
+- [Relic Castle B4F B5F L BW.png](https://archives.bulbagarden.net/wiki/File:Relic_Castle_B4F_B5F_L_BW.png) → [本地图片](relic-castle-b4f-b5f-l-bw.png) · 408 × 364
+- [Rock Tunnel 1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rock_Tunnel_1F_FRLG.png) → [本地图片](rock-tunnel-1f-frlg.png) · 768 × 640
+- [Rock Tunnel B1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rock_Tunnel_B1F_FRLG.png) → [本地图片](rock-tunnel-b1f-frlg.png) · 768 × 640
+- [Rocket Hideout B1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B1F_FRLG.png) → [本地图片](rocket-hideout-b1f-frlg.png) · 448 × 544
+- [Rocket Hideout B1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B1F_HGSS.png) → [本地图片](rocket-hideout-b1f-hgss.png) · 781 × 432
+- [Rocket Hideout B2F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B2F_FRLG.png) → [本地图片](rocket-hideout-b2f-frlg.png) · 512 × 352
+- [Rocket Hideout B2F HGSS.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B2F_HGSS.png) → [本地图片](rocket-hideout-b2f-hgss.png) · 784 × 416
+- [Rocket Hideout B3F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B3F_FRLG.png) → [本地图片](rocket-hideout-b3f-frlg.png) · 352 × 432
+- [Rocket Hideout B3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B3F_HGSS.png) → [本地图片](rocket-hideout-b3f-hgss.png) · 786 × 417
+- [Rocket Hideout B4F FRLG.png](https://archives.bulbagarden.net/wiki/File:Rocket_Hideout_B4F_FRLG.png) → [本地图片](rocket-hideout-b4f-frlg.png) · 384 × 432
+- [Rustboro Gym E.png](https://archives.bulbagarden.net/wiki/File:Rustboro_Gym_E.png) → [本地图片](rustboro-gym-e.png) · 176 × 320
+- [Safari Zone area 1 FRLG.png](https://archives.bulbagarden.net/wiki/File:Safari_Zone_area_1_FRLG.png) → [本地图片](safari-zone-area-1-frlg.png) · 864 × 560
+- [Safari Zone area 2 FRLG.png](https://archives.bulbagarden.net/wiki/File:Safari_Zone_area_2_FRLG.png) → [本地图片](safari-zone-area-2-frlg.png) · 912 × 640
+- [Safari Zone area 3 FRLG.png](https://archives.bulbagarden.net/wiki/File:Safari_Zone_area_3_FRLG.png) → [本地图片](safari-zone-area-3-frlg.png) · 768 × 576
+- [Safari Zone entrance FRLG.png](https://archives.bulbagarden.net/wiki/File:Safari_Zone_entrance_FRLG.png) → [本地图片](safari-zone-entrance-frlg.png) · 816 × 576
+- [Saffron Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Saffron_Gym_FRLG.png) → [本地图片](saffron-gym-frlg.png) · 464 × 388
+- [Sandgem Town Pt.png](https://archives.bulbagarden.net/wiki/File:Sandgem_Town_Pt.png) → [本地图片](sandgem-town-pt.png) · 496 × 402
+- [Seafloor Cavern end E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_end_E.png) → [本地图片](seafloor-cavern-end-e.png) · 432 × 736
+- [Seafloor Cavern entrance E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_entrance_E.png) → [本地图片](seafloor-cavern-entrance-e.png) · 320 × 320
+- [Seafloor Cavern R1 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R1_E.png) → [本地图片](seafloor-cavern-r1-e.png) · 320 × 336
+- [Seafloor Cavern R2 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R2_E.png) → [本地图片](seafloor-cavern-r2-e.png) · 320 × 320
+- [Seafloor Cavern R3 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R3_E.png) → [本地图片](seafloor-cavern-r3-e.png) · 288 × 304
+- [Seafloor Cavern R4 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R4_E.png) → [本地图片](seafloor-cavern-r4-e.png) · 288 × 192
+- [Seafloor Cavern R5 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R5_E.png) → [本地图片](seafloor-cavern-r5-e.png) · 384 × 368
+- [Seafloor Cavern R6 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R6_E.png) → [本地图片](seafloor-cavern-r6-e.png) · 368 × 400
+- [Seafloor Cavern R7 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R7_E.png) → [本地图片](seafloor-cavern-r7-e.png) · 256 × 272
+- [Seafloor Cavern R8 E.png](https://archives.bulbagarden.net/wiki/File:Seafloor_Cavern_R8_E.png) → [本地图片](seafloor-cavern-r8-e.png) · 176 × 224
+- [Silph Co 11F FRLG.png](https://archives.bulbagarden.net/wiki/File:Silph_Co_11F_FRLG.png) → [本地图片](silph-co-11f-frlg.png) · 272 × 320
+- [Silph Co 3F FRLG.png](https://archives.bulbagarden.net/wiki/File:Silph_Co_3F_FRLG.png) → [本地图片](silph-co-3f-frlg.png) · 576 × 352
+- [Silph Co 5F FRLG.png](https://archives.bulbagarden.net/wiki/File:Silph_Co_5F_FRLG.png) → [本地图片](silph-co-5f-frlg.png) · 576 × 352
+- [Silph Co 7F FRLG.png](https://archives.bulbagarden.net/wiki/File:Silph_Co_7F_FRLG.png) → [本地图片](silph-co-7f-frlg.png) · 496 × 304
+- [Sinnoh Pokémon League Pt.png](https://archives.bulbagarden.net/wiki/File:Sinnoh_Pok%C3%A9mon_League_Pt.png) → [本地图片](sinnoh-pok-mon-league-pt.png) · 496 × 996
+- [Sinnoh Route 217 Pt.png](https://archives.bulbagarden.net/wiki/File:Sinnoh_Route_217_Pt.png) → [本地图片](sinnoh-route-217-pt.png) · 528 × 1589
+- [Sinnoh Route 223 Pt.png](https://archives.bulbagarden.net/wiki/File:Sinnoh_Route_223_Pt.png) → [本地图片](sinnoh-route-223-pt.png) · 512 × 1584
+- [Sky Pillar 1F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_1F_before_E.png) → [本地图片](sky-pillar-1f-before-e.png) · 224 × 224
+- [Sky Pillar 2F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_2F_before_E.png) → [本地图片](sky-pillar-2f-before-e.png) · 224 × 224
+- [Sky Pillar 3F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_3F_before_E.png) → [本地图片](sky-pillar-3f-before-e.png) · 224 × 224
+- [Sky Pillar 4F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_4F_before_E.png) → [本地图片](sky-pillar-4f-before-e.png) · 224 × 224
+- [Sky Pillar 5F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_5F_before_E.png) → [本地图片](sky-pillar-5f-before-e.png) · 224 × 224
+- [Sky Pillar 6F before E.png](https://archives.bulbagarden.net/wiki/File:Sky_Pillar_6F_before_E.png) → [本地图片](sky-pillar-6f-before-e.png) · 432 × 384
+- [Slateport City E.png](https://archives.bulbagarden.net/wiki/File:Slateport_City_E.png) → [本地图片](slateport-city-e.png) · 640 × 960
+- [Slowpoke Well B1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Slowpoke_Well_B1F_HGSS.png) → [本地图片](slowpoke-well-b1f-hgss.png) · 574 × 476
+- [Snowpoint Gym Pt.png](https://archives.bulbagarden.net/wiki/File:Snowpoint_Gym_Pt.png) → [本地图片](snowpoint-gym-pt.png) · 336 × 368
+- [Solaceon Town Pt.png](https://archives.bulbagarden.net/wiki/File:Solaceon_Town_Pt.png) → [本地图片](solaceon-town-pt.png) · 1047 × 412
+- [Sootopolis City E.png](https://archives.bulbagarden.net/wiki/File:Sootopolis_City_E.png) → [本地图片](sootopolis-city-e.png) · 960 × 960
+- [Sootopolis Gym 1F E.png](https://archives.bulbagarden.net/wiki/File:Sootopolis_Gym_1F_E.png) → [本地图片](sootopolis-gym-1f-e.png) · 272 × 416
+- [Sootopolis Gym B1F E.png](https://archives.bulbagarden.net/wiki/File:Sootopolis_Gym_B1F_E.png) → [本地图片](sootopolis-gym-b1f-e.png) · 272 × 416
+- [Sprout Tower 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Sprout_Tower_1F_HGSS.png) → [本地图片](sprout-tower-1f-hgss.png) · 384 × 352
+- [Sprout Tower 2F HGSS.png](https://archives.bulbagarden.net/wiki/File:Sprout_Tower_2F_HGSS.png) → [本地图片](sprout-tower-2f-hgss.png) · 384 × 352
+- [Sprout Tower 3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Sprout_Tower_3F_HGSS.png) → [本地图片](sprout-tower-3f-hgss.png) · 384 × 352
+- [Striaton City Spring BW.png](https://archives.bulbagarden.net/wiki/File:Striaton_City_Spring_BW.png) → [本地图片](striaton-city-spring-bw.png) · 1366 × 482
+- [Striaton Gym BW.png](https://archives.bulbagarden.net/wiki/File:Striaton_Gym_BW.png) → [本地图片](striaton-gym-bw.png) · 448 × 704
+- [Sunyshore City Pt.png](https://archives.bulbagarden.net/wiki/File:Sunyshore_City_Pt.png) → [本地图片](sunyshore-city-pt.png) · 1024 × 828
+- [Sunyshore Gym first room DPPt.png](https://archives.bulbagarden.net/wiki/File:Sunyshore_Gym_first_room_DPPt.png) → [本地图片](sunyshore-gym-first-room-dppt.png) · 242 × 185
+- [Sunyshore Gym second room DPPt.png](https://archives.bulbagarden.net/wiki/File:Sunyshore_Gym_second_room_DPPt.png) → [本地图片](sunyshore-gym-second-room-dppt.png) · 255 × 312
+- [Sunyshore Gym third room DPPt.png](https://archives.bulbagarden.net/wiki/File:Sunyshore_Gym_third_room_DPPt.png) → [本地图片](sunyshore-gym-third-room-dppt.png) · 335 × 402
+- [Twinleaf Town Pt.png](https://archives.bulbagarden.net/wiki/File:Twinleaf_Town_Pt.png) → [本地图片](twinleaf-town-pt.png) · 496 × 377
+- [Twist Mountain 1F BW.png](https://archives.bulbagarden.net/wiki/File:Twist_Mountain_1F_BW.png) → [本地图片](twist-mountain-1f-bw.png) · 1200 × 1001
+- [Twist Mountain 2F BW.png](https://archives.bulbagarden.net/wiki/File:Twist_Mountain_2F_BW.png) → [本地图片](twist-mountain-2f-bw.png) · 1201 × 923
+- [Twist Mountain 3F BW.png](https://archives.bulbagarden.net/wiki/File:Twist_Mountain_3F_BW.png) → [本地图片](twist-mountain-3f-bw.png) · 1199 × 968
+- [Underground Path 5-6 FRLG.png](https://archives.bulbagarden.net/wiki/File:Underground_Path_5-6_FRLG.png) → [本地图片](underground-path-5-6-frlg.png) · 128 × 1008
+- [Underground Warehouse HGSS.png](https://archives.bulbagarden.net/wiki/File:Underground_Warehouse_HGSS.png) → [本地图片](underground-warehouse-hgss.png) · 496 × 304
+- [Union Cave 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Union_Cave_1F_HGSS.png) → [本地图片](union-cave-1f-hgss.png) · 544 × 962
+- [Unova Route 1 Spring BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_1_Spring_BW.png) → [本地图片](unova-route-1-spring-bw.png) · 1024 × 1544
+- [Unova Route 2 Spring BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_2_Spring_BW.png) → [本地图片](unova-route-2-spring-bw.png) · 1024 × 1024
+- [Unova Route 3 Spring BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_3_Spring_BW.png) → [本地图片](unova-route-3-spring-bw.png) · 1536 × 820
+- [Unova Route 4 BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_4_BW.png) → [本地图片](unova-route-4-bw.png) · 1024 × 1641
+- [Unova Route 6 Spring BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_6_Spring_BW.png) → [本地图片](unova-route-6-spring-bw.png) · 1024 × 820
+- [Unova Route 7 Spring BW.png](https://archives.bulbagarden.net/wiki/File:Unova_Route_7_Spring_BW.png) → [本地图片](unova-route-7-spring-bw.png) · 1024 × 820
+- [Valley Windworks Pt.png](https://archives.bulbagarden.net/wiki/File:Valley_Windworks_Pt.png) → [本地图片](valley-windworks-pt.png) · 512 × 407
+- [Veilstone City Pt.png](https://archives.bulbagarden.net/wiki/File:Veilstone_City_Pt.png) → [本地图片](veilstone-city-pt.png) · 1024 × 840
+- [Veilstone Gym Pt.png](https://archives.bulbagarden.net/wiki/File:Veilstone_Gym_Pt.png) → [本地图片](veilstone-gym-pt.png) · 400 × 408
+- [Vermilion City FRLG.png](https://archives.bulbagarden.net/wiki/File:Vermilion_City_FRLG.png) → [本地图片](vermilion-city-frlg.png) · 768 × 640
+- [Vermilion Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Vermilion_Gym_FRLG.png) → [本地图片](vermilion-gym-frlg.png) · 176 × 324
+- [Victory Road 1F E.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_1F_E.png) → [本地图片](victory-road-1f-e.png) · 736 × 720
+- [Victory Road 1F FRLG.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_1F_FRLG.png) → [本地图片](victory-road-1f-frlg.png) · 768 × 352
+- [Victory Road 1F HGSS.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_1F_HGSS.png) → [本地图片](victory-road-1f-hgss.png) · 692 × 787
+- [Victory Road 1F Pt.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_1F_Pt.png) → [本地图片](victory-road-1f-pt.png) · 848 × 996
+- [Victory Road 2F FRLG.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_2F_FRLG.png) → [本地图片](victory-road-2f-frlg.png) · 848 × 368
+- [Victory Road 2F HGSS.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_2F_HGSS.png) → [本地图片](victory-road-2f-hgss.png) · 1094 × 498
+- [Victory Road 2F Pt.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_2F_Pt.png) → [本地图片](victory-road-2f-pt.png) · 960 × 504
+- [Victory Road 3F FRLG.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_3F_FRLG.png) → [本地图片](victory-road-3f-frlg.png) · 736 × 368
+- [Victory Road 3F HGSS.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_3F_HGSS.png) → [本地图片](victory-road-3f-hgss.png) · 1052 × 566
+- [Victory Road B1F E.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_B1F_E.png) → [本地图片](victory-road-b1f-e.png) · 736 × 496
+- [Victory Road B1F Pt.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_B1F_Pt.png) → [本地图片](victory-road-b1f-pt.png) · 640 × 624
+- [Victory Road B2F E.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_B2F_E.png) → [本地图片](victory-road-b2f-e.png) · 736 × 496
+- [Victory Road BW.png](https://archives.bulbagarden.net/wiki/File:Victory_Road_BW.png) → [本地图片](victory-road-bw.png) · 1920 × 1375
+- [Violet Gym HGSS.png](https://archives.bulbagarden.net/wiki/File:Violet_Gym_HGSS.png) → [本地图片](violet-gym-hgss.png) · 320 × 448
+- [Viridian City FRLG.png](https://archives.bulbagarden.net/wiki/File:Viridian_City_FRLG.png) → [本地图片](viridian-city-frlg.png) · 768 × 640
+- [Viridian Forest FRLG.png](https://archives.bulbagarden.net/wiki/File:Viridian_Forest_FRLG.png) → [本地图片](viridian-forest-frlg.png) · 864 × 1104
+- [Viridian Gym FRLG.png](https://archives.bulbagarden.net/wiki/File:Viridian_Gym_FRLG.png) → [本地图片](viridian-gym-frlg.png) · 320 × 372
+- [Vista Lighthouse observation deck DPPt.png](https://archives.bulbagarden.net/wiki/File:Vista_Lighthouse_observation_deck_DPPt.png) → [本地图片](vista-lighthouse-observation-deck-dppt.png) · 184 × 155
+- [Weather Institute 1F RSE.png](https://archives.bulbagarden.net/wiki/File:Weather_Institute_1F_RSE.png) → [本地图片](weather-institute-1f-rse.png) · 320 × 208
+- [Weather Institute 2F RSE.png](https://archives.bulbagarden.net/wiki/File:Weather_Institute_2F_RSE.png) → [本地图片](weather-institute-2f-rse.png) · 320 × 176
+- [Wellspring Cave 1F BW.png](https://archives.bulbagarden.net/wiki/File:Wellspring_Cave_1F_BW.png) → [本地图片](wellspring-cave-1f-bw.png) · 528 × 440

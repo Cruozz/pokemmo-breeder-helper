@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.26"
+APP_VERSION = "0.2.27"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -79,6 +79,7 @@ from inventory_order import inventory_in_display_order, sorted_inventory_ids
 from account_order_dialog import AccountOrderDialog
 from guide_views import GuideWorkspace, PAGE_TITLES
 from live_views import LiveWorkspace
+from parallel_guide import GUIDE_TITLE, ParallelGuideWorkspace
 from window_memory import WindowMemory
 from autocomplete import AutocompletePopup
 from nature_data import (
@@ -321,6 +322,8 @@ class App:
         except OSError:
             pass
         finally:
+            if getattr(self, "parallel_workspace", None) is not None:
+                self.parallel_workspace.shutdown()
             self.root.destroy()
 
     def build_ui(self) -> None:
@@ -354,6 +357,8 @@ class App:
         for guide_mode, guide_title in PAGE_TITLES.items():
             button = ttk.Button(workspace_bar, text=guide_title, command=lambda mode=guide_mode: self._select_workspace_mode(mode))
             self.guide_buttons[guide_mode] = button
+        self.parallel_workspace = None
+        self.parallel_mode_button = ttk.Button(workspace_bar, text=GUIDE_TITLE, command=lambda: self._select_workspace_mode("parallel"))
         self.live_workspace = None
         self.live_mode_button = ttk.Button(workspace_bar, text="实时情报", command=lambda: self._select_workspace_mode("live"))
         self.author_mode_button = ttk.Button(
@@ -362,7 +367,7 @@ class App:
             command=lambda: self._select_workspace_mode("author"),
         )
         self.workspace_nav_items = [self.workspace_label, self.scan_mode_button, self.inventory_mode_button, self.planner_mode_button,
-                                    *self.guide_buttons.values(), self.live_mode_button, self.author_mode_button]
+                                    *self.guide_buttons.values(), self.parallel_mode_button, self.live_mode_button, self.author_mode_button]
         self.workspace_nav_rows = [ttk.Frame(workspace_bar, style="App.TFrame") for _ in range(2)]
         self.workspace_nav_layout = None
         workspace_bar.bind("<Configure>", self._layout_workspace_nav)
@@ -391,8 +396,8 @@ class App:
         self.right_panel.bind("<Configure>", self._resize_right_content, add="+")
 
     def _select_workspace_mode(self, mode: str) -> None:
-        mode = mode if mode in {"inventory", "planner", "author", "live", *PAGE_TITLES} else "scan"
-        labels = {"scan": "扫描素材", "inventory": "素材库存", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", **PAGE_TITLES}
+        mode = mode if mode in {"inventory", "planner", "author", "live", "parallel", *PAGE_TITLES} else "scan"
+        labels = {"scan": "扫描素材", "inventory": "素材库存", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", "parallel": GUIDE_TITLE, **PAGE_TITLES}
         self.workspace_mode_var.set(labels[mode])
         if mode == "scan":
             self.compact_scan_view = "result"
@@ -421,6 +426,8 @@ class App:
         self.author_mode_button.configure(style="Primary.TButton" if mode == "author" else "TButton")
         if hasattr(self, "live_mode_button"):
             self.live_mode_button.configure(style="Primary.TButton" if mode == "live" else "TButton")
+        if hasattr(self, "parallel_mode_button"):
+            self.parallel_mode_button.configure(style="Primary.TButton" if mode == "parallel" else "TButton")
         for guide_mode, button in getattr(self, "guide_buttons", {}).items():
             button.configure(style="Primary.TButton" if mode == guide_mode else "TButton")
 
@@ -907,6 +914,24 @@ class App:
         desired = self._layout_for_width(width)
         density = "tight" if desired == "compact" and height < 780 else "normal"
         workspace_label = self.workspace_mode_var.get()
+        if workspace_label == GUIDE_TITLE:
+            self.scan_status_frame.pack_forget()
+            self.scan_controls_panel.pack_forget()
+            self.main_pane.pack_forget()
+            if self.guide_workspace is not None:
+                self.guide_workspace.pack_forget()
+            if self.live_workspace is not None:
+                self.live_workspace.pack_forget()
+            if self.parallel_workspace is None:
+                self.parallel_workspace = ParallelGuideWorkspace(self.root)
+            self.parallel_workspace.pack(fill=BOTH, expand=True, padx=12, pady=(8, 10))
+            self.layout_orientation = desired
+            self.applied_workspace_mode = "parallel"
+            self.applied_layout_density = density
+            self._update_workspace_buttons("parallel")
+            return
+        if getattr(self, "parallel_workspace", None) is not None:
+            self.parallel_workspace.pack_forget()
         if workspace_label == "实时情报":
             self.scan_status_frame.pack_forget()
             self.scan_controls_panel.pack_forget()
@@ -3971,7 +3996,7 @@ class App:
         self._focus_helper_for_batch_action()
 
     def _handle_batch_enter(self, _event=None) -> str | None:
-        if self.workspace_mode_var.get() in PAGE_TITLES.values():
+        if self.workspace_mode_var.get() in {*PAGE_TITLES.values(), GUIDE_TITLE}:
             return None
         if not self.batch_running:
             return None
