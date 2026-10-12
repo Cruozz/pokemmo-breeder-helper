@@ -9,6 +9,7 @@ from typing import Iterable
 from models import Monster, normalize_gender
 from reference_data import get_reference_database
 from species_data import get_species_database
+from breeding_cost import ACTIVE_BOOK, PriceBook, cost_search, cost_state_rank
 
 
 STAT_NAMES = ("HP", "攻击", "防御", "特攻", "特防", "速度")
@@ -318,6 +319,13 @@ class ChainCandidate:
     # None means a legacy snapshot without this metadata.
     retained_body_id: str | None = None
     retained_upper_id: str | None = None
+    cost_pricing: dict = field(default_factory=dict)
+    cost_materials: list[dict] = field(default_factory=list, repr=False)
+
+    def cost_report(self):
+        return PriceBook(self.cost_pricing).report(
+            self.root, self.working_gender or self.target_gender, self.gender_strategy,
+        )
 
     def final_evolution_from(self, species: str, gender: str = "") -> bool:
         if self.nature_phase in {"maternal", "gamble_upper", "gamble_lower"}:
@@ -359,6 +367,7 @@ class ChainCandidate:
             "nature_target_key": self.nature_target_key,
             "retained_body_id": self.retained_body_id,
             "retained_upper_id": self.retained_upper_id,
+            "cost_pricing": self.cost_pricing,
         }
 
     @classmethod
@@ -392,6 +401,7 @@ class ChainCandidate:
             nature_target_key=str(value.get("nature_target_key", "")),
             retained_body_id=value.get("retained_body_id"),
             retained_upper_id=value.get("retained_upper_id"),
+            cost_pricing=dict(value.get("cost_pricing") or {}),
         )
 
     def inventory_audit_text(self) -> str:
@@ -704,10 +714,14 @@ def _ordered_stat_pairs(bits: list[int]) -> tuple[tuple[int, int], ...]:
 
 
 def _normalize_strategy(value: str) -> str:
+    if str(value).strip().lower() in {"cost", "最省钱", "总消耗价值"}:
+        return "cost"
     return "steps" if str(value).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
 
 
 def _state_rank(state: ChainState, strategy: str = "inventory") -> tuple[object, ...]:
+    if _normalize_strategy(strategy) == "cost":
+        return (*cost_state_rank(state), state.breeds, state.purchases, tuple(sorted(state.used_ids)))
     if _normalize_strategy(strategy) == "steps":
         return (
             state.breeds,
@@ -738,6 +752,9 @@ def _search_rank(
     else:
         extra_ivs = (state.mask & ~required_mask).bit_count()
     unused_nature = int(state.has_nature and not require_nature)
+    if _normalize_strategy(strategy) == "cost":
+        return (*cost_state_rank(state), extra_ivs, unused_nature, state.breeds,
+                state.purchases, tuple(sorted(state.used_ids)))
     if _normalize_strategy(strategy) == "steps":
         return (
             state.breeds,
@@ -2771,6 +2788,26 @@ def _virtual_materials(
                     inherited_moves=target_moves,
                     role_suffix="egg-move-prepared-" + "-".join(sorted(target_moves)),
                 )
+    book = ACTIVE_BOOK.get()
+    if book is not None:
+        for state in result:
+            book.remember(state)
+        # Higher-IV purchases participate only when the user has supplied a
+        # matching price. Keep their specifications available for price entry.
+        if purchase_tier is None and getattr(book, "optimizing", False):
+            for tier in range(3 if is_alpha else 2, len(required_stats) + 1):
+                prepared = _virtual_materials(
+                    target_profile, target_ivs, need_nature, nature_label, is_alpha,
+                    allow_ditto, existing_leaves, need_hidden_ability, target_moves,
+                    egg_move_donors, purchase_tier=tier,
+                )
+                for state in prepared:
+                    row = book.remember(state)
+                    if row and row["key"] in book.prices:
+                        # Base and tier-specific copies have independent IDs.
+                        state.leaf.id = f"buy:tier{tier}:" + state.leaf.id[4:]
+                        state.used_ids = frozenset({state.leaf.id})
+                        result.append(state)
     return result
 
 
@@ -3302,6 +3339,7 @@ def _nature_floor_parents(
     return candidates
 
 
+@cost_search
 def find_chain_candidates(
     inventory: list[Monster],
     species: str,
@@ -3332,6 +3370,9 @@ def find_chain_candidates(
     preferred_material_ids: frozenset[str] = frozenset(),
 ) -> tuple[list[ChainCandidate], list[str]]:
     strategy = _normalize_strategy(strategy)
+    book = ACTIVE_BOOK.get()
+    if book is not None:
+        book.optimizing = strategy == "cost"
     requested_species = species.strip()
     planning_species = offspring_species.strip() or requested_species
     species_key = normalize_text(planning_species)
@@ -3515,6 +3556,12 @@ def find_chain_candidates(
             gender_species=gender_species if is_target_family else (),
         )
         all_leaf_states.append(state)
+
+    if book is not None:
+        for state in all_leaf_states:
+            book.remember(state)
+    if strategy == "cost":
+        all_leaf_states.sort(key=lambda state: _state_rank(state, strategy))
 
     # Large breeder boxes often contain dozens of mechanically identical 1V
     # materials. Keep enough interchangeable copies for a full 5V pyramid but
@@ -4397,11 +4444,24 @@ def find_chain_candidates(
                     ))
                     goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
 
+    if strategy == "cost" and not existing_goals and custom_goals is None:
+        alternatives = _virtual_materials(
+            target_profile, target_ivs, need_nature, nature_label.strip() or nature_key,
+            target_alpha, allow_ditto, all_leaf_states, need_hidden_ability,
+            required_moves, egg_move_donors,
+        )
+        priced = [state for state in alternatives if book.remember(state)["key"] in book.prices]
+        if priced:
+            goals.extend(_structured_search(
+                all_leaf_states + priced, target_profile, target_mask, need_nature,
+                search_target_gender, beam_per_signature, strategy, preferred_inventory_ditto_ids,
+            ))
+
     has_skill_body = bool(required_moves) and any(
         not state.is_virtual and normalize_text(state.species) == target_profile.species_key
         and state.mask == target_mask for state in all_leaf_states
     )
-    if (strategy == "steps" or has_skill_body) and stage_requires_final_features and not existing_goals and custom_goals is None:
+    if (strategy in {"steps", "cost"} or has_skill_body) and stage_requires_final_features and not existing_goals and custom_goals is None:
         goals.extend(_one_breed_market_goals(
             all_leaf_states, target_profile, target_ivs, target_mask, search_target_gender,
             target_alpha, allow_ditto, need_nature, nature_label.strip() or nature_key,
@@ -4428,7 +4488,10 @@ def find_chain_candidates(
         return int(bool(available_preferred_material_ids) and not bool(relevant_ids & available_preferred_material_ids))
 
     def final_goal_rank(state: ChainState) -> tuple[object, ...]:
-        base = _state_rank(state, strategy)
+        base = (
+            (*cost_state_rank(state, search_target_gender, intermediate_gender_strategy), state.breeds, state.purchases)
+            if strategy == "cost" else _state_rank(state, strategy)
+        )
         # The checkbox is an explicit request to consume an existing Ditto.
         # First choose among routes that actually use one, then optimize
         # purchases/breeds normally inside that constrained set.
@@ -4440,7 +4503,7 @@ def find_chain_candidates(
         return (conversion_penalty, preferred_material_penalty(state), ditto_penalty, *base)
 
     goals.sort(key=final_goal_rank)
-    if goals:
+    if goals and strategy != "cost":
         if _normalize_strategy(strategy) == "steps":
             best_quality = (
                 int(conversion_required and not goals[0].maternal_conversion),

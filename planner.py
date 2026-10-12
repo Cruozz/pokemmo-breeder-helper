@@ -219,6 +219,7 @@ def make_report_with_candidates(
     target_moves: tuple[str, ...] | list[str] | None = None,
     convert_maternal_with_ditto: bool = False,
     preferred_material_ids: set[str] | frozenset[str] | None = None,
+    cost_pricing=None,
 ) -> tuple[str, list]:
     if not species.strip():
         return "请先填写目标种类。", []
@@ -364,9 +365,10 @@ def make_report_with_candidates(
         prefer_ditto=allow_ditto,
         convert_maternal_with_ditto=convert_maternal_with_ditto,
         preferred_material_ids=frozenset(preferred_material_ids or ()),
+        cost_pricing=cost_pricing,
     )
-    strategy_key = "steps" if str(strategy).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
-    strategy_title = "步骤优先" if strategy_key == "steps" else "库存优先"
+    strategy_key = "cost" if str(strategy).strip().lower() in {"cost", "最省钱", "总消耗价值"} else "steps" if str(strategy).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
+    strategy_title = {"cost": "总消耗价值优先", "steps": "步骤优先", "inventory": "库存优先"}[strategy_key]
     lines: list[str] = []
     if excluded_count:
         lines.append(f"本次规划已排除 {excluded_count} 只受保护库存素材；记录仍保留在素材库存中。")
@@ -479,10 +481,13 @@ def make_report_with_candidates(
         else:
             lines.append("库存预检通过：该路线可以完全使用现有已确认素材完成。")
         lines.append("")
-        lines.append(f"找到 {len(candidates)} 个方案，方案 1 为当前{strategy_title}的最佳路线：")
+        lines.append(f"找到 {len(candidates)} 个方案，方案 1 为当前{strategy_title}的推荐路线：")
+        if strategy_key == "cost":
+            lines.append("按已报价的可行候选比较，缺价路线不视为完整成本；搜索保留有限候选，不保证全市场全局最低。")
         lines.append("")
         for index, candidate in enumerate(candidates, 1):
             lines.append(f"方案 {index}")
+            lines.append("成本估算｜" + candidate.cost_report().summary())
             lines.append(candidate.description())
             lines.append("")
     else:

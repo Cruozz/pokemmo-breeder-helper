@@ -335,6 +335,35 @@ def run_checks() -> dict[str, object]:
         finally:
             root.destroy()
     checks["reset_account_delete"] = {"target_reset": True, "delete_and_undo": True, "isolated_data": True}
+    from breeding_cost import PriceBook, material_record
+    from cost_views import CostDialog
+    with tempfile.TemporaryDirectory() as cost_directory:
+        mother = Monster(id="cost-mother", species="鲤鱼王", gender="F",
+                         ivs=[31, 1, 1, 1, 1, 1], egg_groups=["水中2", "龙"])
+        father = Monster(id="cost-father", species="鲤鱼王", gender="M",
+                         ivs=[1, 31, 1, 1, 1, 1], egg_groups=["水中2", "龙"])
+        book = PriceBook()
+        for material in (mother, father):
+            book.prices[material_record(material)["key"]] = 3000
+        _text, cost_candidates = make_report_with_candidates(
+            [mother, father], "鲤鱼王", "", "", "31/31/x/x/x/x", ["水中2", "龙"],
+            strategy="cost", allow_ditto=False, cost_pricing=book,
+        )
+        if not cost_candidates or cost_candidates[0].cost_report().total_known != 26000:
+            raise RuntimeError("Packaged breeding cost accounting failed")
+        cost_root = tk.Tk()
+        cost_root.withdraw()
+        try:
+            dialog = CostDialog(cost_root, book=book, path=Path(cost_directory) / "prices.json",
+                                inventory=[mother, father], candidates=cost_candidates)
+            cost_root.update_idletasks()
+            if "总消耗价值" not in dialog.summary_var.get() or len(dialog.tabs.tabs()) != 3:
+                raise RuntimeError("Packaged cost interface failed")
+            dialog.save()
+            dialog.close()
+            checks["breeding_cost"] = {"total": 26000, "cash": 20000, "native_ui": True, "isolated_data": True}
+        finally:
+            cost_root.destroy()
     return checks
 
 

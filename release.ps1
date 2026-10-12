@@ -70,8 +70,17 @@ $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $exePath
 $hashLine = "$($hash.Hash.ToLowerInvariant())  $exeName"
 $hashPath = Join-Path $versionRoot 'SHA256.txt'
 Set-Content -LiteralPath $hashPath -Value $hashLine -Encoding UTF8
-$packageFiles = @($exePath, $guideTarget, $noticesTarget, $hashPath, $reportPath)
+$packageFiles = @($exePath)
 Compress-Archive -LiteralPath $packageFiles -DestinationPath $zipPath -CompressionLevel Optimal -Force
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+    if ($archive.Entries.Count -ne 1 -or $archive.Entries[0].FullName -ne $exeName) {
+        throw 'The download ZIP must contain only the root-level breeder executable.'
+    }
+} finally {
+    $archive.Dispose()
+}
 
 $zipHash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
 $checksumsPath = Join-Path $releaseRoot 'SHA256SUMS.txt'

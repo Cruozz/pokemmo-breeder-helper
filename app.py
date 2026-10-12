@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.28"
+APP_VERSION = "0.2.29"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -92,11 +92,15 @@ from nature_data import (
 )
 from ocr_engine import OCRProcessor
 from planner import make_report_with_candidates
+from breeding_cost import PriceBook, load_price_book
+from cost_views import CostDialog
+from market_data import load_cache as load_market_cache
 from preview_dialog import PreviewZoomWindow
 from preview_geometry import image_point, normalized_roi, rescale_roi
 from reference_data import get_reference_database
 from species_data import SpeciesRecord, get_species_database
 from storage import (
+    data_dir,
     are_high_confidence_duplicates,
     consume_parents_and_add_child,
     delete_inventory_records,
@@ -176,6 +180,9 @@ class App:
         self.autocomplete_popups: list[AutocompletePopup] = []
         self.windows: list[WindowInfo] = []
         self.inventory = load_inventory()
+        self.cost_price_path = data_dir() / "breeding_prices.json"
+        self.cost_book = load_price_book(self.cost_price_path)
+        self.cost_dialog = None
         self.accounts = list(dict.fromkeys([*load_accounts(), *(item.account for item in self.inventory if item.account)]))
         self.inventory_display_order = load_inventory_display_order()
         self.account_order_dialog = None
@@ -259,7 +266,7 @@ class App:
         self.target_alpha_material_hint_var = StringVar(
             value="关闭＝仅普通素材；开启＝普通与头目均可用，最终仍为普通。"
         )
-        self.target_strategy_var = StringVar(value="库存优先")
+        self.target_strategy_var = StringVar(value="最省钱")
         self.target_intermediate_gender_strategy_var = StringVar(value="智能锁定")
         self.target_gender_strategy_hint_var = StringVar(
             value="母体锁母，直接辅助素材锁公；已有配偶或配对性别明确时按下一步需求锁定。"
@@ -2032,7 +2039,7 @@ class App:
         ttk.Combobox(
             rules,
             textvariable=self.target_strategy_var,
-            values=("库存优先", "步骤优先"),
+            values=("最省钱", "库存优先", "步骤优先"),
             state="readonly",
             width=10,
         ).grid(row=0, column=5, sticky="w", pady=3)
@@ -2141,6 +2148,13 @@ class App:
             view_bar, text="清除当前规划与路线", style="Danger.TButton", command=self.clear_current_plan,
         )
         self.clear_current_plan_button.pack(side=RIGHT)
+        cost_bar = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 4))
+        cost_bar.pack(fill=X, pady=(0, 6))
+        ttk.Button(cost_bar, text="成本与报价", command=self.open_cost_dialog).pack(side=LEFT)
+        ttk.Label(cost_bar, text="计算策略", style="Field.TLabel").pack(side=LEFT, padx=(12, 6))
+        ttk.Combobox(cost_bar, textvariable=self.target_strategy_var,
+                     values=("最省钱", "库存优先", "步骤优先"), state="readonly", width=10).pack(side=LEFT)
+        ttk.Label(cost_bar, text="填完估值后重新生成路线", style="Muted.TLabel").pack(side=LEFT, padx=10)
         self.next_step_gender_frame = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
         ttk.Label(self.next_step_gender_frame, text="下一步性别", style="Field.TLabel").pack(side=LEFT)
         self.next_step_gender_combo = ttk.Combobox(
@@ -5176,7 +5190,7 @@ class App:
             "target_hidden_ability_var": False, "target_nature_var": "", "target_lock_nature_var": False,
             "target_lock_gender_var": False, "target_allow_ditto_var": False,
             "target_convert_mother_with_ditto_var": False, "target_allow_alpha_materials_var": False,
-            "target_strategy_var": "库存优先", "target_intermediate_gender_strategy_var": "智能锁定",
+            "target_strategy_var": "最省钱", "target_intermediate_gender_strategy_var": "智能锁定",
             "next_step_gender_var": "自动", "next_step_gender_hint_var": "", "target_iv_var": "x/x/x/x/x/x",
             "target_groups_var": "待选择", "target_info_var": "", "target_egg_moves_var": "不需要遗传技能",
         }
@@ -5233,6 +5247,29 @@ class App:
         self._set_planner_busy(False)
         self._set_planner_details_collapsed(False)
 
+    def _current_cost_book(self):
+        cached = load_market_cache(self.cost_price_path.with_name("market_cache.json"))
+        return PriceBook(self.cost_book.to_dict(), cached[0] if cached else self.cost_book.snapshot)
+
+    def open_cost_dialog(self) -> None:
+        if self.cost_dialog is not None and self.cost_dialog.winfo_exists():
+            self.cost_dialog.lift()
+            return
+        candidates = list(self.current_candidates)
+        active_snapshot = bool(self.plan_view_mode == "active" and self.active_plan and self.active_plan.candidate_snapshot)
+        if active_snapshot:
+            context = ChainCandidate.from_dict(self.active_plan.candidate_snapshot)
+            candidates = [context, *candidates]
+
+        def saved(book):
+            self.cost_book = PriceBook(book.to_dict(), book.snapshot)
+            self.plan_status_var.set("成本报价已保存；点“生成规划方案”按新价格比较路线。")
+
+        self.cost_dialog = CostDialog(
+            self.root, book=self._current_cost_book(), path=self.cost_price_path,
+            inventory=self.inventory, candidates=candidates, on_saved=saved, active_snapshot=active_snapshot,
+        )
+
     def generate_plan(self) -> None:
         if self.plan_worker_busy:
             messagebox.showinfo("正在计算", "库存规划仍在计算中，请稍候。")
@@ -5253,6 +5290,9 @@ class App:
             self.target_nature_var.get(),
             bool(self.target_lock_nature_var.get()),
         )
+        if self.target_strategy_var.get() == "最省钱" and target_nature:
+            nature_strategy = "chain"
+            self.target_lock_nature_var.set(True)
         breeding_parent = self.species_db.breeding_parent(record)
         groups = list(breeding_parent.egg_groups if breeding_parent else record.egg_groups)
         snapshot = [Monster.from_dict(item.to_dict()) for item in self.inventory]
@@ -5309,7 +5349,7 @@ class App:
             groups,
             self.target_alpha_var.get() == "头目",
             allow_ditto,
-            "steps" if self.target_strategy_var.get() == "步骤优先" else "inventory",
+            {"最省钱": "cost", "步骤优先": "steps"}.get(self.target_strategy_var.get(), "inventory"),
             nature_strategy,
             allow_alpha_materials,
             excluded_snapshot,
@@ -5318,6 +5358,7 @@ class App:
             tuple(self.selected_egg_moves),
             bool(self.target_convert_mother_with_ditto_var.get()),
             frozenset(self.auto_replan_preferred_material_ids),
+            self._current_cost_book(),
         )
         self._set_planner_busy(True)
         self.pending_plan_options = {name: getattr(self, name).get() for name in (
@@ -5387,7 +5428,9 @@ class App:
         elif not self.proposed_plan.steps:
             candidate = candidates[0]
             actual_species = candidate.root.leaf.species if candidate.root.leaf else candidate.root.output_species
-            if actual_species != candidate.target_species:
+            if candidate.root.is_virtual:
+                self.plan_status_var.set(f"建议直接补购满足目标的 {actual_species}；采购后手动入库，无需孵化。")
+            elif actual_species != candidate.target_species:
                 self.plan_status_var.set(
                     f"库存中已有满足属性的 {actual_species}；无需孵化，进化为 {candidate.target_species} 即可。"
                 )
@@ -5623,7 +5666,10 @@ class App:
                     return record.id if record else None
                 if node is not None:
                     node = self._wrap_staged_nature_context(context, node, map_key_prefix=plan.id, species_sprite_id=sprite_id)
-            self.plan_summary_var.set(f"正在执行｜{plan.target_species} · {plan.target_nature or '任意性格'} · 方案 {plan.id[:8]}")
+            self.plan_summary_var.set(
+                f"正在执行｜{plan.target_species} · {plan.target_nature or '任意性格'} · 方案 {plan.id[:8]}"
+                + ("\n成本快照｜" + context.cost_report().summary() if plan.candidate_snapshot else "")
+            )
             self.plan_purchase_var.set(plan.status_text())
             self.plan_purchase_label.configure(style="Warning.TLabel" if plan.needs_replan else "Success.TLabel")
             if hasattr(self, "plan_view_label"):
@@ -5653,7 +5699,9 @@ class App:
         audit_text = candidate.inventory_audit_text()
         if root.action is None:
             actual_species = root.leaf.species if root.leaf else root.output_species
-            if actual_species != candidate.target_species:
+            if root.is_virtual:
+                self.plan_summary_var.set(f"建议直接补购 {actual_species}；该素材尚未在库存中，无需继续孵化。")
+            elif actual_species != candidate.target_species:
                 self.plan_summary_var.set(
                     f"库存预检｜{audit_text}\n库存已有满足属性的 {actual_species}；无需孵化，进化为 {candidate.target_species} 即可。"
                 )
@@ -5725,6 +5773,7 @@ class App:
                 + f"中间性别｜{self.target_intermediate_gender_strategy_var.get()}；结果符合原计划则继续，不符时先暂停。"
             )
 
+        self.plan_summary_var.set(self.plan_summary_var.get() + "\n成本估算｜" + candidate.cost_report().summary())
         egg_route_note = ""
         if candidate.target_moves:
             egg_route_note = "\n遗传技能实际来源｜" + "；".join(candidate.egg_move_sources(include_steps=False))
