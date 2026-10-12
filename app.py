@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.29"
+APP_VERSION = "0.2.30"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -266,7 +266,7 @@ class App:
         self.target_alpha_material_hint_var = StringVar(
             value="关闭＝仅普通素材；开启＝普通与头目均可用，最终仍为普通。"
         )
-        self.target_strategy_var = StringVar(value="最省钱")
+        self.target_strategy_var = StringVar(value="省钱规划")
         self.target_intermediate_gender_strategy_var = StringVar(value="智能锁定")
         self.target_gender_strategy_hint_var = StringVar(
             value="母体锁母，直接辅助素材锁公；已有配偶或配对性别明确时按下一步需求锁定。"
@@ -2039,7 +2039,7 @@ class App:
         ttk.Combobox(
             rules,
             textvariable=self.target_strategy_var,
-            values=("最省钱", "库存优先", "步骤优先"),
+            values=("库存优先", "步骤优先", "省钱规划"),
             state="readonly",
             width=10,
         ).grid(row=0, column=5, sticky="w", pady=3)
@@ -2153,7 +2153,7 @@ class App:
         ttk.Button(cost_bar, text="成本与报价", command=self.open_cost_dialog).pack(side=LEFT)
         ttk.Label(cost_bar, text="计算策略", style="Field.TLabel").pack(side=LEFT, padx=(12, 6))
         ttk.Combobox(cost_bar, textvariable=self.target_strategy_var,
-                     values=("最省钱", "库存优先", "步骤优先"), state="readonly", width=10).pack(side=LEFT)
+                     values=("库存优先", "步骤优先", "省钱规划"), state="readonly", width=10).pack(side=LEFT)
         ttk.Label(cost_bar, text="填完估值后重新生成路线", style="Muted.TLabel").pack(side=LEFT, padx=10)
         self.next_step_gender_frame = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
         ttk.Label(self.next_step_gender_frame, text="下一步性别", style="Field.TLabel").pack(side=LEFT)
@@ -2466,6 +2466,8 @@ class App:
         self.target_intermediate_gender_strategy_var.set({"smart": "智能锁定", "minimal": "尽量不锁"}.get(plan.gender_strategy, "全程锁定"))
         for name, value in plan.planning_options.items():
             if name in {"target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var"}:
+                if name == "target_strategy_var" and value == "最省钱":
+                    value = "省钱规划"
                 getattr(self, name).set(value)
 
     def _select_plan_step_number(self, step_number: int) -> None:
@@ -5190,7 +5192,7 @@ class App:
             "target_hidden_ability_var": False, "target_nature_var": "", "target_lock_nature_var": False,
             "target_lock_gender_var": False, "target_allow_ditto_var": False,
             "target_convert_mother_with_ditto_var": False, "target_allow_alpha_materials_var": False,
-            "target_strategy_var": "最省钱", "target_intermediate_gender_strategy_var": "智能锁定",
+            "target_strategy_var": "省钱规划", "target_intermediate_gender_strategy_var": "智能锁定",
             "next_step_gender_var": "自动", "next_step_gender_hint_var": "", "target_iv_var": "x/x/x/x/x/x",
             "target_groups_var": "待选择", "target_info_var": "", "target_egg_moves_var": "不需要遗传技能",
         }
@@ -5290,7 +5292,7 @@ class App:
             self.target_nature_var.get(),
             bool(self.target_lock_nature_var.get()),
         )
-        if self.target_strategy_var.get() == "最省钱" and target_nature:
+        if self.target_strategy_var.get() == "省钱规划" and target_nature:
             nature_strategy = "chain"
             self.target_lock_nature_var.set(True)
         breeding_parent = self.species_db.breeding_parent(record)
@@ -5349,7 +5351,7 @@ class App:
             groups,
             self.target_alpha_var.get() == "头目",
             allow_ditto,
-            {"最省钱": "cost", "步骤优先": "steps"}.get(self.target_strategy_var.get(), "inventory"),
+            {"省钱规划": "cost", "最省钱": "cost", "步骤优先": "steps"}.get(self.target_strategy_var.get(), "inventory"),
             nature_strategy,
             allow_alpha_materials,
             excluded_snapshot,

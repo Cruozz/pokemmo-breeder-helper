@@ -114,3 +114,40 @@ class CostViewTests(unittest.TestCase):
         self.dialog.gender_price_var.set("12000")
         self.dialog.set_gender_price()
         self.assertEqual(self.dialog.book.gender_overrides["129:F"], 12000)
+
+    def test_total_uses_large_colored_font_and_copy_is_removed(self):
+        import tkinter.font as font
+        size = font.Font(self.dialog, font=self.dialog.total_label.cget("font")).actual("size")
+        self.assertEqual(size, 22)
+        self.assertEqual(str(self.dialog.total_label.cget("foreground")), "#1d4ed8")
+        self.assertEqual(self.dialog.status_var.get(), "")
+        texts = []
+        def collect(widget):
+            if "text" in widget.keys():
+                texts.append(str(widget.cget("text")))
+            for child in widget.winfo_children():
+                collect(child)
+        collect(self.dialog)
+        for removed in ("优先比较总消耗价值", "按可行候选比较", "步骤金额为该子代"):
+            self.assertFalse(any(removed in text for text in texts))
+
+    def test_material_table_uses_automatic_price_and_pending_filter(self):
+        from tests.test_breeding_cost import CostTests
+        snapshot = CostTests().market([(0, "egg:12:iv_hp:female", 6000)])
+        self.dialog.book = PriceBook(snapshot=snapshot)
+        row = material_record(self.monster)
+        self.dialog.book.materials[row["key"]] = row
+        self.dialog.render_materials()
+        self.assertEqual(self.dialog.material_tree.item(row["key"], "values")[1], "6,000")
+        self.dialog.filter_var.set("待报价")
+        self.assertEqual(self.dialog.material_tree.get_children(), ())
+
+    def test_route_amount_shows_unknown_terms_separately(self):
+        mother = leaf(self.monster)
+        father = leaf(breeder("father", "M", [1, 31, 1, 1, 1, 1]))
+        state = _forced_child(mother, father, SpeciesProfile("鲤鱼王", "鲤鱼王", ("水中2", "龙"), False, ("F", "M")), "F", 0, 1)
+        self.dialog.candidates = [ChainCandidate(state, [31, 31, None, None, None, None], "", "F")]
+        self.dialog.render_report()
+        self.assertEqual(self.dialog.total_var.get(), "已知 25,000")
+        self.assertEqual(self.dialog.pending_var.get(), "待报价 2 项")
+        self.assertNotIn("按可行", self.dialog.summary_var.get())

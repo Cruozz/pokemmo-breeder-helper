@@ -367,7 +367,7 @@ def make_report_with_candidates(
         preferred_material_ids=frozenset(preferred_material_ids or ()),
         cost_pricing=cost_pricing,
     )
-    strategy_key = "cost" if str(strategy).strip().lower() in {"cost", "最省钱", "总消耗价值"} else "steps" if str(strategy).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
+    strategy_key = "cost" if str(strategy).strip().lower() in {"cost", "省钱规划", "最省钱", "总消耗价值"} else "steps" if str(strategy).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
     strategy_title = {"cost": "总消耗价值优先", "steps": "步骤优先", "inventory": "库存优先"}[strategy_key]
     lines: list[str] = []
     if excluded_count:

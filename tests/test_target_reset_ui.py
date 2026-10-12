@@ -60,6 +60,17 @@ class TargetResetUITests(unittest.TestCase):
         self.assertEqual(self.app.target_nature_var.get(), "固执")
         self.assertEqual(self.app.selected_egg_moves, ["祈愿"])
 
+    def test_saving_strategy_name_and_dropdown_order(self):
+        self.assertEqual(self.app.target_strategy_var.get(), "省钱规划")
+        found = []
+        def visit(widget):
+            if widget.winfo_class() == "TCombobox" and str(widget.cget("textvariable")) == str(self.app.target_strategy_var):
+                found.append(tuple(widget.cget("values")))
+            for child in widget.winfo_children():
+                visit(child)
+        visit(self.root)
+        self.assertEqual(found, [("库存优先", "步骤优先", "省钱规划")] * 2)
+
 
 if __name__ == "__main__":
     unittest.main()

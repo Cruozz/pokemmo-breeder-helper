@@ -24,6 +24,94 @@ def leaf(monster, virtual=False):
 
 
 class CostTests(unittest.TestCase):
+    def market(self, rows, *, age=0):
+        date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - age))
+        return parse_snapshot(dict(items=[], pokemonQueries=[dict(familyId=f, query=q, price=p, at=date) for f, q, p in rows]))
+
+    def alpha_material(self, ivs=None, species="美纳斯", gender="F"):
+        monster = breeder("alpha", gender, ivs or [31, 1, 31, 1, 1, 1], species, "内敛")
+        monster.is_alpha = True
+        monster.has_hidden_ability = True
+        monster.moves = ["水炮"]
+        return monster
+
+    def test_inventory_alpha_2v_uses_family_gender_quote(self):
+        book = PriceBook(snapshot=self.market([(349, "alpha", 38000), (349, "alpha_female", 40000), (349, "alpha_male", 60000)]))
+        self.assertEqual(book.material_quote(material_record(self.alpha_material())), (40000, "头目2V行情"))
+        self.assertEqual(book.material_quote(material_record(self.alpha_material(gender="M")))[0], 60000)
+
+    def test_alpha_without_gender_quote_uses_alpha_baseline(self):
+        book = PriceBook(snapshot=self.market([(349, "alpha", 38000), (349, "any", 1000)]))
+        self.assertEqual(book.material_quote(material_record(self.alpha_material())), (38000, "头目2V行情"))
+
+    def test_alpha_three_and_more_v_require_manual_price(self):
+        book = PriceBook(snapshot=self.market([(349, "alpha", 38000)]))
+        for ivs in ([31, 31, 31, 1, 1, 1], [31] * 6):
+            row = material_record(self.alpha_material(ivs))
+            self.assertEqual(book.material_quote(row), (None, "待报价"))
+            book.prices[row["key"]] = 90000
+            self.assertEqual(book.material_quote(row), (90000, "手动估值"))
+
+    def test_normal_one_v_matches_group_stat_and_gender(self):
+        book = PriceBook(snapshot=self.market([(0, "egg:11:iv_hp:male", 4500), (0, "egg:11:iv_hp:female", 6500), (0, "egg:11:iv_atk:male", 9999)]))
+        monster = breeder("gengar", "M", [31, 1, 1, 1, 1, 1], "耿鬼", "内敛")
+        monster.moves = ["影子球"]
+        self.assertEqual(book.material_quote(material_record(monster)), (4500, "蛋组1V行情"))
+        monster.gender = "F"
+        self.assertEqual(book.material_quote(material_record(monster))[0], 6500)
+
+    def test_ditto_one_v_matches_genderless_query(self):
+        monster = breeder("ditto", "N", [1, 1, 1, 1, 1, 31], "百变怪")
+        book = PriceBook(snapshot=self.market([(0, "egg:13:iv_spe", 6000)]))
+        self.assertEqual(book.material_quote(material_record(monster))[0], 6000)
+
+    def test_genderless_one_v_uses_genderless_market_category(self):
+        monster = breeder("beldum", "N", [31, 1, 1, 1, 1, 1], "铁哑铃")
+        book = PriceBook(snapshot=self.market([(0, "egg:0:iv_hp", 8000)]))
+        self.assertEqual(book.material_quote(material_record(monster)), (8000, "蛋组1V行情"))
+
+    def test_dual_group_normal_one_v_uses_lower_compatible_quote(self):
+        book = PriceBook(snapshot=self.market([(0, "egg:1:iv_hp:male", 5000), (0, "egg:7:iv_hp:male", 3000)]))
+        monster = breeder("bulbasaur", "M", [31, 1, 1, 1, 1, 1], "妙蛙种子")
+        self.assertEqual(book.material_quote(material_record(monster))[0], 3000)
+
+    def test_normal_multi_v_is_not_priced_as_one_v(self):
+        book = PriceBook(snapshot=self.market([(0, "egg:11:iv_hp:male", 4500)]))
+        monster = breeder("gengar", "M", [31, 31, 1, 1, 1, 1], "耿鬼")
+        self.assertIsNone(book.material_quote(material_record(monster))[0])
+
+    def test_manual_override_and_clear_restores_market(self):
+        book = PriceBook(snapshot=self.market([(349, "alpha", 38000)]))
+        row = material_record(self.alpha_material())
+        book.prices[row["key"]] = 80000
+        self.assertEqual(book.material_quote(row), (80000, "手动估值"))
+        del book.prices[row["key"]]
+        self.assertEqual(book.material_quote(row), (38000, "头目2V行情"))
+
+    def test_stale_material_quote_is_not_automatic(self):
+        book = PriceBook(snapshot=self.market([(349, "alpha", 38000)], age=90000))
+        self.assertIsNone(book.material_quote(material_record(self.alpha_material()))[0])
+
+    def test_market_prices_drive_search_and_survive_snapshot(self):
+        mother = breeder("mother", "F", [31, 1, 1, 1, 1, 1])
+        donor = breeder("donor", "M", [1, 31, 1, 1, 1, 1])
+        book = PriceBook(snapshot=self.market([(0, "egg:12:iv_hp:female", 4000), (0, "egg:12:iv_atk:male", 5000)]))
+        _text, candidates = make_report_with_candidates([mother, donor], "鲤鱼王", "", "", "31/31/x/x/x/x", ["水中2", "龙"], strategy="省钱规划", allow_ditto=False, cost_pricing=book)
+        report = candidates[0].cost_report()
+        self.assertEqual(report.total_known, 29000)
+        self.assertEqual(report.missing, 0)
+        restored = ChainCandidate.from_dict(json.loads(json.dumps(candidates[0].to_dict())))
+        self.assertEqual(restored.cost_report().total_known, 29000)
+
+    def test_new_plan_does_not_freeze_an_expired_material_quote(self):
+        mother = breeder("mother", "F", [31, 1, 1, 1, 1, 1])
+        donor = breeder("donor", "M", [1, 31, 1, 1, 1, 1])
+        key = material_record(mother)["key"]
+        book = PriceBook(dict(auto_materials={key: dict(price=4000, at=time.time()-90000, source="蛋组1V行情")}))
+        _text, candidates = make_report_with_candidates([mother, donor], "鲤鱼王", "", "", "31/31/x/x/x/x", ["水中2", "龙"], strategy="cost", allow_ditto=False, cost_pricing=book)
+        self.assertEqual(candidates[0].cost_pricing["auto_materials"], {})
+        self.assertGreater(candidates[0].cost_report().missing, 0)
+
     def pair(self):
         a = leaf(breeder("a", "F", [31, 2, 3, 4, 5, 6]))
         b = leaf(breeder("b", "M", [1, 31, 3, 4, 5, 6]), True)

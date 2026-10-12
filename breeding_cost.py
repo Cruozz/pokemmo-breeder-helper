@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -15,6 +16,19 @@ STAT_NAMES = ("HP", "攻击", "防御", "特攻", "特防", "速度")
 STAT_KEYS = ("hp", "atk", "def", "spa", "spd", "spe")
 MAX_PRICE = 10**12
 ACTIVE_BOOK = ContextVar("breeding_price_book", default=None)
+
+
+def _group_name(value):
+    value = "".join(str(value).casefold().split()).removesuffix("组")
+    return {"人型": "人形"}.get(value, value)
+
+
+@lru_cache(maxsize=1)
+def _market_families():
+    from market_data import load_catalog
+    catalog = load_catalog()
+    index = {member["id"]: family for family, members in catalog["families"].items() for member in members}
+    return catalog["families"], index
 
 
 def amount(value, *, optional=False):
@@ -112,6 +126,12 @@ class PriceBook:
         self.snapshot = snapshot
         self.frozen = value.get("frozen") is True
         self.auto_everstone = value.get("auto_everstone")
+        self.auto_materials = {}
+        self._material_lookup = {}
+        for key, quote in value.get("auto_materials", {}).items():
+            if not isinstance(quote, dict) or not isinstance(quote.get("at"), (int, float)):
+                continue
+            self.auto_materials[str(key)] = dict(price=amount(quote.get("price")), at=quote["at"], source=str(quote.get("source", "行情")))
         if self.auto_everstone is not None:
             self.auto_everstone = dict(self.auto_everstone)
             self.auto_everstone["price"] = amount(self.auto_everstone.get("price"))
@@ -127,6 +147,7 @@ class PriceBook:
         return dict(schema=1, brace=self.brace, gender=self.gender, everstone=self.everstone,
                     gender_overrides=dict(self.gender_overrides), prices=dict(self.prices),
                     auto_everstone=self.auto_everstone,
+                    auto_materials=dict(self.auto_materials),
                     materials=list(self.materials.values()) if include_materials else [])
 
     def remember(self, state):
@@ -143,26 +164,81 @@ class PriceBook:
             return quote["price"], "规划时行情快照" if self.frozen else "市场挂牌价（24 小时内）"
         return None, "待报价 / 行情已过期"
 
-    def reference(self, row):
-        """An egg-group minimum is a reference, never an exact inventory valuation."""
+    def _market_material(self, row):
+        """User-defined baseline: Alpha 2V by family; normal 1V by egg group."""
         if self.snapshot is None:
             return None
         c = row["conditions"]
         indices = [i for i, v in enumerate(c["ivs"]) if v == 31]
-        if len(indices) != 1 or c["alpha"] or c["hidden"] or c["nature"] or c["moves"]:
-            return None
         from market_data import EGG_GROUPS
-        groups = [k for k, name in EGG_GROUPS.items() if name.rstrip("组") in c["groups"] or name in c["groups"]]
-        if c["species"] in {"百变怪", "Ditto", "ditto"}:
+        from species_data import get_species_database
+        species_db = get_species_database()
+        record = species_db.get(c["species"], fuzzy=False)
+        group_names = {_group_name(name) for name in (record.egg_groups if record else c["groups"])}
+        groups = [k for k, name in EGG_GROUPS.items() if _group_name(name) in group_names]
+        if c["species"].casefold() in {"百变怪", "ditto"}:
             groups = [13]
+        elif c["gender"] == "N":
+            groups = [0]
         sex = {"M": "male", "F": "female"}.get(c["gender"])
         quotes = []
-        for group in groups:
-            key = f"egg:{group}:iv_{STAT_KEYS[indices[0]]}" + (f":{sex}" if group not in {0, 13} and sex else "")
-            quote = self.snapshot.queries.get((0, key))
-            if quote and quote.price is not None and not quote.stale and not self.snapshot.stale and quote.at is not None and 0 <= time.time() - quote.at <= 86400:
-                quotes.append(quote.price)
-        return min(quotes) if quotes else None
+
+        def usable(quote):
+            return bool(quote and quote.price is not None and not quote.stale and not self.snapshot.stale
+                        and quote.at is not None and 0 <= time.time() - quote.at <= 86400)
+
+        if c["alpha"]:
+            if len(indices) != 2:
+                return None
+            families, family_index = _market_families()
+            family_ids = [family_index[record.id]] if record and record.id in family_index else []
+            if not family_ids and row["virtual"] and record is None:
+                # Generic purchased donors can be any compatible Alpha family.
+                family_ids = [family for family, members in families.items() if any(
+                    group_names & {_group_name(group) for group in member["egg_groups"]}
+                    and (not c["gender"] or c["gender"] in species_db.get_by_id(member["id"]).allowed_genders)
+                    for member in members
+                )]
+            for family in family_ids:
+                keys = ["alpha_" + sex, "alpha"] if sex else ["alpha"]
+                for key in keys:
+                    quote = self.snapshot.queries.get((family, key))
+                    if usable(quote):
+                        quotes.append(dict(price=quote.price, at=quote.at, source="头目2V行情"))
+                        break
+        elif len(indices) == 1:
+            for group in groups:
+                if group not in {0, 13} and not sex:
+                    continue
+                key = f"egg:{group}:iv_{STAT_KEYS[indices[0]]}" + (f":{sex}" if group not in {0, 13} else "")
+                quote = self.snapshot.queries.get((0, key))
+                if usable(quote):
+                    quotes.append(dict(price=quote.price, at=quote.at, source="蛋组1V行情"))
+        return min(quotes, key=lambda quote: quote["price"]) if quotes else None
+
+    def market_material(self, row):
+        key = row["key"]
+        if self.snapshot is not None and key not in self._material_lookup:
+            quote = self._market_material(row)
+            self._material_lookup[key] = quote
+            if quote is None:
+                self.auto_materials.pop(key, None)
+            else:
+                self.auto_materials[key] = quote
+        quote = self._material_lookup.get(key) if self.snapshot is not None else self.auto_materials.get(key)
+        if quote and (self.frozen or 0 <= time.time() - quote["at"] <= 86400):
+            return quote
+        return None
+
+    def reference(self, row):
+        quote = self.market_material(row)
+        return quote["price"] if quote else None
+
+    def material_quote(self, row):
+        if row["key"] in self.prices:
+            return self.prices[row["key"]], "手动估值"
+        quote = self.market_material(row)
+        return (quote["price"], quote["source"]) if quote else (None, "待报价")
 
     def gender_price(self, state):
         from species_data import get_species_database
@@ -198,9 +274,9 @@ class PriceBook:
             if state.action is None:
                 row = self.remember(state)
                 if row:
-                    price = self.prices.get(row["key"])
+                    price, source = self.material_quote(row)
                     add(CostLine(row["label"], "采购" if state.is_virtual else "库存", 1, price,
-                                 "手动估值" if price is not None else "待报价", row["key"]))
+                                 source, row["key"]))
                 return
             a, b = state.action.parent_a, state.action.parent_b
             children = [(a, b), (b, a)]
@@ -245,7 +321,7 @@ def cost_state_rank(state, target_gender=None, gender_strategy="smart"):
     if cached is None or cached[0] is not book:
         if state.action is None:
             row = book.remember(state)
-            price = book.prices.get(row["key"]) if row else None
+            price = book.material_quote(row)[0] if row else None
             missing, known = int(price is None), price or 0
         else:
             left = cost_state_rank(state.action.parent_a)
@@ -283,6 +359,8 @@ def cost_search(function):
                 snapshot["auto_everstone"] = book.auto_everstone if book.stone_quote()[0] is not None else None
                 snapshot["frozen"] = True
                 snapshot["prices"] = {k: v for k, v in book.prices.items() if k in used_keys}
+                auto_keys = {line.key for line in report.lines if line.key and line.unit_price is not None and line.key not in book.prices}
+                snapshot["auto_materials"] = {k: v for k, v in book.auto_materials.items() if k in auto_keys}
                 candidate.cost_pricing = snapshot
                 candidate.cost_materials = list(book.materials.values())
             return candidates, missing

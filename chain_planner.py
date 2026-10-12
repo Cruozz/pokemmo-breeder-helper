@@ -714,7 +714,7 @@ def _ordered_stat_pairs(bits: list[int]) -> tuple[tuple[int, int], ...]:
 
 
 def _normalize_strategy(value: str) -> str:
-    if str(value).strip().lower() in {"cost", "最省钱", "总消耗价值"}:
+    if str(value).strip().lower() in {"cost", "省钱规划", "最省钱", "总消耗价值"}:
         return "cost"
     return "steps" if str(value).strip().lower() in {"steps", "step", "步骤优先", "孵化次数优先"} else "inventory"
 
@@ -4450,7 +4450,7 @@ def find_chain_candidates(
             target_alpha, allow_ditto, all_leaf_states, need_hidden_ability,
             required_moves, egg_move_donors,
         )
-        priced = [state for state in alternatives if book.remember(state)["key"] in book.prices]
+        priced = [state for state in alternatives if book.material_quote(book.remember(state))[0] is not None]
         if priced:
             goals.extend(_structured_search(
                 all_leaf_states + priced, target_profile, target_mask, need_nature,

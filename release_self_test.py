@@ -360,8 +360,21 @@ def run_checks() -> dict[str, object]:
             if "总消耗价值" not in dialog.summary_var.get() or len(dialog.tabs.tabs()) != 3:
                 raise RuntimeError("Packaged cost interface failed")
             dialog.save()
+            if str(dialog.total_label.cget("foreground")) != "#1d4ed8" or dialog.total_var.get() != "26,000":
+                raise RuntimeError("Packaged cost amount emphasis failed")
             dialog.close()
-            checks["breeding_cost"] = {"total": 26000, "cash": 20000, "native_ui": True, "isolated_data": True}
+            from market_data import parse_snapshot
+            alpha_material = Monster(id="cost-alpha", species="美纳斯", gender="F", is_alpha=True,
+                                     ivs=[31, 1, 31, 1, 1, 1], nature="内敛", egg_groups=["水中1", "龙"])
+            fixture_at = datetime.now(timezone.utc).isoformat()
+            quote_book = PriceBook(snapshot=parse_snapshot(dict(items=[], pokemonQueries=[
+                dict(familyId=349, query="alpha", price=50000, at=fixture_at),
+                dict(familyId=0, query="egg:12:iv_hp:female", price=4000, at=fixture_at),
+            ])))
+            if quote_book.material_quote(material_record(alpha_material))[0] != 50000 or quote_book.material_quote(material_record(mother))[0] != 4000:
+                raise RuntimeError("Packaged automatic material valuation failed")
+            checks["breeding_cost"] = {"total": 26000, "cash": 20000, "native_ui": True,
+                                       "automatic_alpha_2v": True, "automatic_egg_1v": True, "isolated_data": True}
         finally:
             cost_root.destroy()
     return checks
