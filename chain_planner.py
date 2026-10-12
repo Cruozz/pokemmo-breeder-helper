@@ -2499,6 +2499,10 @@ def _virtual_materials(
     holder is added only when the user already owns a full target-IV breeder.
     """
     required_stats = [index for index, value in enumerate(target_ivs) if value is not None]
+    book = ACTIVE_BOOK.get()
+    purchase_limit = getattr(book, "purchase_max_v", None)
+    if purchase_tier is not None and purchase_limit is not None and purchase_tier > purchase_limit + sum(target_ivs[i] != 31 for i in required_stats):
+        return []
     target_mask = sum(1 << index for index in required_stats)
     copies = max(4, 2 ** max(0, len(required_stats) - 1))
     alpha_copies = max(2, 2 ** max(0, len(required_stats) - 4))
@@ -2530,6 +2534,8 @@ def _virtual_materials(
         role_suffix: str = "",
     ) -> None:
         nonlocal sequence
+        if purchase_limit is not None and max(2 if is_alpha else 0, sum(target_ivs[i] == 31 for i in stat_indices)) > purchase_limit:
+            return
         for _copy in range(copies if material_copies is None else material_copies):
             sequence += 1
             ivs: list[int | None] = [None] * 6
@@ -2807,8 +2813,9 @@ def _virtual_materials(
             book.remember(state)
         # Higher-IV purchases participate only when the user has supplied a
         # matching price. Keep their specifications available for price entry.
-        if purchase_tier is None and getattr(book, "optimizing", False):
-            for tier in range(3 if is_alpha else 2, len(required_stats) + 1):
+        bounded_steps = purchase_limit is not None and getattr(book, "planning_strategy", "") in {"steps", "inventory"}
+        if purchase_tier is None and (getattr(book, "optimizing", False) or bounded_steps):
+            for tier in range(3 if is_alpha else 2, min(len(required_stats), (purchase_limit or 6) + sum(target_ivs[i] != 31 for i in required_stats)) + 1):
                 prepared = _virtual_materials(
                     target_profile, target_ivs, need_nature, nature_label, is_alpha,
                     allow_ditto, existing_leaves, need_hidden_ability, target_moves,
@@ -2816,7 +2823,7 @@ def _virtual_materials(
                 )
                 for state in prepared:
                     row = book.remember(state)
-                    if row and row["key"] in book.prices:
+                    if row and (bounded_steps or row["key"] in book.prices):
                         # Base and tier-specific copies have independent IDs.
                         state.leaf.id = f"buy:tier{tier}:" + state.leaf.id[4:]
                         state.used_ids = frozenset({state.leaf.id})
@@ -3274,6 +3281,9 @@ def _nature_floor_parents(
     # Keep every group option: the first group may not overlap the saved body.
     groups = tuple(dict.fromkeys(lower_state.egg_groups)) or ("兼容",)
     for sequence, (mask, group) in enumerate(product(masks, groups), 1):
+        limit = getattr(ACTIVE_BOOK.get(), "purchase_max_v", None)
+        if limit is not None and max(2 if target_alpha else 0, mask.bit_count()) > limit:
+            continue
         ivs = [target_ivs[index] if mask & (1 << index) else None for index in range(6)]
         monster = Monster(
             id=f"buy:nature-floor:{sequence}:{group}:{regular_gender}:{mask}",
@@ -3381,11 +3391,16 @@ def find_chain_candidates(
     prefer_ditto: bool = False,
     convert_maternal_with_ditto: bool = False,
     preferred_material_ids: frozenset[str] = frozenset(),
+    max_purchase_v: int | None = None,
 ) -> tuple[list[ChainCandidate], list[str]]:
     strategy = _normalize_strategy(strategy)
     book = ACTIVE_BOOK.get()
     if book is not None:
         book.optimizing = strategy == "cost"
+        if max_purchase_v is not None and (type(max_purchase_v) is not int or not 1 <= max_purchase_v <= 6):
+            raise ValueError("补购最高 V 数须为 1 至 6。")
+        book.purchase_max_v = max_purchase_v
+        book.planning_strategy = strategy
     requested_species = species.strip()
     planning_species = offspring_species.strip() or requested_species
     species_key = normalize_text(planning_species)
@@ -3647,6 +3662,8 @@ def find_chain_candidates(
         shapes = list(combinations(required_stats, width)) if width else [()]
         result: list[ChainState] = []
         for sequence, shape in enumerate(shapes, 1):
+            if max_purchase_v is not None and max(floor, len(shape)) > max_purchase_v:
+                continue
             mask = sum(1 << stat for stat in shape)
             ivs = [target_ivs[index] if mask & (1 << index) else None for index in range(6)]
             monster = Monster(
@@ -3717,11 +3734,13 @@ def find_chain_candidates(
         and not actual_target_females
         and not actual_target_males
         and strategy == "steps"
+        and (max_purchase_v is None or max_purchase_v >= (2 if target_alpha else 1))
         and target_mask
     ):
         required_stats = [index for index in range(6) if target_mask & (1 << index)]
         useful_tier = max(2 if target_alpha else 1, len(required_stats) - 1)
         useful_tier = min(len(required_stats), useful_tier)
+        useful_tier = min(useful_tier, max_purchase_v) if max_purchase_v is not None else useful_tier
         female_material_species = target_profile.breeding_species_for_gender("F")
         for sequence, shape in enumerate(combinations(required_stats, useful_tier), 1):
             mask = sum(1 << stat for stat in shape)

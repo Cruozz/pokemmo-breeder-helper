@@ -7,10 +7,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import app  # Adds the bundled vendor directory before capture imports Pillow.
-from capture import WindowInfo, capture_window
+from capture import WindowInfo, capture_window, physical_coordinates
 
 
 class CaptureTests(unittest.TestCase):
+    def test_dpi_context_is_restored_even_when_capture_fails(self):
+        calls = []
+        def setter(value):
+            calls.append(value)
+            return 123
+        fake = SimpleNamespace(SetThreadDpiAwarenessContext=setter)
+        with patch("capture.user32", fake):
+            with self.assertRaises(OSError):
+                with physical_coordinates():
+                    self.assertIsInstance(calls[0], ctypes.c_void_p)
+                    raise OSError("capture failed")
+        self.assertEqual(calls[-1], 123)
+
     def test_capture_refreshes_window_bounds_each_frame(self) -> None:
         window = WindowInfo(123, "PokeMMO", 0, 0, 640, 480)
 

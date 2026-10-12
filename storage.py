@@ -312,16 +312,43 @@ def _migrate_legacy_json(connection: sqlite3.Connection) -> None:
 
 
 def load_inventory() -> list[Monster]:
+    from species_data import get_species_database
+    database = get_species_database()
     with closing(_connect()) as connection:
         rows = connection.execute("SELECT payload FROM inventory ORDER BY rowid").fetchall()
-    result: list[Monster] = []
-    for row in rows:
-        try:
-            value = json.loads(row["payload"])
-            if isinstance(value, dict):
-                result.append(Monster.from_dict(value))
-        except (json.JSONDecodeError, TypeError):
-            continue
+        result: list[Monster] = []
+        repairs = []
+        for row in rows:
+            try:
+                value = json.loads(row["payload"])
+                if not isinstance(value, dict):
+                    continue
+                monster = Monster.from_dict(value)
+                record = database.reviewed_ocr_record(monster.species)
+                if record and monster.species != record.display_name:
+                    repairs.append(dict(id=monster.id, at=_utc_now(), before=value, after=record.display_name, _payload=row["payload"]))
+                    monster.species = record.display_name
+                    monster.egg_groups = list(record.egg_groups)
+                result.append(monster)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if repairs:
+            connection.execute("BEGIN IMMEDIATE")
+            previous = connection.execute("SELECT value FROM metadata WHERE key='ocr_species_name_repairs'").fetchone()
+            history = json.loads(previous["value"]) if previous else []
+            written = []
+            for repair in repairs:
+                original_payload = repair.pop("_payload")
+                updated = dict(repair["before"])
+                updated["species"] = repair["after"]
+                updated["egg_groups"] = list(database.get(repair["after"]).egg_groups)
+                cursor = connection.execute("UPDATE inventory SET species=?, payload=? WHERE id=? AND payload=?",
+                                            (repair["after"], json.dumps(updated, ensure_ascii=False), repair["id"], original_payload))
+                if cursor.rowcount:
+                    written.append(repair)
+            connection.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES ('ocr_species_name_repairs',?)",
+                               (json.dumps(history+written, ensure_ascii=False),))
+            connection.commit()
     return result
 
 

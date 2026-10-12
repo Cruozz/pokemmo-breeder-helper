@@ -64,8 +64,9 @@ class CostDialog(tk.Toplevel):
         self.pending_var = tk.StringVar(self)
         amount_card = tk.Frame(detail, background="#eff6ff", highlightbackground="#bfdbfe", highlightthickness=1, padx=12, pady=8)
         amount_card.pack(fill="x", pady=(0, 10))
-        ttk.Label(amount_card, text="总消耗价格", background="#eff6ff", foreground="#1e3a8a",
-                  font=("Microsoft YaHei UI", 12)).pack(anchor="w")
+        self.amount_title = ttk.Label(amount_card, background="#eff6ff", foreground="#1e3a8a",
+                                     font=("Microsoft YaHei UI", 12))
+        self.amount_title.pack(anchor="w")
         self.total_label = ttk.Label(amount_card, textvariable=self.total_var, background="#eff6ff", foreground="#1d4ed8",
                                      font=("Microsoft YaHei UI", 22, "bold"), wraplength=900)
         self.total_label.pack(fill="x", pady=(2, 5))
@@ -108,6 +109,9 @@ class CostDialog(tk.Toplevel):
 
         fields = ttk.Frame(fees)
         fields.pack(fill="x")
+        self.include_inventory_var = tk.BooleanVar(self, self.book.include_inventory_value)
+        ttk.Checkbutton(fees, text="将库存素材估值计入成本", variable=self.include_inventory_var,
+                        command=self.change_cost_basis).pack(anchor="w", before=fields, pady=(0, 8))
         self.fee_vars = {}
         for i, (key, label, value) in enumerate((("brace", "护腕单价", self.book.brace),
                                                 ("everstone", "不变之石单价（留空使用行情）", self.book.everstone),
@@ -175,7 +179,7 @@ class CostDialog(tk.Toplevel):
         for key, row in self.book.materials.items():
             if query not in (row["label"] + row.get("location", "")).casefold():
                 continue
-            price, source = self.book.material_quote(row)
+            price, source = self.book.consumption_quote(row)
             if mode == "库存" and row["virtual"] or mode == "采购" and not row["virtual"] or mode == "待报价" and price is not None:
                 continue
             reference = self.book.reference(row)
@@ -252,6 +256,7 @@ class CostDialog(tk.Toplevel):
     def render_report(self):
         self.details_tree.delete(*self.details_tree.get_children())
         self.gender_tree.delete(*self.gender_tree.get_children())
+        self.amount_title.configure(text="总消耗价格" if self.book.include_inventory_value else "预计新增支出")
         if not self.candidates:
             self.summary_var.set("暂无路线")
             self.total_var.set("—")
@@ -261,6 +266,7 @@ class CostDialog(tk.Toplevel):
         index = self.candidate_combo.current()
         candidate = self.candidates[max(0, index)]
         report = candidate.cost_report() if self.active_snapshot and index <= 0 else self.book.report(candidate.root, candidate.working_gender or candidate.target_gender, candidate.gender_strategy)
+        self.amount_title.configure(text="总消耗价格" if report.includes_inventory_value else "预计新增支出")
         self.summary_var.set(report.summary())
         self.total_var.set(("已知 " if report.missing else "") + f"{report.total_known:,}")
         self.cash_var.set("还需支出 " + ("已知 " if report.cash_missing else "") + f"{report.cash_known:,}")
@@ -283,9 +289,16 @@ class CostDialog(tk.Toplevel):
                                                          f'本步费用 {step["fees"]:,}' + ("（待报价）" if step["fee_missing"] else "")))
 
     def apply_fees(self):
+        self.book.include_inventory_value = self.include_inventory_var.get()
         values = {key: amount(var.get(), optional=key == "everstone") for key, var in self.fee_vars.items()}
         for key, value in values.items():
             setattr(self.book, key, value)
+
+    def change_cost_basis(self):
+        self.book.include_inventory_value = self.include_inventory_var.get()
+        self.render_materials()
+        self.render_report()
+        self.status_var.set("成本口径已修改，保存后重新生成规划。")
 
     def save(self):
         try:

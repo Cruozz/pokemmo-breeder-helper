@@ -36,8 +36,9 @@ class PreviewZoomWindow:
 
         self.window = Toplevel(root)
         self.window.title("放大预览与 OCR 框选")
-        self.window.geometry("1000x720")
-        self.window.minsize(640, 460)
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        self.window.geometry(f"{min(1000, max(600, sw-60))}x{min(720, max(420, sh-100))}")
+        self.window.minsize(600, 420)
         self.window.transient(root)
         self.always_on_top_var = BooleanVar(self.window, value=False)
         self.status_var = StringVar(self.window)

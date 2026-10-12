@@ -94,6 +94,7 @@ class CostLine:
 class CostReport:
     lines: list[CostLine] = field(default_factory=list)
     steps: list[dict] = field(default_factory=list)
+    includes_inventory_value: bool = True
 
     @property
     def missing(self):
@@ -114,7 +115,8 @@ class CostReport:
     def summary(self):
         total = f"已知 {self.total_known:,}（待报价 {self.missing} 项）" if self.missing else f"{self.total_known:,}"
         cash = f"已知 {self.cash_known:,}（待报价 {self.cash_missing} 项）" if self.cash_missing else f"{self.cash_known:,}"
-        return f"总消耗价值 {total} · 还需支出 {cash}"
+        title = "总消耗价值" if self.includes_inventory_value else "孵蛋成本"
+        return f"{title} {total} · 还需支出 {cash}"
 
     def rank(self):
         # Incomplete totals are never compared as if their missing terms were free.
@@ -124,6 +126,8 @@ class CostReport:
 class PriceBook:
     def __init__(self, value=None, snapshot=None):
         value = value or {}
+        # Legacy candidate snapshots keep their original accounting basis.
+        self.include_inventory_value = value.get("include_inventory_value", True) is True
         self.brace = amount(value.get("brace", 10000))
         self.gender = amount(value.get("gender", 5000))
         self.everstone = amount(value.get("everstone"), optional=True)
@@ -151,7 +155,8 @@ class PriceBook:
             self.auto_everstone = {"price": usable[0].price, "at": usable[0].at} if len(usable) == 1 else None
 
     def to_dict(self, *, include_materials=True):
-        return dict(schema=1, brace=self.brace, gender=self.gender, everstone=self.everstone,
+        return dict(schema=1, include_inventory_value=self.include_inventory_value,
+                    brace=self.brace, gender=self.gender, everstone=self.everstone,
                     gender_overrides=dict(self.gender_overrides), prices=dict(self.prices),
                     auto_everstone=self.auto_everstone,
                     auto_materials=dict(self.auto_materials),
@@ -247,6 +252,11 @@ class PriceBook:
         quote = self.market_material(row)
         return (quote["price"], quote["source"]) if quote else (None, "待报价")
 
+    def consumption_quote(self, row):
+        if not row["virtual"] and not self.include_inventory_value:
+            return 0, "已有库存，不计新增支出"
+        return self.material_quote(row)
+
     def gender_price(self, state):
         identifier, genders, female_percent = _gender_metadata(state.output_species)
         if genders and genders != ("F", "M") and not state.gender_species:
@@ -261,7 +271,7 @@ class PriceBook:
 
     def report(self, root, target_gender="", gender_strategy="smart", *, estimated=False):
         from chain_planner import child_gender_policy
-        report = CostReport()
+        report = CostReport(includes_inventory_value=self.include_inventory_value)
         if not estimated and root.action is None and not root.is_virtual:
             return report
         quantities = {}
@@ -280,7 +290,7 @@ class PriceBook:
             if state.action is None:
                 row = self.remember(state)
                 if row:
-                    price, source = self.material_quote(row)
+                    price, source = self.consumption_quote(row)
                     add(CostLine(row["label"], "采购" if state.is_virtual else "库存", 1, price,
                                  source, row["key"]))
                 return
@@ -327,7 +337,7 @@ def cost_state_rank(state, target_gender=None, gender_strategy="smart"):
     if cached is None or cached[0] is not book:
         if state.action is None:
             row = book.remember(state)
-            price = book.material_quote(row)[0] if row else None
+            price = book.consumption_quote(row)[0] if row else None
             missing, known = int(price is None), price or 0
         else:
             left = cost_state_rank(state.action.parent_a)
@@ -379,9 +389,11 @@ def load_price_book(path):
     try:
         if path.stat().st_size > 8 * 1024 * 1024:
             raise ValueError("报价文件过大")
-        return PriceBook(json.loads(path.read_text(encoding="utf-8")))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value.setdefault("include_inventory_value", False)
+        return PriceBook(value)
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
-        return PriceBook()
+        return PriceBook({"include_inventory_value": False})
 
 
 def save_price_book(path, book):

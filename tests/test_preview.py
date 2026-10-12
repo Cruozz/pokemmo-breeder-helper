@@ -169,6 +169,8 @@ class EmbeddedPreviewTests(TestCase):
         a.roi = (0, 0, 320, 800)
         a.preview_roi_item = 1
         a.canvas = Mock()
+        a.canvas.canvasx.side_effect = lambda x: x
+        a.canvas.canvasy.side_effect = lambda y: y
         a.status_var = Value()
         a._update_detached_preview = Mock()
 
@@ -199,6 +201,15 @@ class EmbeddedPreviewTests(TestCase):
         a.finish_roi(SimpleNamespace(x=60, y=70))
         self.assertEqual(a.roi, (0, 0, 320, 800))
         a.draw_roi.assert_called_once()
+
+    def test_scrolled_embedded_selection_uses_source_coordinates(self):
+        a = self.app
+        a.canvas.canvasx.side_effect = lambda x: x+100
+        a.canvas.canvasy.side_effect = lambda y: y+200
+        a.draw_roi = Mock()
+        a.start_roi(SimpleNamespace(x=60, y=70))
+        a.finish_roi(SimpleNamespace(x=160, y=170))
+        self.assertEqual(a.roi, (300,500,500,700))
 
     def test_double_click_cancels_embedded_gesture(self):
         a = self.app

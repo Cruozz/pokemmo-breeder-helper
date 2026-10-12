@@ -3,11 +3,31 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 from PIL import ImageGrab
 
 
 user32 = ctypes.windll.user32
+
+
+@contextmanager
+def physical_coordinates():
+    """Read screen bounds in the same physical pixels returned by Pillow.
+
+    Scope awareness to this call; do not change Tk's process-wide DPI policy.
+    """
+    setter = getattr(user32, "SetThreadDpiAwarenessContext", None)
+    previous = None
+    if setter is not None:
+        setter.argtypes = [ctypes.c_void_p]
+        setter.restype = ctypes.c_void_p
+        previous = setter(ctypes.c_void_p(-4))
+    try:
+        yield
+    finally:
+        if previous:
+            setter(previous)
 
 
 @dataclass
@@ -55,11 +75,17 @@ def list_windows() -> list[WindowInfo]:
         windows.append(WindowInfo(int(hwnd), title, rect.left, rect.top, rect.right, rect.bottom))
         return True
 
-    user32.EnumWindows(enum_proc, 0)
+    with physical_coordinates():
+        user32.EnumWindows(enum_proc, 0)
     return windows
 
 
 def capture_window(window: WindowInfo):
+    with physical_coordinates():
+        return _capture_physical_window(window)
+
+
+def _capture_physical_window(window: WindowInfo):
     """Capture the visible client area of a selected window without sending input."""
     if not user32.IsWindow(window.hwnd):
         raise RuntimeError("选中的窗口已经关闭，请重新刷新窗口列表。")

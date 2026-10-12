@@ -3453,8 +3453,8 @@
     },
     {
       "path": "index.html",
-      "bytes": 2422,
-      "sha256": "c8d2e57dcca3b1eaf8591402dc48589e68f52bebad361bade8df80c58afcdc88"
+      "bytes": 2567,
+      "sha256": "fb790c568ae8e3ed7ab3ad032cffc31789837dfb1fe4e39a36d1904150881c1b"
     },
     {
       "path": "reader-data.js",
@@ -3468,8 +3468,8 @@
     },
     {
       "path": "reader.css",
-      "bytes": 4196,
-      "sha256": "86b20e791f7eab6e6e080d20b6878d459a3a997277644d61eab7c2cf650876ca"
+      "bytes": 5897,
+      "sha256": "8af84e095b8746ef01de2276de594dac567768f35bdf42a423e29d9a858789db"
     },
     {
       "path": "self-test.js",

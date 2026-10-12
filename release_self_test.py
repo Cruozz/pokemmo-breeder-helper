@@ -366,6 +366,28 @@ def run_checks() -> dict[str, object]:
             checks["planner_process"] = {"roundtrip": True, "total": 26000, "isolated_data": True}
         finally:
             job.release(cancel=True)
+        from breeding_cost import load_price_book
+        cash_book = load_price_book(Path(cost_directory) / "new-prices.json")
+        if cash_book.include_inventory_value:
+            raise RuntimeError("New pricing settings must exclude owned inventory")
+        cash_request = (*request[:-1], cash_book, 1)
+        job = PlannerJob(cash_request)
+        try:
+            deadline = time.monotonic() + 15
+            cash_result = job.poll()
+            while cash_result is None and time.monotonic() < deadline:
+                time.sleep(.02)
+                cash_result = job.poll()
+            if cash_result is None or cash_result[2] or cash_result[1][0].cost_report().total_known != 20000:
+                raise RuntimeError("Packaged cash-only planning or purchase limit IPC failed")
+            checks["cash_planning"] = {"total": 20000, "inventory_valued": False, "purchase_limit": 1}
+        finally:
+            job.release(cancel=True)
+        for name, identifier in (("催眠'超",96), ("扭拉冰恶",215), ("玛狂拉恶冰",461), ("蜈蛤王虫毒",545), ("娱王毒虫",545), ("玛拉冰恶",461)):
+            repaired, confident, _score = species.resolve_ocr_name(name)
+            if repaired is None or repaired.id != identifier or not confident:
+                raise RuntimeError("Packaged reviewed species OCR correction failed")
+        checks["reviewed_ocr_names"] = {"species": 4}
         cost_root = tk.Tk()
         cost_root.withdraw()
         try:

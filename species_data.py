@@ -53,6 +53,17 @@ GROUP_ALIASES = {
     "未发现": "未发现",
 }
 
+# Reviewed level-row OCR errors. Type badges can be joined to the species name.
+REVIEWED_OCR_NAMES = {
+    "蜈蚣王": (545, ("虫", "毒")), "蜈蛤王": (545, ("虫", "毒")),
+    "催眠貘": (96, ("超", "超能", "超能力")), "催眠超": (96, ("超", "超能", "超能力")),
+    "狃拉": (215, ("恶", "冰")), "扭拉": (215, ("恶", "冰")), "纽拉": (215, ("恶", "冰")),
+    "玛狃拉": (461, ("恶", "冰")), "玛扭拉": (461, ("恶", "冰")), "玛拉狃": (461, ("恶", "冰")),
+    "玛狂拉": (461, ("恶", "冰")), "玛狙拉": (461, ("恶", "冰")),
+}
+OCR_TYPE_WORDS = ("超能力", "超能", "格斗", "飞行", "地面", "岩石", "幽灵", "妖精", "一般", "普通", "超", "冰", "恶", "虫", "毒", "钢", "火", "水", "草", "电", "龙")
+CONTEXTUAL_OCR_NAMES = {"娱王": (545, ("毒", "虫")), "玛拉": (461, ("冰", "恶"))}
+
 # These babies require an incense to hatch in PokeMMO.  Without the incense,
 # breeding their evolution line yields the immediate evolved form instead.
 INCENSE_BABY_IDS = frozenset({298, 360, 406, 433, 438, 439, 440, 446, 458})
@@ -415,7 +426,40 @@ class SpeciesDatabase:
                 expanded.append(repaired)
 
         normalized = [normalize_name(candidate) for candidate in expanded]
+        for candidate in tuple(normalized):
+            stripped = candidate.rstrip("♀♂早")
+            for _ in range(3):
+                suffix = next((word for word in OCR_TYPE_WORDS if stripped.endswith(word)), None)
+                if suffix is None:
+                    break
+                stripped = stripped[:-len(suffix)]
+                if stripped:
+                    normalized.append(stripped)
         return tuple(dict.fromkeys(candidate for candidate in normalized if candidate))
+
+    def reviewed_ocr_record(self, value: str) -> SpeciesRecord | None:
+        """Only repair reviewed whole names and their expected type/gender suffixes."""
+        key = normalize_name(value)
+        # Missing glyphs are corrected only with the complete observed type
+        # pair. Bare two-character names are never promoted to a species.
+        for alias, (identifier, required_types) in CONTEXTUAL_OCR_NAMES.items():
+            if key.startswith(alias):
+                tail = key[len(alias):].rstrip("♀♂早")
+                if tail in {"".join(required_types), "".join(reversed(required_types))}:
+                    return self.get_by_id(identifier)
+        for alias in sorted(REVIEWED_OCR_NAMES, key=len, reverse=True):
+            if not key.startswith(alias):
+                continue
+            identifier, types = REVIEWED_OCR_NAMES[alias]
+            tail = key[len(alias):].rstrip("♀♂早")
+            while tail:
+                token = next((word for word in sorted(types, key=len, reverse=True) if tail.startswith(word)), None)
+                if token is None:
+                    break
+                tail = tail[len(token):]
+            if not tail:
+                return self.get_by_id(identifier)
+        return None
 
     def resolve_ocr_name(self, value: str, gender: str = "") -> tuple[SpeciesRecord | None, bool, float]:
         """Resolve one OCR name row and report whether the correction is safe.
@@ -432,6 +476,9 @@ class SpeciesDatabase:
             record = self.aliases.get(candidate)
             if record is not None:
                 return record, True, 1.0
+            reviewed = self.reviewed_ocr_record(candidate)
+            if reviewed is not None:
+                return reviewed, True, 1.0
             embedded = self.find_in_text(candidate)
             if embedded is not None:
                 return embedded, True, 1.0

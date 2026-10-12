@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.31"
+APP_VERSION = "0.2.32"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -141,8 +141,9 @@ class App:
                 self.root.iconphoto(True, self.app_icon_photo)
             except Exception:
                 self.app_icon_photo = None
-        self.root.geometry("880x920")
-        self.root.minsize(700, 600)
+        screen_w, screen_h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.root.geometry(f"{min(880, max(600, screen_w-60))}x{min(920, max(420, screen_h-100))}")
+        self.root.minsize(min(700, max(600, screen_w-60)), min(600, max(420, screen_h-100)))
         self.window_memory = WindowMemory(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.layout_orientation = ""
@@ -163,6 +164,7 @@ class App:
         self.current_image: Image.Image | None = None
         self.current_source = ""
         self.preview_scale = 1.0
+        self.preview_fit_mode = True
         self.preview_offset = (0, 0)
         self.roi: tuple[int, int, int, int] | None = None
         self.drag_start: tuple[int, int] | None = None
@@ -276,6 +278,7 @@ class App:
             value="关闭＝仅普通素材；开启＝普通与头目均可用，最终仍为普通。"
         )
         self.target_strategy_var = StringVar(value="省钱规划")
+        self.target_purchase_max_v_var = StringVar(value="自动（成品减2V）")
         self.target_intermediate_gender_strategy_var = StringVar(value="智能锁定")
         self.target_gender_strategy_hint_var = StringVar(
             value="母体锁母，直接辅助素材锁公；已有配偶或配对性别明确时按下一步需求锁定。"
@@ -400,7 +403,27 @@ class App:
 
         self.scan_controls_panel = ttk.Frame(self.root, style="Panel.TFrame", padding=(8, 7))
         self.scan_controls_panel.pack(fill=X, padx=12, pady=(0, 4))
-        self.build_scan_controls(self.scan_controls_panel)
+        self.scan_controls_canvas = Canvas(self.scan_controls_panel, width=1, height=180, highlightthickness=0,
+                                           background=UI_COLORS["surface"])
+        self.scan_controls_scrollbar = ttk.Scrollbar(self.scan_controls_panel, command=self.scan_controls_canvas.yview)
+        self.scan_controls_canvas.configure(yscrollcommand=self.scan_controls_scrollbar.set)
+        self.scan_controls_canvas.grid(row=0, column=0, sticky="nsew")
+        self.scan_controls_panel.columnconfigure(0, weight=1)
+        self.scan_controls_content = ttk.Frame(self.scan_controls_canvas, style="Panel.TFrame")
+        self.scan_controls_window = self.scan_controls_canvas.create_window(0, 0, window=self.scan_controls_content, anchor="nw")
+        self.build_scan_controls(self.scan_controls_content)
+        self.scan_controls_canvas.bind("<Configure>", self._resize_scan_controls_viewport)
+        self.scan_controls_content.bind("<Configure>", self._resize_scan_controls_viewport, add="+")
+        def scroll_controls(event):
+            self.scan_controls_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+            return "break"
+        def bind_scroll(widget):
+            if widget.winfo_class() not in {"TCombobox", "TEntry", "TSpinbox"}:
+                widget.bind("<MouseWheel>", scroll_controls, add="+")
+            for child in widget.winfo_children():
+                bind_scroll(child)
+        bind_scroll(self.scan_controls_content)
+        self.scan_controls_canvas.bind("<MouseWheel>", scroll_controls)
 
         self.main_pane = self._create_paned_window(
             self.root,
@@ -932,6 +955,7 @@ class App:
         self.layout_after_id = None
         width = max(1, self.root.winfo_width())
         height = max(1, self.root.winfo_height())
+        self._resize_scan_controls_viewport()
         desired = self._layout_for_width(width)
         density = "tight" if desired == "compact" and height < 780 else "normal"
         workspace_label = self.workspace_mode_var.get()
@@ -1058,14 +1082,39 @@ class App:
             return
 
     def _adjust_preview_height(self, amount: int) -> None:
-        """Keyboard/button alternative to dragging the wide-layout divider."""
-        if self.layout_orientation == "split":
-            try:
-                x, y = self.main_pane.sash_coord(0)
-                self.main_pane.sash_place(0, x + amount, y)
-            except Exception:
-                pass
-        self._schedule_preview_redraw()
+        if self.drag_start is not None:
+            return
+        self.preview_fit_mode = False
+        self.preview_scale = max(.05, min(8, self.preview_scale * (1.2 if amount > 0 else 1/1.2)))
+        self.draw_roi()
+
+    def _resize_scan_controls_viewport(self, _event=None):
+        if not hasattr(self, "scan_controls_canvas"):
+            return
+        canvas = self.scan_controls_canvas
+        width = max(1, canvas.winfo_width())
+        canvas.itemconfigure(self.scan_controls_window, width=width)
+        wanted = max(1, self.scan_controls_content.winfo_reqheight())
+        navigation = self.workspace_nav_rows[0].master.winfo_reqheight()
+        available = max(96, self.root.winfo_height()-navigation-self.scan_status_frame.winfo_reqheight()-280)
+        height = min(wanted, available)
+        if int(canvas.cget("height")) != height:
+            canvas.configure(height=height)
+        canvas.configure(scrollregion=(0,0,width,wanted))
+        if wanted > available:
+            self.scan_controls_scrollbar.grid(row=0, column=1, sticky="ns")
+        else:
+            self.scan_controls_scrollbar.grid_remove()
+            canvas.yview_moveto(0)
+
+    def fit_preview(self, *, actual_size=False):
+        if self.drag_start is not None:
+            return
+        self.preview_fit_mode = not actual_size
+        self.preview_scale = 1.0
+        self.canvas.xview_moveto(0)
+        self.canvas.yview_moveto(0)
+        self.draw_roi()
 
     @staticmethod
     def _layout_for_width(width: int) -> str:
@@ -1373,31 +1422,44 @@ class App:
         preview_area.pack(fill=BOTH, expand=True)
 
         preview_header = ttk.Frame(preview_area)
-        ttk.Label(preview_header, text="实时预览 · 双击或弹出后放大框选", style="Field.TLabel").pack(side=LEFT)
+        ttk.Label(preview_header, text="实时预览", style="Field.TLabel").grid(row=0, column=0, sticky="w")
+        preview_header.columnconfigure(0, weight=1)
         ttk.Button(
             preview_header,
             text="弹出预览",
             style="Compact.TButton",
             command=self.open_preview_zoom,
-        ).pack(side=RIGHT, padx=(6, 0))
+        ).grid(row=0, column=1, sticky="e")
+        zoom_controls = ttk.Frame(preview_header)
+        zoom_controls.grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        ttk.Button(zoom_controls, text="适合窗口", style="Compact.TButton", command=self.fit_preview).pack(side=LEFT)
+        ttk.Button(zoom_controls, text="1:1", style="Compact.TButton", command=lambda: self.fit_preview(actual_size=True)).pack(side=LEFT, padx=4)
         ttk.Button(
-            preview_header,
+            zoom_controls,
             text="+",
             width=3,
             style="Compact.TButton",
             command=lambda: self._adjust_preview_height(60),
-        ).pack(side=RIGHT, padx=(2, 0))
+        ).pack(side=LEFT, padx=(2, 0))
         ttk.Button(
-            preview_header,
+            zoom_controls,
             text="−",
             width=3,
             style="Compact.TButton",
             command=lambda: self._adjust_preview_height(-60),
-        ).pack(side=RIGHT)
+        ).pack(side=LEFT)
         preview = ttk.LabelFrame(preview_area, labelwidget=preview_header, padding=6)
         preview.pack(fill=BOTH, expand=True)
-        self.canvas = Canvas(preview, background=UI_COLORS["preview"], highlightthickness=0)
-        self.canvas.pack(fill=BOTH, expand=True)
+        self.canvas = Canvas(preview, width=220, height=180, background=UI_COLORS["preview"], highlightthickness=0)
+        xbar = ttk.Scrollbar(preview, orient="horizontal", command=self.canvas.xview)
+        ybar = ttk.Scrollbar(preview, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(xscrollcommand=xbar.set, yscrollcommand=ybar.set)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        ybar.grid(row=0, column=1, sticky="ns")
+        xbar.grid(row=1, column=0, sticky="ew")
+        preview.rowconfigure(0, weight=1)
+        preview.columnconfigure(0, weight=1)
+        self.canvas.bind("<MouseWheel>", lambda e: (self.canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"), "break")[1])
         self.canvas.bind("<ButtonPress-1>", self.start_roi)
         self.canvas.bind("<B1-Motion>", self.drag_roi)
         self.canvas.bind("<ButtonRelease-1>", self.finish_roi)
@@ -2161,7 +2223,12 @@ class App:
         ttk.Label(cost_bar, text="计算策略", style="Field.TLabel").pack(side=LEFT, padx=(12, 6))
         ttk.Combobox(cost_bar, textvariable=self.target_strategy_var,
                      values=("库存优先", "步骤优先", "省钱规划"), state="readonly", width=10).pack(side=LEFT)
-        ttk.Label(cost_bar, text="填完估值后重新生成路线", style="Muted.TLabel").pack(side=LEFT, padx=10)
+        purchasing = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 4))
+        purchasing.pack(fill=X, pady=(0, 6))
+        ttk.Label(purchasing, text="补购最高 V 数", style="Field.TLabel").pack(side=LEFT)
+        ttk.Combobox(purchasing, textvariable=self.target_purchase_max_v_var,
+                     values=("自动（成品减2V）", "1V", "2V", "3V", "4V", "5V", "6V"),
+                     state="readonly", width=19).pack(side=LEFT, padx=8)
         self.next_step_gender_frame = ttk.Frame(parent, style="Toolbar.TFrame", padding=(8, 5))
         ttk.Label(self.next_step_gender_frame, text="下一步性别", style="Field.TLabel").pack(side=LEFT)
         self.next_step_gender_combo = ttk.Combobox(
@@ -2476,7 +2543,7 @@ class App:
             var.set("X" if iv is None else str(iv))
         self.target_intermediate_gender_strategy_var.set({"smart": "智能锁定", "minimal": "尽量不锁"}.get(plan.gender_strategy, "全程锁定"))
         for name, value in plan.planning_options.items():
-            if name in {"target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var"}:
+            if name in {"target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var", "target_purchase_max_v_var"}:
                 if name == "target_strategy_var" and value == "最省钱":
                     value = "省钱规划"
                 getattr(self, name).set(value)
@@ -4299,6 +4366,10 @@ class App:
         self.set_image(image.convert("RGB"), "剪贴板")
 
     def set_image(self, image: Image.Image, source: str) -> None:
+        self.preview_fit_mode = True
+        if hasattr(self, "canvas"):
+            self.canvas.xview_moveto(0)
+            self.canvas.yview_moveto(0)
         # A draft belongs to one source; never apply it to another screenshot.
         preview = getattr(self, "preview_zoom_window", None)
         if preview is not None:
@@ -4345,7 +4416,8 @@ class App:
             return
         max_width = max(1, self.canvas.winfo_width() - 8)
         max_height = max(1, self.canvas.winfo_height() - 8)
-        self.preview_scale = min(1.0, max_width / self.current_image.width, max_height / self.current_image.height)
+        if getattr(self, "preview_fit_mode", True):
+            self.preview_scale = min(1.0, max_width / self.current_image.width, max_height / self.current_image.height)
         render_size = (
             max(1, round(self.current_image.width * self.preview_scale)),
             max(1, round(self.current_image.height * self.preview_scale)),
@@ -4359,6 +4431,7 @@ class App:
             render_size = self.preview_render_size
             self.preview_scale = min(render_size[0] / self.current_image.width, render_size[1] / self.current_image.height)
         self.preview_render_size = render_size
+        self.canvas.configure(scrollregion=(0, 0, max(max_width+8, render_size[0]+8), max(max_height+8, render_size[1]+8)))
         render_key = (id(self.current_image), render_size)
         if self.preview_render_key == render_key and self.preview_photo is not None and self.preview_image_item is not None:
             x = max(4, (self.canvas.winfo_width() - render_size[0]) // 2)
@@ -4474,7 +4547,7 @@ class App:
     def start_roi(self, event) -> None:
         if self.current_image is None:
             return
-        point = image_point((event.x, event.y), self.preview_offset,
+        point = image_point((self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)), self.preview_offset,
                             self.preview_render_size, self.current_image.size)
         if not (0 <= point[0] <= self.current_image.width and 0 <= point[1] <= self.current_image.height):
             return
@@ -4482,7 +4555,7 @@ class App:
         self.drag_start = point
 
     def _main_drag_roi(self, event):
-        end = image_point((event.x, event.y), self.preview_offset,
+        end = image_point((self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)), self.preview_offset,
                           self.preview_render_size, self.drag_image_size)
         return normalized_roi(self.drag_start, end, self.drag_image_size)
 
@@ -5204,6 +5277,7 @@ class App:
             "target_lock_gender_var": False, "target_allow_ditto_var": False,
             "target_convert_mother_with_ditto_var": False, "target_allow_alpha_materials_var": False,
             "target_strategy_var": "省钱规划", "target_intermediate_gender_strategy_var": "智能锁定",
+            "target_purchase_max_v_var": "自动（成品减2V）",
             "next_step_gender_var": "自动", "next_step_gender_hint_var": "", "target_iv_var": "x/x/x/x/x/x",
             "target_groups_var": "待选择", "target_info_var": "", "target_egg_moves_var": "不需要遗传技能",
         }
@@ -5266,6 +5340,13 @@ class App:
     def _current_cost_book(self):
         cached = load_market_cache(self.cost_price_path.with_name("market_cache.json"))
         return PriceBook(self.cost_book.to_dict(), cached[0] if cached else self.cost_book.snapshot)
+
+    def _purchase_v_limit(self):
+        selected = self.target_purchase_max_v_var.get()
+        if selected.endswith("V") and selected[:-1].isdigit():
+            return int(selected[:-1])
+        count = sum(variable.get().strip() == "31" for variable in self.target_iv_vars)
+        return max(2 if self.target_alpha_var.get() == "头目" else 1, count-2)
 
     def cancel_plan_calculation(self):
         if getattr(self, "plan_job", None) is not None:
@@ -5387,10 +5468,11 @@ class App:
             bool(self.target_convert_mother_with_ditto_var.get()),
             frozenset(self.auto_replan_preferred_material_ids),
             self._current_cost_book(),
+            self._purchase_v_limit(),
         )
         self._set_planner_busy(True)
         self.pending_plan_options = {name: getattr(self, name).get() for name in (
-            "target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var")}
+            "target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var", "target_purchase_max_v_var")}
         self.plan_status_var.set(
             f"正在从 {sum(item.verified and item.id not in excluded_snapshot for item in snapshot)} 条可用已确认库存中"
             f"按{self.target_strategy_var.get()}搜索最佳路线"

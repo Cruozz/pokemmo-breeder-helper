@@ -616,6 +616,11 @@ class OCRProcessor:
             elif "♂" in level_text or "雄性" in level_text:
                 gender = "M"
 
+        from species_data import get_species_database
+        resolved, confident, _score = get_species_database().resolve_ocr_name(species, gender)
+        if resolved and confident:
+            species = resolved.display_name
+
         relevant: list[OCRItem] = []
         for item in ([species_item] if species_item else []) + iv_items:
             if item is not None and item not in relevant:

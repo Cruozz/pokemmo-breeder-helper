@@ -7,10 +7,28 @@ import unittest
 from unittest.mock import patch
 
 from app import App
-from window_memory import WindowMemory, visible_state
+from window_memory import WindowMemory, visible_state, _logical_workarea
 
 
 class WindowMemoryTests(unittest.TestCase):
+    def test_tall_remembered_window_leaves_room_for_titlebar(self):
+        saved = dict(width=800,height=920,x=20,y=0,maximized=False)
+        adjusted = visible_state(saved, [(0,0,1536,832)])
+        self.assertEqual(adjusted["height"], 792)
+
+    def test_workarea_converts_physical_coordinates_for_scaled_tk_window(self):
+        import ctypes
+        from ctypes import wintypes
+        from types import SimpleNamespace
+        def convert(_handle, pointer):
+            point = ctypes.cast(pointer, ctypes.POINTER(wintypes.POINT)).contents
+            point.x = round(point.x * .8)
+            point.y = round(point.y * .8)
+            return True
+        fake = SimpleNamespace(PhysicalToLogicalPointForPerMonitorDPI=convert)
+        root = SimpleNamespace(winfo_id=lambda: 42)
+        self.assertEqual(_logical_workarea(root, fake, (0,0,1920,1040)), (0,0,1536,832))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.environment = patch.dict(os.environ, {"LOCALAPPDATA": self.directory.name})

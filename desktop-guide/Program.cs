@@ -39,7 +39,7 @@ namespace BreederParallelGuide
     internal sealed class GuideWindow : Form
     {
         private const string Host = "breeder-parallel-guide.local";
-        private const string Home = "https://" + Host + "/index.html";
+        private const string Home = "https://" + Host + "/index.html?embedded=1";
         private readonly Dictionary<string, string> options;
         private readonly WebView2 view = new WebView2 { Dock = DockStyle.Fill };
         private readonly Label loading = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "正在打开攻略…" };
@@ -231,6 +231,9 @@ namespace BreederParallelGuide
                 string result = await view.CoreWebView2.ExecuteScriptAsync(script);
                 var record = Program.Json.Deserialize<Dictionary<string, object>>(result);
                 if (!(bool)record["ok"]) throw new InvalidOperationException(result);
+                string integrated = await view.CoreWebView2.ExecuteScriptAsync("document.documentElement.classList.contains('breeder-embedded') && getComputedStyle(document.querySelector('.brand')).display === 'none'");
+                if (integrated != "true") throw new InvalidOperationException("攻略内置样式未生效。");
+                record["integrated_style"] = true;
                 // Reload exercises the actual disk-backed progress profile.
                 reloadWaiter = new TaskCompletionSource<bool>();
                 await view.CoreWebView2.ExecuteScriptAsync("location.reload()");
