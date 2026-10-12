@@ -1,6 +1,6 @@
 {
   "edition": "reader",
-  "date": "2026-10-11",
+  "date": "2026-10-12",
   "source": "https://github.com/Cruozz/pokemmo-parallel-five-guide",
   "draft_sha256": "5e795a9334ff4bddb6803f7b6eca9665dd129d1900077ea0ae0ec34020a07b6c",
   "phases": 26,
@@ -3458,8 +3458,8 @@
     },
     {
       "path": "reader-data.js",
-      "bytes": 420588,
-      "sha256": "717fb8f719a57d7400666bc89070da1dea3df0eaed2f083abfffaaed55e1c8ff"
+      "bytes": 420475,
+      "sha256": "b6783d0d5773e2ce2ab832ae3976d13305d9c75669a10895d1b3ef8827bb3853"
     },
     {
       "path": "reader-progress.js",
