@@ -10,9 +10,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+_APP_IMPORT_STARTED = time.perf_counter()
+
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.30"
+APP_VERSION = "0.2.31"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -62,6 +64,11 @@ PLAN_ITEM_ASSET_KEYS = {
 if VENDOR_DIR.exists():
     sys.path.insert(0, str(VENDOR_DIR))
 
+if __name__ == "__main__" and "--plan-worker" in sys.argv:
+    from planner_worker import run_worker
+    worker_index = sys.argv.index("--plan-worker")
+    raise SystemExit(run_worker(sys.argv[worker_index + 1], sys.argv[worker_index + 2]))
+
 from tkinter import END, BOTH, LEFT, RIGHT, X, Y, BooleanVar, Canvas, Listbox, PanedWindow, StringVar, Toplevel, filedialog, messagebox
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -92,6 +99,7 @@ from nature_data import (
 )
 from ocr_engine import OCRProcessor
 from planner import make_report_with_candidates
+from planner_worker import PlannerJob
 from breeding_cost import PriceBook, load_price_book
 from cost_views import CostDialog
 from market_data import load_cache as load_market_cache
@@ -196,6 +204,7 @@ class App:
         self.nature_picker_window: Toplevel | None = None
         self.proposed_plan: ExecutionPlan | None = None
         self.plan_worker_busy = False
+        self.plan_job = None
         self.plan_result_queue: queue.Queue = queue.Queue()
         self.plan_request_id = 0
         self.plan_excluded_ids: set[str] = set()
@@ -309,7 +318,7 @@ class App:
             self._restore_plan_target(self.active_plan)
         self.status_var.trace_add("write", self._update_status_appearance)
         self.plan_status_var.trace_add("write", self._update_plan_status_appearance)
-        self.refresh_windows()
+        self.root.after(50, self.refresh_windows)
         self.refresh_inventory_tree()
         self.refresh_plan_status()
         self._update_status_appearance()
@@ -324,13 +333,18 @@ class App:
         self.root.after_idle(self._apply_responsive_layout)
 
     def close(self) -> None:
+        self.window_memory._remember()
+        self.root.withdraw()
+        if getattr(self, "plan_job", None) is not None:
+            self.plan_job.release(cancel=True)
+            self.plan_job = None
         try:
             self.window_memory.save()
         except OSError:
             pass
         finally:
             if getattr(self, "parallel_workspace", None) is not None:
-                self.parallel_workspace.shutdown()
+                self.parallel_workspace.shutdown(wait=False)
             self.root.destroy()
 
     def build_ui(self) -> None:
@@ -2035,14 +2049,6 @@ class App:
             text="优先使用库存百变怪",
             variable=self.target_allow_ditto_var,
         ).grid(row=0, column=3, sticky="w", padx=(0, 12), pady=3)
-        ttk.Label(rules, text="计算策略", style="Field.TLabel").grid(row=0, column=4, sticky="e", padx=(0, 4), pady=3)
-        ttk.Combobox(
-            rules,
-            textvariable=self.target_strategy_var,
-            values=("库存优先", "步骤优先", "省钱规划"),
-            state="readonly",
-            width=10,
-        ).grid(row=0, column=5, sticky="w", pady=3)
         self.target_allow_alpha_materials_check = ttk.Checkbutton(
             rules,
             text="普通目标允许使用头目素材",
@@ -2117,6 +2123,7 @@ class App:
         actions.pack(fill=X, pady=8)
         self.generate_plan_button = ttk.Button(actions, text="生成规划方案", style="Primary.TButton", command=self.generate_plan)
         self.generate_plan_button.pack(side=LEFT, padx=(0, 6))
+        self.cancel_plan_button = ttk.Button(actions, text="取消计算", command=self.cancel_plan_calculation)
         self.activate_plan_button = ttk.Button(actions, text="启用最佳方案", style="Teal.TButton", command=self.activate_best_plan)
         self.activate_plan_button.pack(side=LEFT, padx=(0, 6))
         self.complete_step_button = ttk.Button(actions, text="完成下一步并核销父母", style="Teal.TButton", command=self.complete_next_step)
@@ -2347,11 +2354,15 @@ class App:
         if not hasattr(self, "generate_plan_button"):
             return
         if busy:
+            if hasattr(self, "cancel_plan_button"):
+                self.cancel_plan_button.pack(side=LEFT, padx=(0, 6), after=self.generate_plan_button)
             self.generate_plan_button.configure(state="disabled", text="正在计算…")
             self.plan_progress.pack(side=RIGHT, padx=(8, 2))
             self.plan_progress.start(12)
             self._update_plan_action_states()
         else:
+            if hasattr(self, "cancel_plan_button"):
+                self.cancel_plan_button.pack_forget()
             self.plan_progress.stop()
             self.plan_progress.pack_forget()
             self.generate_plan_button.configure(text="生成规划方案")
@@ -5216,6 +5227,9 @@ class App:
         self._on_intermediate_gender_strategy_changed()
 
     def _clear_plan_state(self, *, reset_targets: bool) -> None:
+        if getattr(self, "plan_job", None) is not None:
+            self.plan_job.release(cancel=True)
+            self.plan_job = None
         # A worker may finish after clearing (or after a new request starts).
         # Its queue and callback belong to the discarded request only.
         self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
@@ -5252,6 +5266,18 @@ class App:
     def _current_cost_book(self):
         cached = load_market_cache(self.cost_price_path.with_name("market_cache.json"))
         return PriceBook(self.cost_book.to_dict(), cached[0] if cached else self.cost_book.snapshot)
+
+    def cancel_plan_calculation(self):
+        if getattr(self, "plan_job", None) is not None:
+            self.plan_job.release(cancel=True)
+            self.plan_job = None
+        self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
+        self._set_planner_busy(False)
+        self.auto_activate_replan_pending = False
+        self.auto_replan_reason = ""
+        self.auto_replan_progress_keys.clear()
+        self.auto_replan_preferred_material_ids.clear()
+        self.plan_status_var.set("计算已取消。")
 
     def open_cost_dialog(self) -> None:
         if self.cost_dialog is not None and self.cost_dialog.winfo_exists():
@@ -5373,27 +5399,36 @@ class App:
 
         self.plan_request_id = getattr(self, "plan_request_id", 0) + 1
         request_id = self.plan_request_id
-        result_queue = self.plan_result_queue = queue.Queue()
+        self.plan_result_queue = queue.Queue()
 
-        def worker() -> None:
-            try:
-                report, candidates = make_report_with_candidates(*request)
-                result_queue.put((report, candidates, ""))
-            except Exception as exc:
-                result_queue.put(("", [], str(exc)))
-
-        threading.Thread(target=worker, name="breed-planner", daemon=True).start()
+        try:
+            self.plan_job = PlannerJob(request)
+        except Exception as exc:
+            self._set_planner_busy(False)
+            self.plan_status_var.set(f"规划启动失败：{exc}")
+            return
         self.root.after(100, lambda: self._poll_plan_result(request_id))
 
     def _poll_plan_result(self, request_id: int | None = None) -> None:
         if request_id is not None and request_id != self.plan_request_id:
             return
+        job = getattr(self, "plan_job", None)
         try:
-            report, candidates, error = self.plan_result_queue.get_nowait()
+            result = job.poll() if job else self.plan_result_queue.get_nowait()
+            if result is None:
+                raise queue.Empty
+            report, candidates, error = result
         except queue.Empty:
             if self.plan_worker_busy:
+                if job:
+                    self.plan_status_var.set(f"正在计算规划 · 已耗时 {int(time.monotonic()-job.started_at)} 秒")
                 self.root.after(100, lambda: self._poll_plan_result(request_id))
             return
+        except Exception as exc:
+            report, candidates, error = "", [], f"规划结果读取失败：{exc}"
+        if job:
+            job.release()
+            self.plan_job = None
         if error:
             self.auto_activate_replan_pending = False
             self.auto_replan_reason = ""
@@ -6451,6 +6486,14 @@ class App:
 
 def main() -> None:
     import tkinter as tk
+
+    if "--startup-probe" in sys.argv:
+        import argparse
+        from startup_probe import run_probe
+        parser = argparse.ArgumentParser(description="Isolated startup timing")
+        parser.add_argument("--startup-probe", required=True, metavar="REPORT_JSON")
+        args = parser.parse_args()
+        raise SystemExit(run_probe(args.startup_probe, _APP_IMPORT_STARTED, APP_VERSION))
 
     if "--self-test" in sys.argv:
         import argparse

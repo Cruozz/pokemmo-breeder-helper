@@ -351,6 +351,21 @@ def run_checks() -> dict[str, object]:
         )
         if not cost_candidates or cost_candidates[0].cost_report().total_known != 26000:
             raise RuntimeError("Packaged breeding cost accounting failed")
+        from planner_worker import PlannerJob
+        request = ([mother, father], "鲤鱼王", "", "", "31/31/x/x/x/x", ["水中2", "龙"],
+                   False, False, "cost", "late", False, frozenset(), "smart", False, (), False, frozenset(), book)
+        job = PlannerJob(request)
+        try:
+            deadline = time.monotonic() + 15
+            result = job.poll()
+            while result is None and time.monotonic() < deadline:
+                time.sleep(.02)
+                result = job.poll()
+            if result is None or result[2] or not result[1] or result[1][0].cost_report().total_known != 26000:
+                raise RuntimeError("Packaged independent planner process failed")
+            checks["planner_process"] = {"roundtrip": True, "total": 26000, "isolated_data": True}
+        finally:
+            job.release(cancel=True)
         cost_root = tk.Tk()
         cost_root.withdraw()
         try:

@@ -69,7 +69,7 @@ class TargetResetUITests(unittest.TestCase):
             for child in widget.winfo_children():
                 visit(child)
         visit(self.root)
-        self.assertEqual(found, [("库存优先", "步骤优先", "省钱规划")] * 2)
+        self.assertEqual(found, [("库存优先", "步骤优先", "省钱规划")])
 
 
 if __name__ == "__main__":

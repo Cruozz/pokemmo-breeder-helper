@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import uuid
+import threading
 from tkinter import ttk
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -172,30 +173,50 @@ class ParallelGuideWorkspace(ttk.Frame):
                 pass
             self.status_path = None
 
-    def shutdown(self):
+    def shutdown(self, *, wait=True):
         if self.poll_id is not None:
             self.after_cancel(self.poll_id)
             self.poll_id = None
-        if self.process is not None and self.process.poll() is None:
+        process, status_path = self.process, self.status_path
+        self.process = None
+        self.status_path = None
+        if process is not None and process.poll() is None:
             # Ask only our own host to close normally so WebView2 flushes its profile.
             try:
-                status = json.loads(self.status_path.read_text(encoding="utf-8-sig")) if self.status_path else {}
+                status = json.loads(status_path.read_text(encoding="utf-8-sig")) if status_path else {}
                 handle = int(status.get("hwnd", 0))
                 if handle:
                     user32 = ctypes.WinDLL("user32", use_last_error=True)
                     owner = ctypes.c_ulong()
                     user32.GetWindowThreadProcessId(ctypes.c_void_p(handle), ctypes.byref(owner))
-                    if owner.value == self.process.pid:
+                    if owner.value == process.pid:
                         user32.PostMessageW(ctypes.c_void_p(handle), 0x0010, 0, 0)
-                self.process.wait(timeout=2)
-            except (OSError, ValueError, subprocess.TimeoutExpired):
-                self.process.terminate()
+            except (OSError, ValueError):
+                pass
+        def reap():
+            if process is not None and process.poll() is None:
                 try:
-                    self.process.wait(timeout=2)
+                    process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
-                    self.process.kill()
-            self.process = None
-        self._remove_status()
+                    try:
+                        process.terminate()
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                        except OSError:
+                            pass
+                    except OSError:
+                        pass
+            if status_path:
+                try:
+                    status_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        if wait:
+            reap()
+        else:
+            threading.Thread(target=reap, name="guide-close", daemon=True).start()
 
     def _on_destroy(self, event):
         if event.widget is self:

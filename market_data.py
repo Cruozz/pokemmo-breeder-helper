@@ -341,7 +341,7 @@ class MarketClient:
 
     def _get(self, query=None):
         url = API_URL + ('?' + urlencode(query) if query else '')
-        request = Request(url, headers={'User-Agent': 'PokeMMO-Breeder-Helper/0.2.30',
+        request = Request(url, headers={'User-Agent': 'PokeMMO-Breeder-Helper/0.2.31',
                                         'Accept': 'application/json', 'Accept-Encoding': 'identity'})
         try:
             with self.opener.open(request, timeout=18) as response:

@@ -81,7 +81,7 @@ class ChainState:
 
     @property
     def output_species(self) -> str:
-        return dict(self.gender_species).get(self.gender, self.species)
+        return dict(self.gender_species).get(self.gender, self.species) if self.gender_species else self.species
 
     @property
     def item_cost(self) -> int:
@@ -713,6 +713,7 @@ def _ordered_stat_pairs(bits: list[int]) -> tuple[tuple[int, int], ...]:
     return tuple(dict.fromkeys(preferred + remaining))
 
 
+@lru_cache(maxsize=32)
 def _normalize_strategy(value: str) -> str:
     if str(value).strip().lower() in {"cost", "省钱规划", "最省钱", "总消耗价值"}:
         return "cost"
@@ -1179,6 +1180,15 @@ def _structured_search(
     profile_map[(target_profile.species_key, _group_key(target_profile.egg_groups))] = target_profile
     profiles = list(profile_map.values())
     ditto_leaves = [state for state in leaves if is_ditto(state.species)]
+    leaf_index: dict[tuple[object, ...], list[ChainState]] = {}
+    seed_masks: dict[tuple[object, ...], set[int]] = {}
+    for state in leaves:
+        if is_ditto(state.species) or state.effective_material_v != state.mask.bit_count():
+            continue
+        identity = (normalize_text(state.species), _group_key(state.egg_groups))
+        leaf_index.setdefault((*identity, state.gender, state.mask), []).append(state)
+        if state.gender == "F" or ditto_leaves:
+            seed_masks.setdefault(identity, set()).add(state.mask)
     memo: dict[tuple[object, ...], list[ChainState]] = {}
     visiting: set[tuple[object, ...]] = set()
     mate_memo: dict[tuple[SpeciesProfile, int, bool], list[ChainState]] = {}
@@ -1228,13 +1238,8 @@ def _structured_search(
     def leaf_candidates(profile: SpeciesProfile, gender: str, required_mask: int, require_nature: bool) -> list[ChainState]:
         return [
             state
-            for state in leaves
-            if not is_ditto(state.species)
-            and normalize_text(state.species) == profile.species_key
-            and _group_key(state.egg_groups) == _group_key(profile.egg_groups)
-            and state.gender == gender
-            and _fits_exact_subproblem(state, required_mask)
-            and (not require_nature or state.has_nature)
+            for state in leaf_index.get((profile.species_key, _group_key(profile.egg_groups), gender, required_mask), ())
+            if not require_nature or state.has_nature
         ]
 
     @lru_cache(maxsize=None)
@@ -1370,6 +1375,14 @@ def _structured_search(
         if key in memo:
             return memo[key]
         base = leaf_candidates(profile, gender, required_mask, require_nature)
+        # Every generated branch must start with a same-line maternal seed
+        # (or a same-line parent converted with Ditto). Exact subproblems never
+        # discard a seed's perfect IVs. If none fits inside the requested mask,
+        # recursion cannot produce a child; direct donor leaves still survive.
+        masks = seed_masks.get((profile.species_key, _group_key(profile.egg_groups)), ())
+        if not any(mask & ~required_mask == 0 for mask in masks):
+            memo[key] = trim(base, required_mask, require_nature)
+            return memo[key]
         if key in visiting:
             return trim(base, required_mask, require_nature)
         visiting.add(key)

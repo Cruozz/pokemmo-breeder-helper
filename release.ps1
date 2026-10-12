@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $MyInvocation.MyCommand.Path
 $releaseRoot = Join-Path $project 'release'
-$buildScript = Join-Path $project 'build.ps1'
+$buildScript = Join-Path $project 'scripts/build-cached-exe.ps1'
 $exeName = 'Pokemmo孵蛋助手.exe'
 $appSource = Get-Content -LiteralPath (Join-Path $project 'app.py') -Raw -Encoding UTF8
 $sourceVersionMatch = [regex]::Match($appSource, '(?m)^APP_VERSION = "([^"\r\n]+)"')
@@ -34,7 +34,7 @@ $canonicalExePath = Join-Path $releaseRoot $exeName
 
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $versionRoot | Out-Null
-$buildArgs = @{ OneFile = $true; OutputDirectory = $versionRoot }
+$buildArgs = @{ Version = $normalizedVersion; OutputDirectory = $versionRoot }
 if ($Python) { $buildArgs.Python = $Python }
 & $buildScript @buildArgs
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exePath)) {

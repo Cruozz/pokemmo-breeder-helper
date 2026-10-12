@@ -31,6 +31,13 @@ def _market_families():
     return catalog["families"], index
 
 
+@lru_cache(maxsize=4096)
+def _gender_metadata(species):
+    from species_data import get_species_database
+    record = get_species_database().get(species, fuzzy=True)
+    return (record.id, record.allowed_genders, record.female_percent) if record else (species, (), None)
+
+
 def amount(value, *, optional=False):
     if optional and (value is None or value == ""):
         return None
@@ -241,15 +248,14 @@ class PriceBook:
         return (quote["price"], quote["source"]) if quote else (None, "待报价")
 
     def gender_price(self, state):
-        from species_data import get_species_database
-        record = get_species_database().get(state.output_species, fuzzy=True)
-        if record and record.allowed_genders != ("F", "M") and not state.gender_species:
+        identifier, genders, female_percent = _gender_metadata(state.output_species)
+        if genders and genders != ("F", "M") and not state.gender_species:
             return 0, "固定性别，无指定费用"
-        key = f"{record.id if record else state.output_species}:{state.gender}"
+        key = f"{identifier}:{state.gender}"
         # Skewed-ratio fees must be filled in explicitly, rather than guessed.
         if key in self.gender_overrides:
             return self.gender_overrides[key], "特殊费用设置"
-        if record and record.female_percent is not None and record.female_percent not in {0, 50, 100}:
+        if female_percent is not None and female_percent not in {0, 50, 100}:
             return None, "特殊性别比例：待填写"
         return self.gender, "默认指定性别费"
 

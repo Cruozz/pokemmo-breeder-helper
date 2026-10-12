@@ -33,6 +33,18 @@ def reset_fixture():
 
 
 class PlanningResetTests(unittest.TestCase):
+    def test_cancel_invalidates_late_result_and_preserves_current_route(self):
+        app = reset_fixture()
+        job = app.plan_job = Mock()
+        plan = app.active_plan
+        app.cancel_plan_calculation()
+        job.release.assert_called_once_with(cancel=True)
+        self.assertIsNone(app.plan_job)
+        self.assertEqual(app.plan_request_id, 8)
+        self.assertIs(app.active_plan, plan)
+        app._poll_plan_result(7)
+        app.root.after.assert_not_called()
+
     def test_abandon_partial_plan_clears_saved_route_but_keeps_real_inventory_and_history(self):
         with tempfile.TemporaryDirectory() as directory, patch("storage.data_dir", return_value=Path(directory)):
             app = reset_fixture()
