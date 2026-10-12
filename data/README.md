@@ -33,3 +33,4 @@ Additional bundled files:
 The generated JSON metadata records each source workbook name, modified time
 and SHA-256 digest. No PokeMMO process, client file, log or network traffic is
 used to produce any of these files.
+`market_catalog.json.gz`：2026-10-12 采集的市场名称与分类资料，包含 2969 个道具和 649 个宝可梦的族群／蛋组／分级信息。仅包含查询用元数据，不内置固定市场价格；文件内保留公开来源与原文件 SHA-256。可使用 `scripts/build_market_catalog.py --input-dir <下载资料目录>` 重建。

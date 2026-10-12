@@ -107,6 +107,7 @@ class LiveWorkspace(ttk.Frame):
         self.alpha_page = ttk.Frame(self.tabs, padding=12)
         self.cave_page = ttk.Frame(self.tabs, padding=12)
         self.market_page = ttk.Frame(self.tabs)
+        self.market_workspace = None
         self.tabs.add(self.alpha_page, text="当前头目")
         self.tabs.add(self.cave_page, text="变化洞窟")
         self.tabs.add(self.market_page, text="市场行情")
@@ -160,6 +161,11 @@ class LiveWorkspace(ttk.Frame):
 
     def _tab_changed(self, _event=None):
         kind = self.current_kind()
+        if kind is None and self.market_workspace is None:
+            from market_views import MarketWorkspace
+            self.market_workspace = MarketWorkspace(self.market_page, autostart=self.network_enabled,
+                                                     cache_path=self.cache_path.with_name('market_cache.json'))
+            self.market_workspace.pack(fill="both", expand=True)
         for control in (self.refresh_button, self.interval_combo, self.auto_check, self.fixed_hint):
             control.pack_forget()
         if kind is not None:

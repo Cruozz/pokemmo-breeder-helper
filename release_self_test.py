@@ -126,14 +126,36 @@ def run_checks() -> dict[str, object]:
                 raise RuntimeError("Packaged live information failed to render")
             if not live.alpha_portrait.photo or len(live.cave_slots["singles"]) != 5:
                 raise RuntimeError("Packaged live portraits or encounter slots are missing")
-            if live.market_page.winfo_children():
-                raise RuntimeError("Packaged market placeholder should be empty")
+            live.tabs.select(live.market_page)
+            live._tab_changed()
+            from market_data import parse_snapshot, HistoryPoint
+            market = live.market_workspace
+            fixture_time = datetime.now(timezone.utc).isoformat()
+            market.apply_snapshot(parse_snapshot({
+                "items": [{"itemId": 5229, "price": 6000, "quantity": 5, "listings": 3, "at": fixture_time}],
+                "pokemonQueries": [{"familyId": 92, "query": "any", "price": 1200, "quantity": 10,
+                                    "listings": 10, "at": fixture_time}],
+                "updatedAt": fixture_time, "sourceUpdatedAt": fixture_time,
+            }))
+            if [market.tabs.tab(tab, "text") for tab in market.tabs.tabs()] != ["道具市场", "宝可梦市场"]:
+                raise RuntimeError("Packaged native market tabs are missing")
+            item_values = market.pages["items"].tree.item("item:5229", "values")
+            if item_values[0] != "不变之石" or item_values[2] != "6,000":
+                raise RuntimeError("Packaged market catalogue or quotes did not render")
+            market.show_history((HistoryPoint(now - 3600, 5000, 2), HistoryPoint(now, 6000, 3)))
+            market.chart_kind.set("K线")
+            market.redraw_chart()
+            if not market.chart.find_all() or len(market.pages["pokemon"].rows) != 1:
+                raise RuntimeError("Packaged native market history or Pokemon list did not render")
+            checks["native_market"] = {"items": len(market.catalog["items"]), "species": len(market.catalog["monsters"]),
+                                       "tabs": ["items", "pokemon"], "line_and_candles": True,
+                                       "offline_fixture": True, "isolated_cache": True}
             live.auto_var.set(False)
             if live.automatic_kinds(live.cave_due_at, time.monotonic()) != ["cave"]:
                 raise RuntimeError("Packaged cave schedule depends on Alpha auto-refresh")
             checks["live_information"] = {"pages": ["alpha", "cave", "market"], "offline_fixture": True,
                                            "isolated_cache": True, "default_interval_seconds": live.interval,
-                                           "cave_schedule_beijing": [2, 8, 14, 20], "market_empty": True}
+                                           "cave_schedule_beijing": [2, 8, 14, 20], "market_native": True}
             live.destroy()
     finally:
         root.destroy()

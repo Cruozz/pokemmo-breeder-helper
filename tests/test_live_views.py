@@ -185,7 +185,7 @@ class LiveViewTests(unittest.TestCase):
             self.assertNotIn("自动重试", page.feeds["cave"].error)
             self.assertEqual(page.automatic_kinds(due + 21601 + 60, time.monotonic() + 60), [])
 
-    def test_manual_refresh_only_current_tab_and_market_is_blank(self):
+    def test_manual_refresh_only_current_feed_and_market_has_native_tabs(self):
         page = self.page()
         page.tabs.select(page.cave_page)
         self.root.update()
@@ -198,7 +198,11 @@ class LiveViewTests(unittest.TestCase):
         page.active_kinds.clear()
         page.tabs.select(page.market_page)
         self.root.update()
-        self.assertEqual(page.market_page.winfo_children(), [])
+        self.assertIsNotNone(page.market_workspace)
+        self.assertEqual([page.market_workspace.tabs.tab(tab, "text") for tab in page.market_workspace.tabs.tabs()],
+                         ["道具市场", "宝可梦市场"])
+        self.assertFalse(page.market_workspace.network_enabled)
+        self.assertEqual(page.market_workspace.cache_path.parent, self.cache.parent)
         self.assertEqual(page.refresh_button.winfo_manager(), "")
         with patch("live_views.threading.Thread") as worker:
             page.refresh(manual=True)
