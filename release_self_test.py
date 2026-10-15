@@ -184,6 +184,34 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Packaged execution route colors failed")
     checks["route_colors"] = "candidate and execution roles agree"
 
+    from route_view import BreedingRouteView, held_item
+    from app import UI_COLORS
+    text_root = tk.Tk()
+    text_root.attributes("-alpha", 0)
+    try:
+        view = BreedingRouteView(text_root, colors=UI_COLORS, font_family="Microsoft YaHei",
+                                 on_step_activate=lambda _number: None)
+        view.pack(fill="both", expand=True)
+        text_root.geometry("620x600")
+        view.set_root(route)
+        view.set_mode("text")
+        text_root.update()
+        view.text._draw()
+        if len(view.text.steps) != len(plan.steps) or not view.text.canvas.find_withtag("text-sprite"):
+            raise RuntimeError("Packaged text route or Pokemon sprites failed")
+        node = view.text.steps[0].node
+        if node.species_name != plan.steps[0].child.species or [held_item(parent) for parent in node.children] != [
+            plan.steps[0].item_a or "无需道具", plan.steps[0].item_b or "无需道具"
+        ]:
+            raise RuntimeError("Packaged text route parent items or species names failed")
+        view.set_mode("map")
+        if view.map.node_count != 3:
+            raise RuntimeError("Packaged route presentation switch failed")
+        checks["route_presentations"] = {"modes": ["map", "text"], "sprites": True,
+                                          "parent_items": True, "original_step_numbers": True}
+    finally:
+        text_root.destroy()
+
     from chain_planner import ChainState, SpeciesProfile, _forced_child
     parent = ChainState("伊布", "M", ("陆上",), 7, False, "", False, frozenset({"male"}), 0, 0, 0, 0)
     ditto = ChainState("百变怪", "N", (), 3, False, "", False, frozenset({"ditto"}), 0, 0, 0, 0)

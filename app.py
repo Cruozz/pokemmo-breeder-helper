@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.32"
+APP_VERSION = "0.2.33"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -79,7 +79,8 @@ from capture import WindowInfo, capture_window, list_windows
 from chain_planner import ChainCandidate, ChainState, gender_name, is_ditto
 from execution import ExecutionPlan, ExecutionStep, build_execution_plan
 from execution_view import execution_map, step_display_gender
-from mind_map import BreedingMindMap, MindMapNode
+from mind_map import MindMapNode
+from route_view import BreedingRouteView
 from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
 from inventory_order import inventory_in_display_order, sorted_inventory_ids
@@ -176,7 +177,7 @@ class App:
         self.preview_render_key: tuple[int, tuple[int, int]] | None = None
         self.preview_zoom_window: PreviewZoomWindow | None = None
         self.plan_map_window: Toplevel | None = None
-        self.detached_plan_map: BreedingMindMap | None = None
+        self.detached_plan_map: BreedingRouteView | None = None
         self.planner_details_collapsed = False
         self.selected_plan_step_number: int | None = None
         self.auto_activate_replan_pending = False
@@ -2301,7 +2302,7 @@ class App:
         )
         self.clear_plan_exclusions_button.pack(side=RIGHT, padx=(8, 0))
 
-        self.plan_map = BreedingMindMap(
+        self.plan_map = BreedingRouteView(
             parent,
             colors=UI_COLORS,
             font_family=self.ui_font[0],
@@ -2371,7 +2372,7 @@ class App:
                 pass
         window = self._new_child_window()
         self.plan_map_window = window
-        window.title("孵蛋路线思维导图")
+        window.title("孵蛋路线")
         window.geometry("1400x900")
         window.minsize(820, 560)
         if self.app_icon_photo is not None:
@@ -2379,7 +2380,7 @@ class App:
                 window.iconphoto(True, self.app_icon_photo)
             except Exception:
                 pass
-        detached = BreedingMindMap(
+        detached = BreedingRouteView(
             window,
             colors=UI_COLORS,
             font_family=self.ui_font[0],
@@ -2391,7 +2392,9 @@ class App:
         )
         self.detached_plan_map = detached
         detached.pack(fill=BOTH, expand=True, padx=8, pady=8)
-        detached.set_root(self.plan_map.root_node, "暂无可执行路线｜请先在主窗口生成规划")
+        detached.set_root(self.plan_map.root_node, "暂无可执行路线｜请先在主窗口生成规划",
+                          text_root=self.plan_map.text_root)
+        detached.set_mode(self.plan_map.mode.get())
 
         def close_window() -> None:
             self.detached_plan_map = None
@@ -5653,6 +5656,7 @@ class App:
             title = f"已保留{material_v}性格手（未爆性格） · {monster.species}"
         return MindMapNode(
             key=f"{map_key_prefix}-nature-history-{monster.id}",
+            species_name=monster.species,
             gender=monster.gender,
             title=title,
             iv_text=material_v,
@@ -5717,6 +5721,7 @@ class App:
             )
             staged_branch = MindMapNode(
                 key=f"{map_key_prefix}-nature-preview-{upper_level}",
+                species_name=upper.species,
                 title=f"性格手目标 · {upper_level}V {candidate.target_nature}",
                 route_role="nature",
                 route_moves=tuple(sorted((set(upper.moves) | set(current_root.route_moves)) & set(candidate.target_moves))),
@@ -5753,6 +5758,7 @@ class App:
         )
         return MindMapNode(
             key=f"{map_key_prefix}-nature-preview-target",
+            species_name=candidate.target_species or offspring,
             route_role="maternal",
             route_moves=tuple(sorted(set(candidate.target_moves))),
             title=(
@@ -6001,6 +6007,7 @@ class App:
                     feature_bits.append("技能 " + "、".join(inherited))
                 return MindMapNode(
                     key=f"{map_key_prefix}-leaf-{id(state)}",
+                    species_name=monster.species,
                     title=monster.species,
                     gender=monster.gender,
                     route_role=route_roles.get(id(state), "iv"),
@@ -6122,6 +6129,7 @@ class App:
 
             node = MindMapNode(
                 key=f"{map_key_prefix}-step-{step_number}",
+                species_name=output_species,
                 gender=step_display_gender(step) if step else state.gender,
                 title=("遗传技能导入 · " + title) if introduced else title,
                 iv_text=f"{state_v(state)}V",
@@ -6181,12 +6189,17 @@ class App:
         root: MindMapNode | None,
         empty_message: str = "暂无可显示的路线",
     ) -> None:
-        self.plan_map.set_root(root, empty_message)
+        text_root = root
+        if root is not None and self.active_plan is not None and self.plan_view_mode == "active":
+            # Text mode keeps every real step, including sources folded in the map.
+            plan = self.active_plan
+            text_root = execution_map(plan, self.inventory, {(plan.id, step.number) for step in plan.steps}, self.species_db)
+        self.plan_map.set_root(root, empty_message, text_root=text_root)
         detached = self.detached_plan_map
         if detached is not None:
             try:
                 if detached.winfo_exists():
-                    detached.set_root(root, empty_message)
+                    detached.set_root(root, empty_message, text_root=text_root)
             except Exception:
                 self.detached_plan_map = None
                 self.plan_map_window = None

@@ -73,6 +73,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             else "爆性格：待确认" if plan.should_check_nature(step) else "性格：暂不统计")
         node = MindMapNode(
             key=f"{plan.id}-step-{step.number}", step_number=step.number,
+            species_name=child.species,
             title=f"{'已完成' if step.completed else '步骤 ' + str(step.number)} · {child.species}",
             gender=step_display_gender(step),
             iv_text=f"{sum(v == 31 for v in child.ivs)}V", iv_values=values(child),
@@ -99,6 +100,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             historical = step.completed
             node.children.append(MindMapNode(
                 key=f"{plan.id}-parent-{step.number}-{pid}",
+                species_name=monster.species if monster else label,
                 title=monster.species if monster else label,
                 gender=monster.gender if monster else "",
                 iv_text=f"{sum(v == 31 for v in monster.ivs)}V" if monster else "",
