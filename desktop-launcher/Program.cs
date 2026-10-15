@@ -22,21 +22,32 @@ internal static class Program
     static string CacheRoot;
     static string Runtime;
     static string Core;
+    static string SelectionPath;
+    static string[] CacheCandidates;
+    static string Operation = "检查运行组件";
 
     [STAThread]
     static int Main(string[] args)
     {
         try
         {
-            CacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                                     "PokeMMO-Breeder-Helper", "runtime");
-            Runtime = Path.Combine(CacheRoot, "V__VERSION__-" + PayloadHash.Substring(0, 16));
-            Core = Path.Combine(Runtime, "PokeMMO-Breeder-Helper.exe");
-            if (!Ready())
+            CacheCandidates = new string[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PokeMMO-Breeder-Helper", "runtime"),
+                Path.Combine(Path.GetTempPath(), "PokeMMO-Breeder-Helper", "runtime")
+            };
+            bool prepared = false;
+            foreach (string root in CacheCandidates)
             {
+                SetCacheRoot(root);
+                if (SelectPreparedRuntime()) { prepared = true; break; }
+            }
+            if (!prepared)
+            {
+                SetCacheRoot(CacheCandidates[0]);
                 if (args.Length == 0) PrepareWithProgress();
                 else Prepare(null, CancellationToken.None);
             }
+            Operation = "启动核心程序";
             ProcessStartInfo info = new ProcessStartInfo(Core);
             info.Arguments = String.Join(" ", Array.ConvertAll(args, Quote));
             info.UseShellExecute = false;
@@ -51,7 +62,11 @@ internal static class Program
         {
             if (error is OperationCanceledException) return 0;
             // Diagnostic invocations stay silent; normal launches show an actionable error.
-            if (args.Length == 0) MessageBox.Show("启动失败：" + error.Message, "Pokemmo孵蛋助手", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            string log = WriteFailureLog(error);
+            if (args.Length == 0) MessageBox.Show("启动失败：" + Operation + "。\n\n" + error.Message
+                + "\n\n请将 ZIP 完整解压后运行；若仍失败，请把此提示和启动日志发给作者。"
+                + (log.Length > 0 ? "\n启动日志：" + log : ""),
+                "Pokemmo孵蛋助手", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }
@@ -65,9 +80,68 @@ internal static class Program
 
     static bool Ready()
     {
-        string marker = Path.Combine(Runtime, "prepared.sha256");
-        return File.Exists(Core) && File.Exists(marker) && File.ReadAllText(marker).Trim() == PayloadHash
-               && HashFile(Core) == CoreHash;
+        try {
+            string marker = Path.Combine(Runtime, "prepared.sha256");
+            return File.Exists(Core) && File.Exists(marker) && File.ReadAllText(marker).Trim() == PayloadHash
+                   && HashFile(Core) == CoreHash;
+        } catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; }
+    }
+
+    static void SetCacheRoot(string root)
+    {
+        CacheRoot = Path.GetFullPath(root);
+        Runtime = Path.Combine(CacheRoot, "V__VERSION__-" + PayloadHash.Substring(0, 16));
+        Core = Path.Combine(Runtime, "PokeMMO-Breeder-Helper.exe");
+        SelectionPath = Path.Combine(CacheRoot, "ready-V__VERSION__-" + PayloadHash.Substring(0, 16) + ".txt");
+    }
+
+    static bool SelectPreparedRuntime()
+    {
+        if (Ready()) return true;
+        try {
+            if (!File.Exists(SelectionPath) || new FileInfo(SelectionPath).Length > 256) return false;
+            string name = File.ReadAllText(SelectionPath).Trim();
+            string prefix = "V__VERSION__-" + PayloadHash.Substring(0, 16) + "-";
+            if (!name.StartsWith(prefix, StringComparison.Ordinal) || name != Path.GetFileName(name)) return false;
+            string candidate = Path.GetFullPath(Path.Combine(CacheRoot, name));
+            CheckCachePath(candidate);
+            Runtime = candidate;
+            Core = Path.Combine(Runtime, "PokeMMO-Breeder-Helper.exe");
+            return Ready();
+        } catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; }
+          catch (ArgumentException) { return false; }
+    }
+
+    static string CreateStageDirectory()
+    {
+        Exception last = null;
+        foreach (string root in CacheCandidates)
+        {
+            try {
+                SetCacheRoot(root);
+                Directory.CreateDirectory(CacheRoot);
+                string path = Path.Combine(CacheRoot, "V__VERSION__-" + PayloadHash.Substring(0, 16) + "-" + Guid.NewGuid().ToString("N").Substring(0, 12));
+                CheckCachePath(path);
+                Directory.CreateDirectory(path);
+                return path;
+            } catch (IOException error) { last = error; } catch (UnauthorizedAccessException error) { last = error; }
+        }
+        throw new IOException("无法创建运行组件目录，请检查当前用户的文件夹写入权限。", last);
+    }
+
+    static string WriteFailureLog(Exception error)
+    {
+        foreach (string root in CacheCandidates ?? new string[] { Path.GetTempPath() })
+        {
+            try {
+                Directory.CreateDirectory(root);
+                string path = Path.Combine(root, "startup.log");
+                File.AppendAllText(path, DateTime.Now.ToString("O") + "\n阶段：" + Operation
+                    + "\n运行目录：" + Runtime + "\n" + error.ToString() + "\n\n", Encoding.UTF8);
+                return path;
+            } catch (IOException) {} catch (UnauthorizedAccessException) {}
+        }
+        return "";
     }
 
     static void PrepareWithProgress()
@@ -129,7 +203,6 @@ internal static class Program
 
     static void Prepare(Action<int> progress, CancellationToken cancellation)
     {
-        Directory.CreateDirectory(CacheRoot);
         using (Mutex mutex = new Mutex(false, "Local\\PokemmoRuntime-" + PayloadHash.Substring(0, 24)))
         {
             bool acquired = false;
@@ -145,9 +218,11 @@ internal static class Program
                 }
                 if (!acquired) throw new IOException("运行组件正在准备，请稍后重新打开。");
                 cancellation.ThrowIfCancellationRequested();
-                if (Ready()) return;
-                stage = Path.Combine(CacheRoot, ".prepare-" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(stage);
+                if (SelectPreparedRuntime()) return;
+                Operation = "创建运行组件目录";
+                stage = CreateStageDirectory();
+                if (SelectPreparedRuntime()) return;
+                Operation = "写入内置运行组件";
                 string archivePath = Path.Combine(stage, "payload.zip");
                 using (Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream("RuntimePayload"))
                 using (FileStream archive = File.Create(archivePath))
@@ -155,7 +230,9 @@ internal static class Program
                     if (resource == null) throw new IOException("运行组件缺失，请重新下载软件。");
                     resource.CopyTo(archive);
                 }
+                Operation = "校验运行组件";
                 if (HashFile(archivePath) != PayloadHash) throw new IOException("程序数据校验失败，请重新下载软件。");
+                Operation = "解压运行组件";
                 using (ZipArchive archive = ZipFile.OpenRead(archivePath))
                 {
                     long total = 0, written = 0;
@@ -182,16 +259,16 @@ internal static class Program
                 File.WriteAllText(Path.Combine(stage, "prepared.sha256"), PayloadHash);
                 cancellation.ThrowIfCancellationRequested();
                 CheckCachePath(stage);
-                CheckCachePath(Runtime);
-                if (Directory.Exists(Runtime))
-                {
-                    // Retain a broken cache for diagnosis; never overwrite an in-use directory.
-                    string previous = Runtime + ".old-" + Guid.NewGuid().ToString("N");
-                    CheckCachePath(previous);
-                    Directory.Move(Runtime, previous);
-                }
-                Directory.Move(stage, Runtime);
+                // A scanner/Explorer handle without delete sharing can deny
+                // Directory.Move after successful extraction. Keep this fully
+                // verified directory in place and publish only its relative
+                // name. A partial pointer is rejected by the next hash check.
+                Operation = "记录已准备的运行目录";
+                Runtime = stage;
+                Core = stagedCore;
                 stage = null;
+                try { File.WriteAllText(SelectionPath, Path.GetFileName(Runtime), Encoding.UTF8); }
+                catch (IOException) {} catch (UnauthorizedAccessException) {}
             }
             finally
             {

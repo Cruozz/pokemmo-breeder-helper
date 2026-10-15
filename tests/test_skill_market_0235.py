@@ -19,7 +19,9 @@ import test_skill_spine_0234 as spine
 
 
 def market(rows=(), *, age=0):
-    at = datetime.now(timezone.utc) - timedelta(seconds=age)
+    # datetime timestamps and time.time() can round the same Windows clock
+    # tick differently. A fixture must be in the past, not a fraction ahead.
+    at = datetime.now(timezone.utc) - timedelta(seconds=age + 1)
     return parse_snapshot(dict(items=[], updatedAt=at.isoformat(), pokemonQueries=[
         dict(familyId=family, query=query, price=price, quantity=quantity, listings=quantity, at=at.isoformat())
         for family, query, price, quantity in rows
