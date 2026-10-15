@@ -209,6 +209,38 @@ def run_checks() -> dict[str, object]:
             raise RuntimeError("Packaged route presentation switch failed")
         checks["route_presentations"] = {"modes": ["map", "text"], "sprites": True,
                                           "parent_items": True, "original_step_numbers": True}
+
+        def alpha_material(identifier, name, gender, stats, moves=(), nature="认真"):
+            return Monster(id=identifier, species=name, gender=gender, nature=nature,
+                           ivs=[31 if index in stats else 1 for index in range(6)],
+                           is_alpha=True, has_hidden_ability=True, moves=list(moves))
+        skill_stock = [alpha_material("skill-zorua", "索罗亚", "M", (2, 4)),
+                       alpha_material("skill-ditto", "百变怪", "N", (0, 2)),
+                       alpha_material("skill-vulpix", "六尾", "M", (0, 2, 3)),
+                       alpha_material("skill-stunky", "臭鼬噗", "M", (0, 2, 3, 5), ("临别礼物",))]
+        skill_report, skill_candidates = make_report_with_candidates(
+            skill_stock, "索罗亚", "", "胆小", "31/x/31/31/31/31", [],
+            target_alpha=True, allow_ditto=False, convert_maternal_with_ditto=True,
+            need_hidden_ability=True, target_moves=["神通力", "临别礼物"], nature_strategy="late", max_purchase_v=2,
+        )
+        if not skill_candidates or (skill_candidates[0].root.purchases, skill_candidates[0].root.breeds) != (0, 3):
+            raise RuntimeError("Packaged gradual skill/maternal conversion planner failed: " + skill_report)
+        from execution import ExecutionPlan
+        skill_plan = ExecutionPlan.from_dict(build_execution_plan(skill_candidates[0]).to_dict())
+        if [skill_plan.should_check_nature(step) for step in skill_plan.steps] != [False, False, True]:
+            raise RuntimeError("Packaged full-IV maternal nature checkpoint failed")
+        if not skill_plan.steps[1].preparations or set(skill_plan.steps[-1].child.moves) != {"神通力", "临别礼物"}:
+            raise RuntimeError("Packaged skill preparation/continuity failed")
+        from execution_view import execution_map
+        view.set_root(execution_map(skill_plan, skill_stock, set(), species))
+        view.set_mode("text")
+        view.text._yview("moveto", .5)
+        text_root.update()
+        if not view.text.canvas.find_withtag("text-skill"):
+            raise RuntimeError("Packaged text route lost skill/preparation labels")
+        checks["gradual_egg_moves"] = {"species": "索罗亚", "moves": ["神通力", "临别礼物"],
+                                      "breeds": 3, "purchases": 0, "maternal_conversion": True,
+                                      "explicit_learning": True, "maternal_nature_checkpoint": 5}
     finally:
         text_root.destroy()
 

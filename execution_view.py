@@ -59,7 +59,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
     def values(monster):
         return tuple("X" if v is None else str(v) for v in monster.ivs)
 
-    def build(step, edge_item="", path=frozenset()):
+    def build(step, edge_item="", path=frozenset(), prepared=()):
         if step.child.id in path:
             raise ValueError("执行路线存在循环依赖")
         path = path | {step.child.id}
@@ -74,15 +74,17 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
         node = MindMapNode(
             key=f"{plan.id}-step-{step.number}", step_number=step.number,
             species_name=child.species,
+            preparation_text=tuple(f"{item['species']} · {item['move']}：{item['method']}" for item in prepared),
             title=f"{'已完成' if step.completed else '步骤 ' + str(step.number)} · {child.species}",
             gender=step_display_gender(step),
             iv_text=f"{sum(v == 31 for v in child.ivs)}V", iv_values=values(child),
             detail=(f"实际{gender_name(child.gender)}" if step.completed else step.gender_instruction)
-                + f" · 子代 {child.species}" + (f" · {child.notes}" if child.notes else ""),
+                + f" · 子代 {child.species}" + (f" · {child.notes}" if child.notes else "")
+                + "".join(f"\n配种前：{item['species']} · {item['move']} · {item['method']}" for item in prepared),
             item_text=f"本只携带：{edge_item or '无需道具'}", item_keys=(ITEM_KEYS[edge_item],) if edge_item in ITEM_KEYS else (),
             status_text=status, nature_text=nature,
             route_role=route_roles.get(child.id, "iv"),
-            route_moves=tuple(sorted(set(child.moves) & set(target_moves))),
+            route_moves=tuple(sorted((set(child.moves) | {item['move'] for item in prepared}) & set(target_moves))),
             kind="completed" if step.completed else "in_progress" if step.in_progress else "current" if ready else "pending",
             completed=step.completed, in_progress=step.in_progress, actionable=ready, show_checkbox=True,
             history_toggleable=step.completed, sources_collapsed=step.completed and not opened, species_id=sprite(child.species),
@@ -91,8 +93,9 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             return node
         for pid, label, item in ((step.parent_a_id, step.parent_a_label, step.item_a),
                                  (step.parent_b_id, step.parent_b_label, step.item_b)):
+            preparations = [value for value in step.preparations if value.get("parent_id") == pid]
             if pid in producers:
-                node.children.append(build(producers[pid], item, path))
+                node.children.append(build(producers[pid], item, path, preparations))
                 continue
             payload = plan.materials.get(pid)
             monster = Monster.from_dict(payload) if payload else inventory_by_id.get(pid)
@@ -101,6 +104,7 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
             node.children.append(MindMapNode(
                 key=f"{plan.id}-parent-{step.number}-{pid}",
                 species_name=monster.species if monster else label,
+                preparation_text=tuple(f"{value['species']} · {value['move']}：{value['method']}" for value in preparations),
                 title=monster.species if monster else label,
                 gender=monster.gender if monster else "",
                 iv_text=f"{sum(v == 31 for v in monster.ivs)}V" if monster else "",
@@ -108,13 +112,14 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
                 detail=(f"{monster.account} {monster.position_label or '未定位'}\n"
                         f"{gender_name(monster.gender)} · {monster.nature or '性格未知'}"
                         + (" · 梦特已解锁" if monster.has_hidden_ability else "")
-                        + ("\n技能：" + "、".join(monster.moves) if monster.moves else "")) if monster else label,
+                        + ("\n技能：" + "、".join(monster.moves) if monster.moves else "")
+                        + "".join(f"\n配种前：{value['species']} · {value['move']} · {value['method']}" for value in preparations)) if monster else label,
                 item_text=f"本只携带：{item or '无需道具'}",
                 item_keys=(ITEM_KEYS[item],) if item in ITEM_KEYS else (),
                 status_text="历史来源（不可再次使用）" if historical else "待采购" if purchase else "库存",
                 kind="completed" if historical else "purchase" if purchase else "inventory",
                 route_role=route_roles.get(pid, "iv"),
-                route_moves=tuple(sorted(set(monster.moves) & set(target_moves))) if monster else (),
+                route_moves=tuple(sorted(((set(monster.moves) if monster else set()) | {value['move'] for value in preparations}) & set(target_moves))),
                 completed=historical or not purchase, show_checkbox=False,
                 species_id=sprite(monster.species) if monster else None,
             ))

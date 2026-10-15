@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from collections import Counter
 from itertools import combinations, permutations, product
 from functools import lru_cache
@@ -78,6 +78,9 @@ class ChainState:
     # the chosen gender (currently Nidoran♀/Nidoran♂). ``species`` remains the
     # canonical planner identity; this mapping is the real hatch result.
     gender_species: tuple[tuple[str, str], ...] = ()
+    # Local preparation AFTER producing this state and BEFORE using it as a
+    # parent. Descendants do not copy these fees or pretend it knew them at birth.
+    move_preparations: tuple[tuple[str, str, str], ...] = ()
 
     @property
     def output_species(self) -> str:
@@ -131,6 +134,7 @@ class ChainState:
             "force_gender_lock": self.force_gender_lock,
             "maternal_conversion": self.maternal_conversion,
             "gender_species": [list(item) for item in self.gender_species],
+            "move_preparations": [list(item) for item in self.move_preparations],
         }
 
     @classmethod
@@ -165,6 +169,8 @@ class ChainState:
                 for item in value.get("gender_species", []) or []
                 if isinstance(item, (list, tuple)) and len(item) >= 2
             ),
+            move_preparations=tuple(tuple(str(part) for part in item) for item in value.get("move_preparations", [])
+                                    if isinstance(item, (list, tuple)) and len(item) == 3),
         )
         action_value = value.get("action")
         if isinstance(action_value, dict):
@@ -436,8 +442,11 @@ class ChainCandidate:
             monster = state.leaf
             alpha_text = "头目 " if monster.is_alpha else "普通 "
             features = "；必须保留梦特潜力" if state.has_hidden_ability else ""
-            if state.inherited_moves:
-                features += ("；必须已携带技能：" if state.is_virtual else "；已携带技能：") + "、".join(sorted(state.inherited_moves))
+            known_moves = state.inherited_moves - {move for _species, move, _method in state.move_preparations}
+            if known_moves:
+                features += ("；必须已携带技能：" if state.is_virtual else "；已携带技能：") + "、".join(sorted(known_moves))
+            for species, move, method in state.move_preparations:
+                features += f"；配种前准备 {species} · {move}：{method}"
             if state.is_virtual:
                 groups = "/".join(state.egg_groups) or "蛋组待确认"
                 return (
@@ -535,7 +544,7 @@ class ChainCandidate:
                 if value is not None and value != 31
             ]
             if self.nature_strategy == "late" and target_exact >= 2:
-                checkpoint = target_exact - 1
+                checkpoint = target_exact
                 target_label = (
                     f"{target_v}V + {'、'.join(custom_values)}（共 {target_exact} 项精确）"
                     if custom_values
@@ -591,6 +600,9 @@ class ChainCandidate:
         def paths(state: ChainState, move: str) -> list[str]:
             if move not in state.inherited_moves:
                 return []
+            prepared = [f"配种前准备 {species}：{method}" for species, skill, method in state.move_preparations if skill == move]
+            if prepared:
+                return prepared
             if state.action is None:
                 species = state.leaf.species if state.leaf else state.output_species
                 origin = "补购已携带" if state.is_virtual else "库存已携带"
@@ -624,7 +636,7 @@ class ChainCandidate:
             counter[(
                 monster.species, monster.gender, monster.iv_string, monster.nature,
                 tuple(state.egg_groups), monster.is_alpha, state.has_hidden_ability,
-                tuple(sorted(state.inherited_moves)),
+                tuple(sorted(state.inherited_moves - {move for _species, move, _method in state.move_preparations})),
             )] += 1
 
         visit(self.root)
@@ -729,6 +741,7 @@ def _state_rank(state: ChainState, strategy: str = "inventory") -> tuple[object,
             state.purchases,
             -state.inventory_breeds,
             -state.existing_leaves,
+            *cost_state_rank(state),
             state.item_cost,
             tuple(sorted(state.used_ids)),
         )
@@ -737,6 +750,7 @@ def _state_rank(state: ChainState, strategy: str = "inventory") -> tuple[object,
         state.breeds,
         -state.inventory_breeds,
         -state.existing_leaves,
+        *cost_state_rank(state),
         state.item_cost,
         tuple(sorted(state.used_ids)),
     )
@@ -883,6 +897,16 @@ def _forced_child(
         parent_moves & get_reference_database().inheritable_moves(child_species)
         if parent_moves else frozenset()
     )
+    # Level-up moves use a different rule from egg moves: both parents must
+    # know them (or the non-Ditto parent in a Ditto breed). Native tutoring or
+    # Sketch capability alone does not make a move inheritable at birth.
+    if parent_moves - inherited_moves:
+        shared_moves = (
+            parent_moves if is_ditto(parent_a.species) or is_ditto(parent_b.species)
+            else parent_a.inherited_moves & parent_b.inherited_moves
+        )
+        inherited_moves |= frozenset(move for move in shared_moves - inherited_moves
+                                     if get_reference_database().move_preparation_sources(move).get(child_species, "").startswith("升级至"))
     target_line_moves = (
         (parent_a.inherited_moves if normalize_text(parent_a.species) == profile.species_key else frozenset())
         | (parent_b.inherited_moves if normalize_text(parent_b.species) == profile.species_key else frozenset())
@@ -1088,6 +1112,10 @@ def _egg_move_seed_states(
                         continue
                     mask = common | (0 if brace_a is None else 1 << brace_a) | (0 if brace_b is None else 1 << brace_b)
                     if mask.bit_count() != max(mother.mask.bit_count(), father.mask.bit_count()):
+                        continue
+                    if mask & mother.mask != mother.mask:
+                        # Skill-only preparation must not trade away one of
+                        # the mother's established target IVs for another stat.
                         continue
                     if mask.bit_count() < max(mother.effective_material_v, father.effective_material_v):
                         continue
@@ -1878,6 +1906,23 @@ def _same_species_pyramid(
     )[:max_results]
 
 
+def _with_prepared_moves(state: ChainState, required_moves: frozenset[str]) -> ChainState | None:
+    """Return an explicit learning plan; never edit the underlying inventory."""
+    missing = required_moves - state.inherited_moves
+    if not missing:
+        return state
+    reference = get_reference_database()
+    preparations = []
+    for move in sorted(missing):
+        sources = reference.move_preparation_sources(move)
+        species = next((name for name in (state.breeding_species, state.output_species) if name in sources), "")
+        if not species:
+            return None
+        preparations.append((species, move, sources[species]))
+    return replace(state, inherited_moves=state.inherited_moves | missing,
+                   move_preparations=state.move_preparations + tuple(preparations))
+
+
 def _maternal_spine_pyramid(
     leaves: list[ChainState],
     target_profile: SpeciesProfile,
@@ -1897,7 +1942,7 @@ def _maternal_spine_pyramid(
     shared egg group, so arbitrary compatible inventory species can be used
     without pretending that their offspring are already the target species.
     """
-    if "F" not in target_profile.allowed_genders or not any(state.is_virtual for state in leaves):
+    if "F" not in target_profile.allowed_genders or not (target_moves or any(state.is_virtual for state in leaves)):
         return []
     target_key = target_profile.species_key
     stat_bits = tuple(index for index in range(6) if target_mask & (1 << index))
@@ -1934,6 +1979,9 @@ def _maternal_spine_pyramid(
         )
 
     actual_states = [state for state in leaves if not state.is_virtual]
+    gradual_skills = bool(target_moves) and any(
+        normalize_text(state.species) == target_key and state.existing_leaves > 0 for state in leaves
+    )
     all_orders = list(permutations(stat_bits))
 
     def order_score(order: tuple[int, ...]) -> tuple[int, int, int]:
@@ -1959,12 +2007,19 @@ def _maternal_spine_pyramid(
         )
         return preferred_ditto_score, nature_score, inventory_score
 
-    candidate_orders = sorted(all_orders, key=order_score, reverse=True)[:120]
+    candidate_orders = sorted(all_orders, key=order_score, reverse=True)[:(40 if target_moves and len(stat_bits) == 6 else 120)]
     goals: list[ChainState] = []
 
     for route_group in route_groups:
         route_group_key = normalize_text(route_group)
-        memo: dict[tuple[str, tuple[int, ...], bool, str, frozenset[str]], ChainState | None] = {}
+        memo: dict[tuple, ChainState | None] = {}
+        preparation_species = tuple(dict.fromkeys(
+            state.species for state in leaves
+            if route_group_key in _group_key(state.egg_groups) and any(
+                (state.breeding_species or state.species) in get_reference_database().move_preparation_sources(move)
+                for move in target_moves
+            )
+        )) if target_moves else ()
 
         def in_route_group(state: ChainState) -> bool:
             return route_group_key in _group_key(state.egg_groups)
@@ -1993,6 +2048,7 @@ def _maternal_spine_pyramid(
             require_nature: bool,
             gender: str,
             used: frozenset[str],
+            needed_moves: frozenset[str],
         ) -> list[ChainState]:
             required_mask = sum(1 << stat for stat in stats)
             source = (
@@ -2002,15 +2058,18 @@ def _maternal_spine_pyramid(
             )
             result: list[ChainState] = []
             for state in source:
+                if role.startswith("source:") and normalize_text(state.species) != role.removeprefix("source:"):
+                    continue
                 if state.used_ids & used or not _fits_exact_subproblem(state, required_mask):
                     continue
                 if require_nature and not state.has_nature:
                     continue
                 if role == "line" and need_hidden_ability and not state.has_hidden_ability:
                     continue
-                if role == "line" and not target_moves.issubset(state.inherited_moves):
+                prepared = (state if needed_moves.issubset(state.inherited_moves) else None) if role == "line" else _with_prepared_moves(state, needed_moves)
+                if prepared is None:
                     continue
-                result.append(state)
+                result.append(prepared)
             return sorted(
                 result,
                 key=lambda state: state_rank(state, required_mask, require_nature),
@@ -2090,6 +2149,7 @@ def _maternal_spine_pyramid(
             role: str,
             stats: tuple[int, ...],
             require_nature: bool,
+            needed_moves: frozenset[str],
         ) -> ChainState | None:
             required_mask = sum(1 << stat for stat in stats)
             valid = [
@@ -2098,7 +2158,7 @@ def _maternal_spine_pyramid(
                 and _fits_exact_subproblem(state, required_mask)
                 and (not require_nature or state.has_nature)
                 and (role != "line" or not need_hidden_ability or state.has_hidden_ability)
-                and (role != "line" or target_moves.issubset(state.inherited_moves))
+                and needed_moves.issubset(state.inherited_moves)
             ]
             return min(
                 valid,
@@ -2112,44 +2172,71 @@ def _maternal_spine_pyramid(
             require_nature: bool,
             gender: str,
             used: frozenset[str],
+            needed_moves: frozenset[str] = frozenset(),
         ) -> ChainState | None:
-            key = (role, stats, require_nature, gender, used)
+            key = (role, stats, require_nature, gender, used, needed_moves)
             if key in memo:
                 return memo[key]
+            if target_moves and len(memo) >= 40000:
+                return None
             options: list[ChainState | None] = direct_candidates(
-                role, stats, require_nature, gender, used
+                role, stats, require_nature, gender, used, needed_moves
             )[:2]
+
+            # Native skills may be learned on the finished donor. In particular,
+            # a 3V Vulpix can learn Extrasensory after its IV breed instead of
+            # forcing every ancestor to carry a non-egg move through breeding.
+            if role == "donor" and needed_moves:
+                for species in preparation_species:
+                    plain = build("source:" + normalize_text(species), stats, require_nature, gender, used)
+                    if plain is not None:
+                        options.append(_with_prepared_moves(plain, needed_moves))
+
+            moves = tuple(sorted(needed_moves))
+            partitions = [(frozenset(moves[i] for i in range(len(moves)) if bits & (1 << i)),
+                           frozenset(moves[i] for i in range(len(moves)) if not bits & (1 << i)))
+                          for bits in range(1 << len(moves))]
+            if not gradual_skills:
+                partitions = [(needed_moves, frozenset())]
+
+            # A body which is ALREADY at the final IV tier cannot gain another
+            # V while importing missing moves. Keep that owned body and attach
+            # an N-1V skill/nature sire instead of rebuilding the maternal line.
+            if role == "line" and needed_moves and sum(1 << stat for stat in stats) == target_mask:
+                for body in line_index.get(("F", target_mask), ()):
+                    if body.is_virtual or body.used_ids & used or not _fits_exact_subproblem(body, target_mask):
+                        continue
+                    missing_moves = needed_moves - body.inherited_moves
+                    if not missing_moves and not require_nature:
+                        continue
+                    for donor in direct_candidates("donor", stats, require_nature, "M", used | body.used_ids, missing_moves)[:2]:
+                        options.append(make_regular(role, body, donor, gender, everstone_male=require_nature))
+                    for missing_stat in stats:
+                        donor_stats = tuple(stat for stat in stats if stat != missing_stat)
+                        donor = build("donor", donor_stats, require_nature, "M", used | body.used_ids, missing_moves)
+                        if donor is not None:
+                            options.append(make_regular(role, body, donor, gender, brace_female=missing_stat,
+                                                        everstone_male=require_nature))
 
             if require_nature and stats:
                 missing_stat = stats[-1]
                 holder_stats = stats[:-1]
-                holder = build(role, holder_stats, True, "F", used)
-                if holder is not None:
-                    donor = build("donor", stats, False, "M", used | holder.used_ids)
-                    if donor is not None:
-                        options.append(make_regular(
-                            role,
-                            holder,
-                            donor,
-                            gender,
-                            brace_male=missing_stat,
-                            everstone_female=True,
-                        ))
-                source = build(role, stats, False, "F", used)
-                if source is not None:
-                    nature_donor = build("donor", holder_stats, True, "M", used | source.used_ids)
-                    if nature_donor is not None:
-                        options.append(make_regular(
-                            role,
-                            source,
-                            nature_donor,
-                            gender,
-                            brace_female=missing_stat,
-                            everstone_male=True,
-                        ))
-                if role == "donor":
+                for female_moves, male_moves in partitions:
+                    holder = build(role, holder_stats, True, "F", used, female_moves)
+                    if holder is not None:
+                        donor = build("donor", stats, False, "M", used | holder.used_ids, male_moves)
+                        if donor is not None:
+                            options.append(make_regular(role, holder, donor, gender,
+                                                        brace_male=missing_stat, everstone_female=True))
+                    source = build(role, stats, False, "F", used, female_moves)
+                    if source is not None:
+                        nature_donor = build("donor", holder_stats, True, "M", used | source.used_ids, male_moves)
+                        if nature_donor is not None:
+                            options.append(make_regular(role, source, nature_donor, gender,
+                                                        brace_female=missing_stat, everstone_male=True))
+                if role != "line":
                     for source_gender in ("F", "M"):
-                        holder = build("donor", holder_stats, True, source_gender, used)
+                        holder = build(role, holder_stats, True, source_gender, used, needed_moves)
                         if holder is not None:
                             for ditto in direct_dittos(stats, False, used | holder.used_ids)[:2]:
                                 options.append(make_with_ditto(
@@ -2160,7 +2247,7 @@ def _maternal_spine_pyramid(
                                     brace_ditto=missing_stat,
                                     everstone_source=True,
                                 ))
-                        source = build("donor", stats, False, source_gender, used)
+                        source = build(role, stats, False, source_gender, used, needed_moves)
                         if source is not None:
                             for ditto in direct_dittos(holder_stats, True, used | source.used_ids)[:2]:
                                 options.append(make_with_ditto(
@@ -2175,38 +2262,37 @@ def _maternal_spine_pyramid(
                 stat_a, stat_b = stats[0], stats[-1]
                 left_stats = stats[:-1]
                 right_stats = stats[1:]
-                female = build(role, left_stats, False, "F", used)
-                if female is not None:
-                    male = build("donor", right_stats, False, "M", used | female.used_ids)
-                    if male is not None:
-                        options.append(make_regular(
-                            role, female, male, gender, stat_a, stat_b
-                        ))
+                for female_moves, male_moves in partitions:
+                    female = build(role, left_stats, False, "F", used, female_moves)
+                    if female is not None:
+                        male = build("donor", right_stats, False, "M", used | female.used_ids, male_moves)
+                        if male is not None:
+                            options.append(make_regular(role, female, male, gender, stat_a, stat_b))
 
                 source_role = role
                 source_genders = target_profile.allowed_genders if role == "line" else ("F", "M")
                 for source_gender in source_genders:
-                    source = build(source_role, left_stats, False, source_gender, used)
+                    source = build(source_role, left_stats, False, source_gender, used, needed_moves)
                     if source is not None:
                         for ditto in direct_dittos(right_stats, False, used | source.used_ids)[:2]:
                             options.append(make_with_ditto(
                                 role, source, ditto, gender, stat_a, stat_b
                             ))
-                    source = build(source_role, right_stats, False, source_gender, used)
+                    source = build(source_role, right_stats, False, source_gender, used, needed_moves)
                     if source is not None:
                         for ditto in direct_dittos(left_stats, False, used | source.used_ids)[:2]:
                             options.append(make_with_ditto(
                                 role, source, ditto, gender, stat_b, stat_a
                             ))
 
-            result = choose(options, role, stats, require_nature)
+            result = choose(options, role, stats, require_nature, needed_moves)
             memo[key] = result
             return result
 
         for order in candidate_orders:
             desired_genders = (target_gender,) if target_gender else target_profile.allowed_genders
             for gender in desired_genders:
-                goal = build("line", order, need_nature, gender, frozenset())
+                goal = build("line", order, need_nature, gender, frozenset(), target_moves)
                 if goal is not None:
                     goals.append(goal)
 
@@ -2591,6 +2677,11 @@ def _virtual_materials(
         for group in target_profile.egg_groups
         if group.strip()
     ]
+    owned_anchor = any(normalize_text(state.species) == target_profile.species_key and state.existing_leaves > 0
+                       for state in existing_leaves or ())
+    owned_mother = bool(target_moves) and any(normalize_text(state.species) == target_profile.species_key and state.gender == "F"
+                       and state.existing_leaves > 0 and (not need_hidden_ability or state.has_hidden_ability)
+                       for state in existing_leaves or ())
 
     # For ordinary two-sex species, only the female purchase belongs to the
     # target maternal line.  The donor side is a separate compatible egg-group
@@ -2598,7 +2689,7 @@ def _virtual_materials(
     # level.  Male-only and genderless targets still use their own line with
     # Ditto, handled below.
     line_genders = (
-        ("F",)
+        (() if owned_mother else ("F",))
         if "F" in target_profile.allowed_genders
         else target_profile.allowed_genders
     )
@@ -2789,6 +2880,13 @@ def _virtual_materials(
                         inherited_moves=frozenset({move}),
                         role_suffix=f"egg-move-{move}",
                     )
+                    if "F" in donor_parent.allowed_genders:
+                        add_material(
+                            donor_parent.display_name, "F", donor_groups, shape, False,
+                            material_copies=1, state_species=donor_offspring.display_name,
+                            state_breeding_species=donor_parent.display_name,
+                            inherited_moves=frozenset({move}), role_suffix=f"egg-move-{move}",
+                        )
 
         # Explicitly prepared same-line material is a valid market alternative
         # for combinations of moves and male-/female-only families. It is a
@@ -2807,6 +2905,13 @@ def _virtual_materials(
                     inherited_moves=target_moves,
                     role_suffix="egg-move-prepared-" + "-".join(sorted(target_moves)),
                 )
+        if owned_anchor:
+            # The market feed has no proof of a same-line, all-skills bundle.
+            # With a maternal anchor, it is an opt-in, explicitly priced option.
+            result = [state for state in result if not (
+                state.leaf and "egg-move-prepared-" in state.leaf.id
+                and (book is None or book.remember(state)["key"] not in book.prices)
+            )]
     book = ACTIVE_BOOK.get()
     if book is not None:
         for state in result:
@@ -4304,23 +4409,32 @@ def find_chain_candidates(
                 )
             )
         ]
+    skill_goals = []
+    if required_moves and custom_goals is None and not existing_goals and "F" in allowed_genders:
+        skill_goals = _maternal_spine_pyramid(
+            all_leaf_states, target_profile, target_mask, need_nature, search_target_gender,
+            max_results, strategy, preferred_inventory_ditto_ids, need_hidden_ability, required_moves,
+        )
+        skill_goals = feature_goals([goal for goal in skill_goals if goal.is_alpha == target_alpha])
+    def six_iv_goals(pool):
+        if required_moves and any(normalize_text(state.species) == species_key and state.existing_leaves > 0 for state in pool):
+            return _maternal_spine_pyramid(
+                pool, target_profile, target_mask, need_nature, search_target_gender,
+                max_results, strategy, preferred_inventory_ditto_ids, need_hidden_ability, required_moves,
+            )
+        return _canonical_six_iv_pyramid(
+            pool, target_profile, target_mask, need_nature, search_target_gender,
+            target_alpha, max_results, strategy, target_moves=required_moves, need_hidden_ability=need_hidden_ability,
+        )
+
     if custom_goals is not None:
         goals = custom_goals
     elif existing_goals:
         goals = existing_goals
+    elif skill_goals:
+        goals = skill_goals
     elif target_mask.bit_count() == 6:
-        goals = _canonical_six_iv_pyramid(
-            all_leaf_states,
-            target_profile,
-            target_mask,
-            need_nature,
-            search_target_gender,
-            target_alpha,
-            max_results,
-            strategy,
-            target_moves=required_moves,
-            need_hidden_ability=need_hidden_ability,
-        )
+        goals = six_iv_goals(all_leaf_states)
         goals = feature_goals(goals)
         if not goals:
             purchase_leaves = _virtual_materials(
@@ -4335,18 +4449,7 @@ def find_chain_candidates(
                 required_moves,
                 egg_move_donors,
             )
-            goals = _canonical_six_iv_pyramid(
-                all_leaf_states + purchase_leaves,
-                target_profile,
-                target_mask,
-                need_nature,
-                search_target_gender,
-                target_alpha,
-                max_results,
-                strategy,
-                target_moves=required_moves,
-                need_hidden_ability=need_hidden_ability,
-            )
+            goals = six_iv_goals(all_leaf_states + purchase_leaves)
             goals = feature_goals(goals)
     else:
         goals = (

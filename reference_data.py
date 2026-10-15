@@ -227,6 +227,33 @@ class ReferenceDatabase:
         offspring = self.species_database.breeding_offspring(record)
         return frozenset(self.egg_moves_for_species((offspring or record).id))
 
+    @lru_cache(maxsize=256)
+    def move_preparation_sources(self, move: str) -> dict[str, str]:
+        """Only explicit native learning annotations, never an egg-chain shortcut.
+
+        A workbook donor annotated 蛋 still needs its actual breeding chain.
+        A level-up / BP / Sketch source can instead be prepared before mating.
+        """
+        canonical = self.canonical_move(move, fuzzy=False)
+        result: dict[str, str] = {}
+        for species_id, moves in self.egg_moves_by_species.items():
+            if canonical not in moves:
+                continue
+            for route in self.egg_move_routes(species_id, canonical):
+                for step in route.steps:
+                    for annotation in step.annotations:
+                        if re.fullmatch(r"Lv\.?\s*\d+", annotation, re.I):
+                            level = re.search(r"\d+", annotation).group()
+                            method = f"升级至 {level} 级学习（已超过等级时回忆）"
+                        elif annotation.strip() == "写生":
+                            method = "写生获得"
+                        elif re.fullmatch(r"BP(?:\s*\d+)?", annotation, re.I):
+                            method = f"技能教学（{annotation}）"
+                        else:
+                            continue
+                        result.setdefault(step.species, method)
+        return result
+
     def abilities_for_species(self, species: int | str) -> dict[str, tuple[dict[str, Any], ...]]:
         species_id = self._species_id(species)
         raw = self.abilities_by_species.get(species_id or -1, {})

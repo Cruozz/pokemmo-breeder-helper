@@ -168,6 +168,14 @@ class PriceBook:
             self.materials[row["key"]] = row
         return row
 
+    def remember_preparation(self, preparation):
+        species, move, method = preparation
+        signature = hashlib.sha256(json.dumps(list(preparation), ensure_ascii=False).encode()).hexdigest()[:24]
+        row = dict(key="prepare:" + signature, label=f"{species}：{move} · {method}",
+                   preparation=True, virtual=True, conditions={}, location="配种前技能准备")
+        self.materials[row["key"]] = row
+        return row
+
     def stone_quote(self):
         if self.everstone is not None:
             return self.everstone, "手动报价"
@@ -229,6 +237,8 @@ class PriceBook:
         return min(quotes, key=lambda quote: quote["price"]) if quotes else None
 
     def market_material(self, row):
+        if row.get("preparation"):
+            return None
         key = row["key"]
         if self.snapshot is not None and key not in self._material_lookup:
             quote = self._market_material(row)
@@ -293,6 +303,10 @@ class PriceBook:
                     price, source = self.consumption_quote(row)
                     add(CostLine(row["label"], "采购" if state.is_virtual else "库存", 1, price,
                                  source, row["key"]))
+                for preparation in state.move_preparations:
+                    row = self.remember_preparation(preparation)
+                    price, source = self.material_quote(row)
+                    add(CostLine(row["label"], "技能准备", 1, price, source, row["key"]))
                 return
             a, b = state.action.parent_a, state.action.parent_b
             children = [(a, b), (b, a)]
@@ -317,6 +331,10 @@ class PriceBook:
                 record = get_species_database().get(state.output_species, fuzzy=True)
                 key = f"gender:{record.id if record else state.output_species}:{state.gender}"
                 add(CostLine(f"{state.output_species} 指定{'雌性' if state.gender == 'F' else '雄性'}", "性别", 1, price, source, key))
+            for preparation in state.move_preparations:
+                row = self.remember_preparation(preparation)
+                price, source = self.material_quote(row)
+                add(CostLine(row["label"], "技能准备", 1, price, source, row["key"]))
             report.steps.append(dict(number=len(report.steps) + 1, label=state.output_species,
                                      fees=report.total_known - before_fees,
                                      fee_missing=report.missing - before_fee_missing,
@@ -354,6 +372,11 @@ def cost_state_rank(state, target_gender=None, gender_strategy="smart"):
                 price, _source = book.gender_price(state)
                 missing += int(price is None)
                 known += price or 0
+        for preparation in state.move_preparations:
+            row = book.remember_preparation(preparation)
+            price, _source = book.material_quote(row)
+            missing += int(price is None)
+            known += price or 0
         cached = (book, (bool(missing), missing, known))
         state._cost_rank_cache = cached
     return cached[1]

@@ -23,9 +23,10 @@ class ExecutionStep:
     gender_policy: str = "locked"
     gender_override: str = ""
     in_progress: bool = False
-    # "maternal" follows the N-1 threshold; "nature_hand" is an
+    # "maternal" follows the saved checkpoint; "nature_hand" is an
     # intentional lower-tier gamble; "ignore" never prompts for nature.
     nature_check_role: str = ""
+    preparations: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def requires_purchase(self) -> bool:
@@ -89,6 +90,8 @@ class ExecutionStep:
             gender_override=str(value.get("gender_override", "")),
             in_progress=bool(value.get("in_progress", False)),
             nature_check_role=str(value.get("nature_check_role", "")),
+            preparations=[{str(key): str(part) for key, part in item.items()}
+                          for item in value.get("preparations", []) if isinstance(item, dict)],
         )
 
 
@@ -111,6 +114,8 @@ class ExecutionPlan:
     needs_replan: bool = False
     replan_reason: str = ""
     planning_options: dict[str, Any] = field(default_factory=dict)
+    # Zero retains legacy N-1 prompts. New plans wait for the completed mother.
+    maternal_nature_min_ivs: int = 0
 
     @property
     def required_iv_count(self) -> int:
@@ -124,14 +129,14 @@ class ExecutionPlan:
     @property
     def nature_check_min_ivs(self) -> int:
         count = self.required_iv_count
-        return max(1, count - 1) if count else 0
+        return self.maternal_nature_min_ivs or (max(1, count - 1) if count else 0)
 
     def should_check_nature(self, step: ExecutionStep) -> bool:
         """Apply phase-aware nature prompts.
 
-        Maternal nodes use the normal N-1 threshold. A staged nature-hand
-        node explicitly overrides that threshold because its sole purpose is
-        to gamble a lower-tier nature after the finished mother already lost.
+        New maternal routes wait for full target IVs; legacy snapshots retain
+        N-1. A staged nature-hand node deliberately overrides the threshold
+        after the finished mother has already missed its desired nature.
         """
         if step.nature_check_role == "ignore":
             return False
@@ -250,6 +255,7 @@ class ExecutionPlan:
             "needs_replan": self.needs_replan,
             "replan_reason": self.replan_reason,
             "planning_options": self.planning_options,
+            "maternal_nature_min_ivs": self.maternal_nature_min_ivs,
         }
 
     @classmethod
@@ -272,6 +278,7 @@ class ExecutionPlan:
             needs_replan=bool(value.get("needs_replan", False)),
             replan_reason=str(value.get("replan_reason", "")),
             planning_options=dict(value.get("planning_options") or {}),
+            maternal_nature_min_ivs=int(value.get("maternal_nature_min_ivs", 0) or 0),
         )
 
     def status_text(self) -> str:
@@ -414,7 +421,7 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
                 candidate.nature_phase == "maternal"
                 and normalize_text(state.species) == normalize_text(candidate.offspring_species)
                 and state.gender == "F"
-                and state_iv_count >= max(1, sum(value is not None for value in candidate.target_ivs) - 1)
+                and state_iv_count >= sum(value is not None for value in candidate.target_ivs)
                 and "不变之石" not in {item_a, item_b}
             ):
                 nature_check_role = "maternal"
@@ -453,7 +460,7 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
             egg_groups=list(state.egg_groups),
             is_alpha=state.is_alpha,
             has_hidden_ability=state.has_hidden_ability,
-            moves=sorted(state.inherited_moves),
+            moves=sorted(state.inherited_moves - {move for _species, move, _method in state.move_preparations}),
             account=child_account,
             source=f"孵化方案 {plan_id} 步骤 {number}",
             verified=True,
@@ -482,6 +489,9 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
                 sibling,
             ),
             nature_check_role=nature_check_role,
+            preparations=[dict(parent_id=identifier, species=species, move=move, method=method)
+                          for parent, identifier in ((parent_a_state, parent_a_id), (parent_b_state, parent_b_id))
+                          for species, move, method in parent.move_preparations],
         )
         steps.append(step)
         account_by_id[child_id] = child_account
@@ -509,4 +519,5 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
         nature_attempt_level=candidate.nature_attempt_level,
         candidate_snapshot=candidate.to_dict(),
         materials=materials,
+        maternal_nature_min_ivs=sum(value is not None for value in candidate.target_ivs),
     )

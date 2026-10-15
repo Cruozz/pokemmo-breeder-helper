@@ -183,12 +183,15 @@ class EggMovePlanningTests(unittest.TestCase):
         self.assertTrue(all(step.child.moves == ["污泥攻击"] for step in plan.steps))
         self.assertEqual(len(candidate.root.used_ids), 4)
 
-    def test_level_up_or_sketch_route_does_not_grant_inventory_a_free_move(self):
+    def test_sketch_route_requires_explicit_preparation_instead_of_a_free_move(self):
         _, candidate = self.plan([
             monster("f", "伊布", "F"), monster("m", "图图犬", "M"),
         ], ["祈愿"])
-        self.assertGreater(candidate.root.purchases, 0)
-        self.assertTrue(any("必须已携带技能：祈愿" in text for text in candidate.purchase_requirements()))
+        self.assertEqual(candidate.root.purchases, 0)
+        plan = build_execution_plan(candidate)
+        self.assertTrue(any(item["move"] == "祈愿" and "写生" in item["method"]
+                            for step in plan.steps for item in step.preparations))
+        self.assertTrue(any(line.kind == "技能准备" and line.unit_price is None for line in candidate.cost_report().lines))
 
     def test_inventory_and_target_aliases_match_without_editing_raw_moves(self):
         source = monster("f", "伊布", "F", ["Wish"])
@@ -205,14 +208,14 @@ class EggMovePlanningTests(unittest.TestCase):
         self.assertFalse(candidates)
         self.assertIn("不支持", " ".join(missing))
 
-    def test_four_move_market_bundle_is_explicit(self):
+    def test_four_move_market_sources_and_learning_are_explicit(self):
         moves = ["祈愿", "哈欠", "挠痒", "同步干扰"]
         _, candidate = self.plan([monster("f", "伊布", "F")], moves)
         self.assertEqual(candidate.root.inherited_moves, frozenset(moves))
         text = " ".join(candidate.purchase_requirements())
-        self.assertIn("必须已携带技能", text)
+        preparations = {item["move"] for step in build_execution_plan(candidate).steps for item in step.preparations}
         for move in moves:
-            self.assertIn(move, text)
+            self.assertTrue(move in text or move in preparations)
 
     def test_same_tier_import_preserves_nature_and_hidden_ability(self):
         report, candidates = make_report_with_candidates([
@@ -270,7 +273,9 @@ class EggMovePlanningTests(unittest.TestCase):
             monster("body", "伊布", "F", ivs=[31, 31, 31, 31, 31, 1]),
         ], ["祈愿", "哈欠"], ivs="31/31/31/31/31/x")
         self.assertIn("body", candidate.root.used_ids)
-        self.assertEqual((candidate.root.breeds, candidate.root.purchases), (1, 1))
+        self.assertTrue(candidate.root.action)
+        self.assertEqual(candidate.root.action.parent_a.used_ids, frozenset({"body"}))
+        self.assertFalse(any("伊布" in text for text in candidate.purchase_requirements()))
         self.assertEqual(candidate.root.inherited_moves, frozenset({"祈愿", "哈欠"}))
 
     def test_purchased_skill_holder_is_not_reported_as_owned_inventory(self):

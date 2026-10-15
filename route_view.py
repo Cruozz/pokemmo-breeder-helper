@@ -106,13 +106,14 @@ class BreedingTextSteps(ttk.Frame):
                 self._layouts.append((y, y + 42, "stage", (step.stage, count)))
                 y += 42
                 stage = step.stage
-            height = self.HEADER_HEIGHT + (len(step.node.children) + 1) * self.ROW_HEIGHT + 8
+            height = self.HEADER_HEIGHT + sum(self._row_height(node) for node in [*step.node.children, step.node]) + 8
             self._layouts.append((y, y + height, "step", step.node))
             y += height + self.GAP
         # A ready-made inventory result has no breeding steps, but must stay visible.
         if not self.steps and self.root_node:
-            self._layouts.append((y, y + self.ROW_HEIGHT + 8, "result", self.root_node))
-            y += self.ROW_HEIGHT + 20
+            height = self._row_height(self.root_node)
+            self._layouts.append((y, y + height + 8, "result", self.root_node))
+            y += height + 20
         self._starts = [item[0] for item in self._layouts]
         self._height = max(1, y + 12)
         self.canvas.configure(scrollregion=(0, 0, max(1, self.canvas.winfo_width() - 2), self._height))
@@ -182,17 +183,34 @@ class BreedingTextSteps(ttk.Frame):
         state = "已完成" if node.completed else "孵化中" if node.in_progress else "可执行" if node.actionable else ""
         if state:
             self._text(right - 12, y + 9, state, anchor="ne", fill=self.colors["muted"], tags=tags)
+        row_y = y + self.HEADER_HEIGHT
         for index, parent in enumerate(node.children):
             label = f"亲本 {chr(65 + index)}"
             reference = f"步骤 {parent.step_number} 产物" if parent.step_number is not None else ""
-            self._monster_row(parent, left + 8, y + self.HEADER_HEIGHT + index * self.ROW_HEIGHT,
+            self._monster_row(parent, left + 8, row_y,
                               right - 8, label, reference, tags=tags)
-        self._monster_row(node, left + 8, y + self.HEADER_HEIGHT + len(node.children) * self.ROW_HEIGHT,
+            row_y += self._row_height(parent)
+        self._monster_row(node, left + 8, row_y,
                           right - 8, "得到", show_item=False, tags=tags)
+
+    def _skill_lines(self, node):
+        return (["技能：" + "、".join(node.route_moves)] if node.route_moves else []) + [
+            "配种前须准备：" + text for text in node.preparation_text
+        ]
+
+    def _row_height(self, node):
+        height = self.ROW_HEIGHT
+        width = max(80, self.canvas.winfo_width() - 70)
+        for text in self._skill_lines(node):
+            item = self._text(0, 0, text, size=9, width=width)
+            bounds = self.canvas.bbox(item)
+            self.canvas.delete(item)
+            height += (bounds[3] - bounds[1] if bounds else 18) + 5
+        return height
 
     def _monster_row(self, node, left, top, right, label, reference="", *, show_item=True, tags=()):
         fill = GENDER_FILLS.get(node.gender, "#F8FAFC")
-        self.canvas.create_rectangle(left, top, right, top + self.ROW_HEIGHT - 6, fill=fill, outline="", tags=tags + ("text-monster",))
+        self.canvas.create_rectangle(left, top, right, top + self._row_height(node) - 6, fill=fill, outline="", tags=tags + ("text-monster",))
         self._text(left + 10, top + 10, label, bold=True, size=9, tags=tags)
         if reference:
             self._text(left + 10, top + 34, reference.replace(" 产物", "\n产物"), size=8, tags=tags)
@@ -220,6 +238,12 @@ class BreedingTextSteps(ttk.Frame):
                                          fill="#F0FDF4" if value == "31" else "#FFFFFF", outline="#CBD5E1", tags=tags)
             self._text(x + cell / 2, top + 69, stat, size=8, anchor="n", tags=tags)
             self._text(x + cell / 2, top + 83, value, size=9, bold=value == "31", anchor="n", tags=tags + ("text-iv",))
+        extra_y = top + 106
+        for text in self._skill_lines(node):
+            item = self._text(left + 10, extra_y, text, size=9, width=max(80, right - left - 20),
+                              tags=tags + ("text-skill",), fill=self.colors["ink_blue"])
+            bounds = self.canvas.bbox(item)
+            extra_y += (bounds[3] - bounds[1] if bounds else 18) + 5
 
     def _click(self, event):
         self.canvas.focus_set()

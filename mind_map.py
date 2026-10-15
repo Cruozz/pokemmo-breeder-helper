@@ -59,6 +59,7 @@ class MindMapNode:
     children: list["MindMapNode"] = field(default_factory=list)
     # A plain species name for compact views; title can contain route commentary.
     species_name: str = ""
+    preparation_text: tuple[str, ...] = ()
 
 
 class BreedingMindMap(ttk.Frame):

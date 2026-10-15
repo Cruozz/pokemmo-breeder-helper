@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.33"
+APP_VERSION = "0.2.34"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -3012,7 +3012,7 @@ class App:
             return
         if not self.target_lock_nature_var.get():
             self.target_nature_info_var.set(
-                f"母体优先：仅从成品低一档起记录 {selected}；满 V 未中后逐级赌性格手，最后才保底购买"
+                f"母体优先：满 V 母体才确认 {selected}；未中后逐级赌同蛋组性格手，最后才保底购买"
             )
             return
         if is_neutral_nature(selected):
@@ -5847,8 +5847,8 @@ class App:
                 if phase == "maternal":
                     nature_route = (
                         f"\n母体阶段｜先把雌性本体升到 {target_label}；"
-                        f"低于 {target_exact - 1} 项精确不统计爆性格，"
-                        f"只在母体最后两档确认是否命中 {candidate.target_nature}。"
+                        f"母体满 {target_exact} 项精确时才确认是否命中 {candidate.target_nature}；"
+                        "未命中后再制作同蛋组性格手。"
                     )
                 elif phase == "gamble_upper":
                     nature_route = (
@@ -6008,6 +6008,7 @@ class App:
                 return MindMapNode(
                     key=f"{map_key_prefix}-leaf-{id(state)}",
                     species_name=monster.species,
+                    preparation_text=tuple(f"{species} · {move}：{method}" for species, move, method in state.move_preparations),
                     title=monster.species,
                     gender=monster.gender,
                     route_role=route_roles.get(id(state), "iv"),
@@ -6015,7 +6016,8 @@ class App:
                     iv_text=f"{sum(value == 31 for value in monster.ivs)}V",
                     iv_values=leaf_values,
                     detail=f"{source}\n{gender_name(monster.gender)} · {monster.nature or '性格未知'}"
-                    + (" · " + " · ".join(feature_bits) if feature_bits else ""),
+                    + (" · " + " · ".join(feature_bits) if feature_bits else "")
+                    + "".join(f"\n配种前：{species} · {move} · {method}" for species, move, method in state.move_preparations),
                     item_text=f"本只携带：{edge_item or '无需道具'}",
                     status_text="待采购" if state.is_virtual else ("已完成入库" if hatched_result else "库存"),
                     nature_text=nature_badge,
@@ -6130,11 +6132,12 @@ class App:
             node = MindMapNode(
                 key=f"{map_key_prefix}-step-{step_number}",
                 species_name=output_species,
+                preparation_text=tuple(f"{species} · {move}：{method}" for species, move, method in state.move_preparations),
                 gender=step_display_gender(step) if step else state.gender,
                 title=("遗传技能导入 · " + title) if introduced else title,
                 iv_text=f"{state_v(state)}V",
                 iv_values=tuple(self._plan_state_iv_text(state, candidate).split("/")),
-                detail=detail,
+                detail=detail + "".join(f"\n配种前：{species} · {move} · {method}" for species, move, method in state.move_preparations),
                 item_text=item_text,
                 status_text=status,
                 nature_text=nature_status,
@@ -6310,6 +6313,10 @@ class App:
             f"执行方案 {plan.id[:8]} · 目标 {plan.target_species} {plan.target_nature}\n"
             f"确认游戏中已经完成步骤 {step.number}？\n\n"
             f"{purchase_text}"
+            + ("配种前必须已完成以下技能准备：\n" + "\n".join(
+                f"- {item['species']}：{item['move']} · {item['method']}" for item in step.preparations
+            ) + "\n\n" if step.preparations else "")
+            +
             f"{inventory_text}"
             f"并生成子代：{step.child.species} {step.child.iv_string}\n"
             f"性别操作：{step.gender_instruction}\n\n"

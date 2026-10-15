@@ -478,7 +478,7 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue({"TARGET-M", "DITTO"}.issubset(best.root.used_ids))
         self.assertEqual(best.root.everstones, 0)
         self.assertIn("性格策略：母体优先", report)
-        self.assertIn("仅从 4 项精确起记录", report)
+        self.assertIn("仅从 5 项精确起记录", report)
 
         execution = build_execution_plan(best)
         checked_counts = [
@@ -487,11 +487,11 @@ class PlannerTests(unittest.TestCase):
             if execution.should_check_nature(step)
         ]
         self.assertTrue(checked_counts)
-        self.assertTrue(all(value >= 4 for value in checked_counts))
+        self.assertTrue(all(value >= 5 for value in checked_counts))
         self.assertTrue(all(
             step.nature_check_role == "ignore"
             for step in execution.steps
-            if sum(value is not None for value in step.child.ivs) < 4
+            if sum(value is not None for value in step.child.ivs) < 5
         ))
 
         converted_to_female = False
@@ -2054,7 +2054,7 @@ class PlannerTests(unittest.TestCase):
         report = make_report(inventory, "拉鲁拉丝", "F", "胆小", "31/31/31/31/31/x", ["人型"])
         self.assertIn("共 15 次孵化", report)
         self.assertIn("0 个不变之石", report)
-        self.assertIn("仅从 4 项精确起记录是否爆出 胆小", report)
+        self.assertIn("仅从 5 项精确起记录是否爆出 胆小", report)
 
     def test_full_nature_chain_mode_keeps_the_original_strict_pyramid(self) -> None:
         report, candidates = make_report_with_candidates(
