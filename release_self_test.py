@@ -241,6 +241,35 @@ def run_checks() -> dict[str, object]:
         checks["gradual_egg_moves"] = {"species": "索罗亚", "moves": ["神通力", "临别礼物"],
                                       "breeds": 3, "purchases": 0, "maternal_conversion": True,
                                       "explicit_learning": True, "maternal_nature_checkpoint": 5}
+        from breeding_cost import PriceBook, material_record
+        from market_data import parse_snapshot
+        from datetime import datetime, timezone
+        nine_stock = [alpha_material("nine-body", "索罗亚", "F", (0, 2, 3, 4)),
+                      alpha_material("nine-parent", "九尾", "F", (0, 2), ("神通力",)),
+                      alpha_material("nine-stunky", "臭鼬噗", "M", (0, 3), ("临别礼物",)),
+                      alpha_material("nine-iv", "小拉达", "M", (0, 3, 5))]
+        _report, nine_candidates = make_report_with_candidates(
+            nine_stock, "索罗亚", "", "胆小", "31/x/31/31/31/31", [], target_alpha=True,
+            allow_ditto=False, target_moves=["神通力", "临别礼物"], nature_strategy="late", max_purchase_v=2,
+            cost_pricing=PriceBook(dict(require_market_availability=True, include_inventory_value=False)))
+        if not nine_candidates or nine_candidates[0].root.purchases or "nine-parent" not in nine_candidates[0].root.used_ids:
+            raise RuntimeError("Packaged female Ninetales skill branch failed")
+        nine_plan = ExecutionPlan.from_dict(build_execution_plan(nine_candidates[0]).to_dict())
+        if ([s.child.species for s in nine_plan.steps] != ["六尾", "六尾", "索罗亚"]
+                or set(nine_plan.steps[-1].child.moves) != {"神通力", "临别礼物"}
+                or nine_plan.steps[-1].preparations[0]["species"] != "六尾"):
+            raise RuntimeError("Packaged parent/hatch form or skill preparation failed")
+        at = datetime.now(timezone.utc).isoformat()
+        market = parse_snapshot(dict(items=[], pokemonQueries=[dict(familyId=434, query="alpha_male",
+                                                                   price=45000, quantity=3, at=at)]))
+        market_book = PriceBook(dict(require_market_availability=True), market)
+        if market_book.purchase_available(material_record(alpha_material("no-dog", "图图犬", "M", (0, 2)), True)):
+            raise RuntimeError("Packaged planner accepted an Alpha purchase without market coverage")
+        if not market_book.purchase_available(material_record(alpha_material("yes-stunky", "臭鼬噗", "M", (0, 2)), True)):
+            raise RuntimeError("Packaged planner rejected an available Alpha donor")
+        checks["inventory_skill_market"] = {"female_ninetales": True, "real_parent_and_hatch_forms": True,
+                                            "native_preparation": True, "unavailable_smeargle_rejected": True,
+                                            "available_stunky": True, "purchases": 0}
     finally:
         text_root.destroy()
 

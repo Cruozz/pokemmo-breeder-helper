@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import gzip
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -65,6 +66,7 @@ class ReferenceDatabase:
         self.ability_aliases: dict[str, str] = {}
         self.ability_source: dict[str, Any] = {}
         self.move_names: set[str] = set()
+        self.native_move_sources: dict[str, dict[str, str]] = {}
         self._load()
 
     @staticmethod
@@ -155,6 +157,31 @@ class ReferenceDatabase:
         for alias, canonical in move_overrides.get("aliases", {}).items():
             if str(alias).strip() and str(canonical).strip():
                 self.move_aliases[normalize_move(str(alias))] = str(canonical).strip()
+
+        # The bundled PokeMMO guide has form-specific level-up learnsets, beyond
+        # the named donors in the egg-chain workbook. Never copy these to an
+        # entire evolution family (e.g. Ninetales -> Vulpix or vice versa).
+        try:
+            with gzip.open(resource_path("data", "guide.json.gz"), "rt", encoding="utf-8") as stream:
+                guide = json.load(stream)
+        except (OSError, ValueError):
+            guide = {}
+        for row in guide.get("species", []):
+            record = self.species_database.get_by_id(row.get("id"))
+            if record is None:
+                continue
+            levels = {}
+            for entry in row.get("moves", []):
+                level = entry.get("level")
+                if entry.get("type") != "level" or not isinstance(level, int) or not 1 <= level <= 100:
+                    continue
+                move = self.canonical_move(str(entry.get("name", "")), fuzzy=False)
+                if move:
+                    levels[move] = min(level, levels.get(move, 100))
+            for move, level in levels.items():
+                self.native_move_sources.setdefault(move, {})[record.display_name] = (
+                    f"升级至 {level} 级学习（已超过等级时回忆）"
+                )
 
     def _species_id(self, species: int | str) -> int | None:
         if isinstance(species, int) or str(species).strip().isdigit():
@@ -252,6 +279,7 @@ class ReferenceDatabase:
                         else:
                             continue
                         result.setdefault(step.species, method)
+        result.update(self.native_move_sources.get(canonical, {}))
         return result
 
     def abilities_for_species(self, species: int | str) -> dict[str, tuple[dict[str, Any], ...]]:

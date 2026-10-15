@@ -135,6 +135,13 @@ class PriceBook:
         self.prices = {str(k): amount(v) for k, v in value.get("prices", {}).items()}
         self.materials = {row["key"]: row for row in value.get("materials", []) if isinstance(row, dict) and isinstance(row.get("key"), str)}
         self.snapshot = snapshot
+        # Desktop planning requires a current availability check. Legacy saved
+        # routes and explicit offline mechanical searches retain their inputs.
+        self.require_market_availability = value.get("require_market_availability", False) is True
+        self.market_loader = None
+        self._purchase_market_checked = False
+        self._availability_cache = {}
+        self._pricing_revision = 0
         self.frozen = value.get("frozen") is True
         self.auto_everstone = value.get("auto_everstone")
         self.auto_materials = {}
@@ -142,7 +149,9 @@ class PriceBook:
         for key, quote in value.get("auto_materials", {}).items():
             if not isinstance(quote, dict) or not isinstance(quote.get("at"), (int, float)):
                 continue
-            self.auto_materials[str(key)] = dict(price=amount(quote.get("price")), at=quote["at"], source=str(quote.get("source", "行情")))
+            self.auto_materials[str(key)] = {**{k: quote[k] for k in ("family_id", "query", "quantity") if k in quote},
+                                             "price": amount(quote.get("price")), "at": quote["at"],
+                                             "source": str(quote.get("source", "行情"))}
         if self.auto_everstone is not None:
             self.auto_everstone = dict(self.auto_everstone)
             self.auto_everstone["price"] = amount(self.auto_everstone.get("price"))
@@ -156,6 +165,7 @@ class PriceBook:
 
     def to_dict(self, *, include_materials=True):
         return dict(schema=1, include_inventory_value=self.include_inventory_value,
+                    require_market_availability=self.require_market_availability,
                     brace=self.brace, gender=self.gender, everstone=self.everstone,
                     gender_overrides=dict(self.gender_overrides), prices=dict(self.prices),
                     auto_everstone=self.auto_everstone,
@@ -184,6 +194,62 @@ class PriceBook:
             return quote["price"], "规划时行情快照" if self.frozen else "市场挂牌价（24 小时内）"
         return None, "待报价 / 行情已过期"
 
+    def ensure_purchase_market(self):
+        """The worker supplies a lazy public-market loader; never blocks Tk."""
+        if self.require_market_availability and not self._purchase_market_checked:
+            self._purchase_market_checked = True
+            if self.market_loader is not None:
+                self.snapshot = self.market_loader(self.snapshot)
+                self.auto_everstone = PriceBook(self.to_dict(), self.snapshot).auto_everstone
+                self._material_lookup.clear()
+                self._availability_cache.clear()
+                self._pricing_revision += 1
+
+    def _fresh_quote(self, quote):
+        return bool(self.snapshot is not None and not self.snapshot.stale and quote and quote.provided
+                    and not quote.stale and quote.at is not None and 0 <= time.time() - quote.at <= 86400)
+
+    def _family_quote(self, family, gender, alpha, *, allow_fallback=True):
+        prefix = "alpha" if alpha else "any"
+        sex = {"M": "male", "F": "female"}.get(gender)
+        key = ("alpha_" + sex if alpha else sex) if sex else prefix
+        quote = self.snapshot.queries.get((family, key)) if self.snapshot else None
+        # An explicit unavailable/old sex-specific result must not borrow the
+        # other sex's unrestricted minimum. Fallback is only for absent data.
+        if allow_fallback and (quote is None or not quote.provided):
+            key = prefix
+            quote = self.snapshot.queries.get((family, key)) if self.snapshot else None
+        return key, quote
+
+    def purchase_available(self, row):
+        """Family availability is not proof of exact IVs or prepared skills."""
+        if not self.require_market_availability or row["key"] in self.prices:
+            return True
+        c = row["conditions"]
+        signature = (c["species"], c["gender"], c["alpha"], tuple(c["groups"]))
+        if signature in self._availability_cache:
+            return self._availability_cache[signature]
+        from species_data import get_species_database
+        db = get_species_database()
+        record = db.get(c["species"], fuzzy=False)
+        families, index = _market_families()
+        ids = [index[record.id]] if record and record.id in index else []
+        if not ids and record is None:
+            groups = {_group_name(g) for g in c["groups"]}
+            ids = [family for family, members in families.items() if any(
+                groups & {_group_name(g) for g in member["egg_groups"]}
+                and c["gender"] in db.get_by_id(member["id"]).allowed_genders for member in members)]
+        available = False
+        for family in ids:
+            _key, quote = self._family_quote(family, c["gender"], c["alpha"], allow_fallback=False)
+            if self._fresh_quote(quote) and quote.quantity != 0 and quote.listings != 0 and (
+                (quote.quantity or 0) > 0 or (quote.listings or 0) > 0
+            ):
+                available = True
+                break
+        self._availability_cache[signature] = available
+        return available
+
     def _market_material(self, row):
         """User-defined baseline: Alpha 2V by family; normal 1V by egg group."""
         if self.snapshot is None:
@@ -204,8 +270,8 @@ class PriceBook:
         quotes = []
 
         def usable(quote):
-            return bool(quote and quote.price is not None and not quote.stale and not self.snapshot.stale
-                        and quote.at is not None and 0 <= time.time() - quote.at <= 86400)
+            return bool(self._fresh_quote(quote) and quote.price is not None
+                        and quote.quantity != 0 and quote.listings != 0)
 
         if c["alpha"]:
             if len(indices) != 2:
@@ -220,12 +286,10 @@ class PriceBook:
                     for member in members
                 )]
             for family in family_ids:
-                keys = ["alpha_" + sex, "alpha"] if sex else ["alpha"]
-                for key in keys:
-                    quote = self.snapshot.queries.get((family, key))
-                    if usable(quote):
-                        quotes.append(dict(price=quote.price, at=quote.at, source="头目2V行情"))
-                        break
+                key, quote = self._family_quote(family, c["gender"], True)
+                if usable(quote):
+                    quotes.append(dict(price=quote.price, at=quote.at, source="头目2V行情",
+                                       family_id=family, query=key, quantity=quote.quantity))
         elif len(indices) == 1:
             for group in groups:
                 if group not in {0, 13} and not sex:
@@ -352,7 +416,7 @@ def cost_state_rank(state, target_gender=None, gender_strategy="smart"):
     if target_gender is not None:
         return book.report(state, target_gender, gender_strategy).rank()
     cached = getattr(state, "_cost_rank_cache", None)
-    if cached is None or cached[0] is not book:
+    if cached is None or cached[0] is not book or cached[1] != book._pricing_revision:
         if state.action is None:
             row = book.remember(state)
             price = book.consumption_quote(row)[0] if row else None
@@ -377,9 +441,9 @@ def cost_state_rank(state, target_gender=None, gender_strategy="smart"):
             price, _source = book.material_quote(row)
             missing += int(price is None)
             known += price or 0
-        cached = (book, (bool(missing), missing, known))
+        cached = (book, book._pricing_revision, (bool(missing), missing, known))
         state._cost_rank_cache = cached
-    return cached[1]
+    return cached[2]
 
 
 def cost_search(function):

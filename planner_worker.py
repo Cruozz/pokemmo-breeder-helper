@@ -28,7 +28,29 @@ def encode_request(request):
     return {"schema": 1, "args": values, "market": book.snapshot.payload if book.snapshot else None}
 
 
-def calculate(payload):
+def purchase_market_snapshot(current):
+    """Public GET/cache only. Called lazily in the cancellable worker."""
+    from market_data import MarketClient, MarketError, load_cache, save_cache
+    from storage import data_dir
+    path = data_dir() / "market_cache.json"
+    cached = load_cache(path)
+    if cached and 0 <= time.time() - cached[1] < 600 and not cached[0].stale:
+        return cached[0]
+    if current and not current.stale and current.updated_at and 0 <= time.time() - current.updated_at < 600:
+        return current
+    try:
+        snapshot = MarketClient().snapshot()
+    except MarketError:
+        # A failed refresh cannot turn an old listing into available stock.
+        return None
+    try:
+        save_cache(path, snapshot, time.time())
+    except OSError:
+        pass
+    return snapshot
+
+
+def calculate(payload, *, refresh_market=False):
     from models import Monster
     from breeding_cost import PriceBook
     from market_data import parse_snapshot
@@ -39,9 +61,11 @@ def calculate(payload):
     values[0] = [Monster.from_dict(row) for row in values[0]]
     values[11], values[16] = frozenset(values[11]), frozenset(values[16])
     values[17] = PriceBook(values[17], parse_snapshot(payload["market"]) if payload.get("market") else None)
+    if refresh_market:
+        values[17].market_loader = purchase_market_snapshot
     report, candidates = make_report_with_candidates(*values)
     return {"schema": 1, "report": report, "candidates": [candidate.to_dict() for candidate in candidates],
-            "materials": candidates[0].cost_materials if candidates else [], "error": ""}
+            "materials": list(values[17].materials.values()), "error": ""}
 
 
 def decode_result(value):
@@ -62,7 +86,7 @@ def read_message(path):
 
 def run_worker(input_path, output_path):
     try:
-        result = calculate(read_message(Path(input_path)))
+        result = calculate(read_message(Path(input_path)), refresh_market=True)
     except Exception as error:
         result = {"schema": 1, "error": str(error), "candidates": [], "report": ""}
     output = Path(output_path)

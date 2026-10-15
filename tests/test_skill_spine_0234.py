@@ -244,7 +244,9 @@ class SkillSpineTests(unittest.TestCase):
         make_report_with_candidates(*args, **options)
         for row in list(book.materials.values()):
             c = row["conditions"]
-            if c.get("gender") == "M" and c.get("ivs") == [None, None, 31, 31, None, None] and c.get("moves") == ["临别礼物"]:
+            if row.get("preparation"):
+                book.prices[row["key"]] = 0
+            if c.get("gender") == "M" and c.get("ivs") == [None, None, 31, 31, None, None] and c.get("moves") in ([], ["临别礼物"]):
                 if c.get("species") in {"臭鼬噗", "信使鸟"}:
                     book.prices[row["key"]] = 5000 if c["species"] == "臭鼬噗" else 350000
         report, candidates = make_report_with_candidates(*args, **options)

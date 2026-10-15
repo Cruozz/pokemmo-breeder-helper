@@ -282,7 +282,9 @@ class EggMovePlanningTests(unittest.TestCase):
         _, candidate = self.plan([], ["祈愿"])
         self.assertGreater(candidate.root.purchases, 0)
         self.assertNotIn("库存中已经有", candidate.description())
-        self.assertIn("必须已携带技能：祈愿", candidate.description())
+        # PokeMMO now lets Eevee learn Wish at level 30. The purchase is still
+        # not owned, and its learning must be explicit rather than free.
+        self.assertIn("配种前准备 伊布 · 祈愿", candidate.description())
 
     def test_snapshot_round_trip_preserves_skill_steps_and_sources(self):
         _, candidate = self.plan([

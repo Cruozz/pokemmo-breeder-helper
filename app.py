@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.34"
+APP_VERSION = "0.2.35"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -5342,7 +5342,9 @@ class App:
 
     def _current_cost_book(self):
         cached = load_market_cache(self.cost_price_path.with_name("market_cache.json"))
-        return PriceBook(self.cost_book.to_dict(), cached[0] if cached else self.cost_book.snapshot)
+        values = self.cost_book.to_dict()
+        values["require_market_availability"] = True
+        return PriceBook(values, cached[0] if cached else self.cost_book.snapshot)
 
     def _purchase_v_limit(self):
         selected = self.target_purchase_max_v_var.get()
@@ -5512,6 +5514,11 @@ class App:
         except Exception as exc:
             report, candidates, error = "", [], f"规划结果读取失败：{exc}"
         if job:
+            raw = getattr(job, "raw_result", None) or {}
+            if not error and getattr(self, "cost_book", None) is not None:
+                # Keep pending purchase specifications editable even when the
+                # market has no supported route. This is local data only.
+                self.cost_book.materials.update({row["key"]: row for row in raw.get("materials", [])})
             job.release()
             self.plan_job = None
         if error:

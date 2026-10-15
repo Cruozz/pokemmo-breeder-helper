@@ -9,7 +9,7 @@ from typing import Iterable
 from models import Monster, normalize_gender
 from reference_data import get_reference_database
 from species_data import get_species_database
-from breeding_cost import ACTIVE_BOOK, PriceBook, cost_search, cost_state_rank
+from breeding_cost import ACTIVE_BOOK, PriceBook, cost_search, cost_state_rank, material_record
 
 
 STAT_NAMES = ("HP", "攻击", "防御", "特攻", "特防", "速度")
@@ -778,6 +778,7 @@ def _search_rank(
             unused_nature,
             -state.inventory_breeds,
             -state.existing_leaves,
+            *cost_state_rank(state),
             state.item_cost,
             tuple(sorted(state.used_ids)),
         )
@@ -791,6 +792,7 @@ def _search_rank(
         state.breeds,
         -state.inventory_breeds,
         -state.existing_leaves,
+        *cost_state_rank(state),
         state.item_cost,
         tuple(sorted(state.used_ids)),
     )
@@ -1915,7 +1917,9 @@ def _with_prepared_moves(state: ChainState, required_moves: frozenset[str]) -> C
     preparations = []
     for move in sorted(missing):
         sources = reference.move_preparation_sources(move)
-        species = next((name for name in (state.breeding_species, state.output_species) if name in sources), "")
+        # Preserve a real parent's form. Generated children start in hatch form.
+        forms = (state.leaf.species,) if state.leaf else (state.breeding_species, state.output_species)
+        species = next((name for name in forms if name in sources), "")
         if not species:
             return None
         preparations.append((species, move, sources[species]))
@@ -2025,6 +2029,8 @@ def _maternal_spine_pyramid(
             return route_group_key in _group_key(state.egg_groups)
 
         def profile_for_source(state: ChainState) -> SpeciesProfile:
+            record = species_db.get(state.species, fuzzy=False)
+            breedable = species_db.breeding_parent(record) if record else None
             if state.gender_species:
                 allowed = tuple(gender for gender, _species in state.gender_species)
             elif state.species.endswith("组兼容素材"):
@@ -2038,7 +2044,7 @@ def _maternal_spine_pyramid(
                 tuple(state.egg_groups),
                 allowed == ("N",),
                 allowed,
-                state.breeding_species or state.species,
+                breedable.display_name if breedable else state.breeding_species or state.species,
                 state.gender_species,
             )
 
@@ -2152,6 +2158,10 @@ def _maternal_spine_pyramid(
             needed_moves: frozenset[str],
         ) -> ChainState | None:
             required_mask = sum(1 << stat for stat in stats)
+            # Native learning can finish a donor after its auxiliary IV/egg-
+            # move breed. It is an explicit action on that child, not birth.
+            if role != "line" and needed_moves:
+                candidates = [_with_prepared_moves(state, needed_moves) if state else None for state in candidates]
             valid = [
                 state for state in candidates
                 if state is not None
@@ -2188,7 +2198,12 @@ def _maternal_spine_pyramid(
             # forcing every ancestor to carry a non-egg move through breeding.
             if role == "donor" and needed_moves:
                 for species in preparation_species:
-                    plain = build("source:" + normalize_text(species), stats, require_nature, gender, used)
+                    native_moves = frozenset(move for move in needed_moves
+                                             if species in get_reference_database().move_preparation_sources(move))
+                    if not native_moves:
+                        continue
+                    plain = build("source:" + normalize_text(species), stats, require_nature, gender, used,
+                                  needed_moves - native_moves)
                     if plain is not None:
                         options.append(_with_prepared_moves(plain, needed_moves))
 
@@ -2203,9 +2218,18 @@ def _maternal_spine_pyramid(
             # V while importing missing moves. Keep that owned body and attach
             # an N-1V skill/nature sire instead of rebuilding the maternal line.
             if role == "line" and needed_moves and sum(1 << stat for stat in stats) == target_mask:
-                for body in line_index.get(("F", target_mask), ()):
-                    if body.is_virtual or body.used_ids & used or not _fits_exact_subproblem(body, target_mask):
+                bodies = []
+                for raw_body in line_index.get(("F", target_mask), ()):
+                    if raw_body.is_virtual or raw_body.used_ids & used or not _fits_exact_subproblem(raw_body, target_mask):
                         continue
+                    bodies.append(raw_body)
+                    form = raw_body.leaf.species if raw_body.leaf else raw_body.breeding_species or raw_body.output_species
+                    native = frozenset(move for move in needed_moves
+                                       if form in get_reference_database().move_preparation_sources(move))
+                    prepared_body = _with_prepared_moves(raw_body, native)
+                    if prepared_body is not None and prepared_body is not raw_body:
+                        bodies.append(prepared_body)
+                for body in bodies:
                     missing_moves = needed_moves - body.inherited_moves
                     if not missing_moves and not require_nature:
                         continue
@@ -2586,6 +2610,8 @@ def _virtual_materials(
     """
     required_stats = [index for index, value in enumerate(target_ivs) if value is not None]
     book = ACTIVE_BOOK.get()
+    if book is not None:
+        book.ensure_purchase_market()
     purchase_limit = getattr(book, "purchase_max_v", None)
     if purchase_tier is not None and purchase_limit is not None and purchase_tier > purchase_limit + sum(target_ivs[i] != 31 for i in required_stats):
         return []
@@ -2633,6 +2659,10 @@ def _virtual_materials(
             role = "nature" if has_nature else "plain"
             if role_suffix:
                 role = f"{role}-{role_suffix}"
+            preparation_sources = {move: get_reference_database().move_preparation_sources(move).get(species)
+                                   for move in inherited_moves}
+            preparations = tuple((species, move, method) for move, method in sorted(preparation_sources.items()) if method)
+            purchased_moves = inherited_moves - {move for _species, move, _method in preparations}
             monster = Monster(
                 id=f"buy:{sequence}:{species}:{gender}:{shape}:{role}",
                 species=species,
@@ -2642,11 +2672,20 @@ def _virtual_materials(
                 egg_groups=list(groups),
                 is_alpha=is_alpha,
                 has_hidden_ability=has_hidden_ability,
-                moves=sorted(inherited_moves),
+                moves=sorted(purchased_moves),
                 account="待采购",
                 source="需要补充",
                 verified=True,
             )
+            if book is not None and (is_alpha or inherited_moves):
+                row = material_record(monster, True)
+                book.materials[row["key"]] = row
+                if not book.purchase_available(row):
+                    continue
+                # Aggregate family prices do not prove a ready-made egg-move
+                # listing. Such a specification needs explicit user pricing.
+                if book.require_market_availability and purchased_moves and row["key"] not in book.prices:
+                    continue
             result.append(
                 ChainState(
                     species=state_species or species,
@@ -2669,6 +2708,7 @@ def _virtual_materials(
                     has_hidden_ability=has_hidden_ability,
                     inherited_moves=inherited_moves,
                     gender_species=state_gender_species,
+                    move_preparations=preparations,
                 )
             )
 
@@ -2851,10 +2891,10 @@ def _virtual_materials(
         if not is_alpha and () not in feature_shapes:
             feature_shapes.append(())
         for move in sorted(target_moves):
-            donor_names = donor_map.get(move) or tuple(dict.fromkeys(
+            donor_names = tuple(dict.fromkeys((donor_map.get(move) or tuple(
                 route.direct_donor.species
                 for route in reference.egg_move_routes(target_profile.species, move)
-            ))
+            )) + tuple(reference.move_preparation_sources(move))))
             for donor_name in donor_names:
                 donor_record = species_db.get(donor_name)
                 if donor_record is None:
@@ -2887,6 +2927,26 @@ def _virtual_materials(
                             state_breeding_species=donor_parent.display_name,
                             inherited_moves=frozenset({move}), role_suffix=f"egg-move-{move}",
                         )
+
+        # A real native/Sketch source may prepare multiple selected moves.
+        # Keep the concrete form and all preparation actions; availability is
+        # checked by add_material just as for a single-move donor.
+        if len(target_moves) > 1:
+            combined_sources = set.intersection(*(set(reference.move_preparation_sources(move)) for move in target_moves))
+            for name in sorted(combined_sources):
+                record = species_db.get(name)
+                offspring = species_db.breeding_offspring(record) if record else None
+                if not record or not offspring or "未发现" in record.egg_groups:
+                    continue
+                if not set(_group_key(record.egg_groups)) & set(_group_key(target_profile.egg_groups)):
+                    continue
+                for gender in record.allowed_genders:
+                    if gender not in {"F", "M"}:
+                        continue
+                    for shape in feature_shapes:
+                        add_material(name, gender, tuple(record.egg_groups), shape, False, material_copies=1,
+                                     state_species=offspring.display_name, state_breeding_species=name,
+                                     inherited_moves=target_moves, role_suffix="native-moves-" + "-".join(sorted(target_moves)))
 
         # Explicitly prepared same-line material is a valid market alternative
         # for combinations of moves and male-/female-only families. It is a
@@ -3659,8 +3719,9 @@ def find_chain_candidates(
                     continue
             else:
                 state_species = offspring.display_name
-                state_breeding_species = breedable.display_name
-                groups = tuple(breedable.egg_groups)
+                actual_parent = record if "未发现" not in record.egg_groups else breedable
+                state_breeding_species = actual_parent.display_name
+                groups = tuple(actual_parent.egg_groups)
         leaf_id = monster.id or f"inventory-{index}"
         state = ChainState(
             species=state_species,
@@ -3705,6 +3766,7 @@ def find_chain_candidates(
     for state in all_leaf_states:
         signature = (
             normalize_text(state.species),
+            state.breeding_species,
             state.gender,
             _group_key(state.egg_groups),
             state.mask,
