@@ -424,7 +424,7 @@ class OCRProcessor:
         return True, 0.70 + 0.30 * best_score
 
     @classmethod
-    def _find_moves(cls, items: list[OCRItem]) -> tuple[list[str], list[OCRItem]]:
+    def _find_moves(cls, items: list[OCRItem], *, minimum_score: float = 0.40) -> tuple[list[str], list[OCRItem]]:
         markers = [item for item in items if any(label in cls._compact(item.text) for label in MARK_LABELS)]
         if not markers:
             return [], []
@@ -451,11 +451,11 @@ class OCRProcessor:
             compact = cls._compact(raw)
             if not (top_limit <= center <= bottom_limit):
                 continue
-            if not (left_limit <= cls._left(item.box) <= right_limit) or item.score < 0.40:
+            if not (left_limit <= cls._left(item.box) <= right_limit) or item.score < minimum_score:
                 continue
             if not raw or any(word in compact for word in ignored):
                 continue
-            if re.search(r"\d{1,2}/\d{1,2}", compact) or re.search(r"\blv\.?\s*\d+", raw, re.IGNORECASE):
+            if re.search(r"\d{1,2}/\d{1,2}", compact) or re.search(r"\bl(?:[vw][.,，·]?|[.,，·])\s*\d+", raw, re.IGNORECASE):
                 continue
             if not re.search(r"[a-z\u3400-\u9fff]", compact):
                 continue
@@ -474,12 +474,12 @@ class OCRProcessor:
 
     @staticmethod
     def _level_items(items: list[OCRItem]) -> list[OCRItem]:
-        return [item for item in items if re.search(r"\bLv\.?\s*\d+", item.text, flags=re.IGNORECASE)]
+        return [item for item in items if re.search(r"\bL(?:[vw][.,，·]?|[.,，·])\s*\d+", item.text, flags=re.IGNORECASE)]
 
     @classmethod
     def _species_from_level_item(cls, items: list[OCRItem]) -> tuple[str, OCRItem | None]:
         for item in cls._level_items(items):
-            species = re.sub(r"^.*?\bLv\.?\s*\d+", "", item.text, flags=re.IGNORECASE).strip(" ：:")
+            species = re.sub(r"^.*?\bL(?:[vw][.,，·]?|[.,，·])\s*\d+", "", item.text, flags=re.IGNORECASE).strip(" ：:")
             species = species.replace("♀", "").replace("♂", "").strip()
             # RapidOCR commonly reads the small pink female glyph as 早.
             species = re.sub(r"[\s'\"`·]*(?:早)$", "", species).strip()

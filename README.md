@@ -4,8 +4,8 @@ Windows 只读 OCR、素材库存与孵蛋规划工具，同时提供原生 Andr
 
 | 平台 | 当前版本 | 功能 |
 | --- | --- | --- |
-| Windows | **0.2.41** | OCR、库存、规划与执行、市场行情、离线攻略 |
-| Android | **0.9.0** | 实时浮窗 / 截图 / 录屏采集、库存、规划与执行、费用与补购设置 |
+| Windows | **0.2.42** | OCR、库存、规划与执行、市场行情、离线攻略 |
+| Android | **0.9.1** | 实时浮窗 / 截图 / 录屏采集、库存、规划与执行、费用与补购设置 |
 
 下载见 [GitHub Releases](https://github.com/Cruozz/pokemmo-breeder-helper/releases)。APK 文件名包含 Android 版本；Windows 标签和 APK 版本分别维护。Android 需要 Android 8.0+，支持 arm64-v8a / x86_64。覆盖安装保留数据，请勿为升级卸载应用。
 

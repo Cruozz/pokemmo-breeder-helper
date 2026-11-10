@@ -10,13 +10,15 @@ from uuid import uuid4
 from models import Monster
 from ocr_engine import OCRItem, OCRProcessor
 from species_data import get_species_database
+from reference_data import get_reference_database, normalize_move
 
 
-def parse_capture(lines_json: str) -> str:
+def parse_capture(lines_json: str, visual_gender: str = "") -> str:
     lines = json.loads(lines_json)
     if not isinstance(lines, list) or len(lines) > 1000:
         raise ValueError("识别文本过多，请选择精灵详情截图。")
     items = []
+    alternatives = {}
     for line in lines:
         text = str(line.get("text", ""))[:1000].strip()
         box = line.get("box")
@@ -25,8 +27,42 @@ def parse_capture(lines_json: str) -> str:
         if not all(isinstance(p, list) and len(p) == 2 and
                    all(type(v) in (int, float) and math.isfinite(v) for v in p) for p in box):
             continue
-        items.append(OCRItem(text, 0.0, box))  # ML Kit has no calibrated cross-engine confidence.
+        item = OCRItem(text, 0.0, box)  # ML Kit has no calibrated cross-engine confidence.
+        items.append(item)
+        options = line.get("alternatives", [])
+        if isinstance(options, list):
+            alternatives[id(item)] = [str(value)[:1000] for value in options[:8]]
     parsed = OCRProcessor.parse(items)
+    if visual_gender in {"M", "F"}:
+        parsed["gender"] = visual_gender
+        # The colored symbol is often transcribed as a terminal 8. Only strip it
+        # when image analysis actually found a gender icon on this name row.
+        name, _ = OCRProcessor._species_from_level_item(items)
+        name = name.rstrip(" ♀♂8")
+        record, confident, _ = get_species_database().resolve_ocr_name(name, visual_gender)
+        if record and confident:
+            parsed["species"] = record.display_name
+    # ML Kit has no per-line confidence. Use the same geometric move band,
+    # explicitly without the desktop engine's calibrated confidence threshold.
+    move_items = []
+    for item in items:
+        if re.match(r"^标记|^標記", OCRProcessor._compact(item.text)):
+            x, y = OCRProcessor._left(item.box), OCRProcessor._top(item.box)
+            right = min(OCRProcessor._right(item.box), x + OCRProcessor._height(item.box) * 3)
+            bottom = OCRProcessor._bottom(item.box)
+            item = OCRItem("标记:", item.score, [[x, y], [right, y], [right, bottom], [x, bottom]])
+        move_items.append(item)
+    moves, selected = OCRProcessor._find_moves(move_items, minimum_score=0.0)
+    reference = get_reference_database()
+    resolved_moves = []
+    for move, item in zip(moves, selected[1:]):
+        options = [move, *alternatives.get(id(item), [])]
+        # Prefer an exact dictionary match from the same row over a noisy second
+        # pass. Do not fuzzy-match short move names or silently invent skills.
+        exact = next((reference.move_aliases[normalize_move(value)] for value in options
+                      if normalize_move(value) in reference.move_aliases), "")
+        resolved_moves.append(exact or move)
+    parsed["moves"] = list(dict.fromkeys(resolved_moves))
     # Mobile screenshots often contain other panels. Never accept a bare six-number row.
     labels = [item for item in items if OCRProcessor._is_iv_label(item.text)]
     has_iv_label = bool(labels)
@@ -42,7 +78,7 @@ def parse_capture(lines_json: str) -> str:
         # Handle a split level/name line and "name Lv.50", but never guess from arbitrary prose.
         names = set()
         for item in items:
-            candidate = re.sub(r"(?i)\bLv\.?\s*\d+", "", item.text)
+            candidate = re.sub(r"(?i)\bL(?:[vw][.,，·]?|[.,，·])\s*\d+", "", item.text)
             candidate = re.sub(r"^(?:名字|名称|名稱|种族|種族|精灵|精靈)\s*[:：]\s*", "", candidate)
             candidate = candidate.replace("♀", "").replace("♂", "").strip(" ：:")
             match = database.get(candidate, fuzzy=False) if candidate else None
@@ -50,6 +86,14 @@ def parse_capture(lines_json: str) -> str:
                 names.add(match.display_name)
         if len(names) == 1:
             record = database.get(names.pop(), fuzzy=False)
+    if record and parsed["ability"]:
+        abilities = reference.abilities_for_species(record.id)
+        known = [a["canonical"] for values in abilities.values() for a in values]
+        # The blue diamond next to the ability may be OCR'd as one trailing glyph.
+        for ability in known:
+            if parsed["ability"].startswith(ability) and parsed["ability"][len(ability):].strip() in {"", "北", "t", "十", "◆", "◇", "学", "令"}:
+                parsed["ability"] = ability
+                break
     # Empty frames and transitions are not candidates; partial detail pages remain reviewable.
     if record is None and not has_iv_label:
         return json.dumps({"material": None, "warnings": [], "raw_text": parsed["raw_text"]}, ensure_ascii=False)

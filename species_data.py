@@ -62,7 +62,7 @@ REVIEWED_OCR_NAMES = {
     "玛狂拉": (461, ("恶", "冰")), "玛狙拉": (461, ("恶", "冰")),
 }
 OCR_TYPE_WORDS = ("超能力", "超能", "格斗", "飞行", "地面", "岩石", "幽灵", "妖精", "一般", "普通", "超", "冰", "恶", "虫", "毒", "钢", "火", "水", "草", "电", "龙")
-CONTEXTUAL_OCR_NAMES = {"娱王": (545, ("毒", "虫")), "玛拉": (461, ("冰", "恶"))}
+CONTEXTUAL_OCR_NAMES = {"又字蝠": (169, ("飞", "毒")), "娱王": (545, ("毒", "虫")), "玛拉": (461, ("冰", "恶"))}
 
 # These babies require an incense to hatch in PokeMMO.  Without the incense,
 # breeding their evolution line yields the immediate evolved form instead.
@@ -400,7 +400,7 @@ class SpeciesDatabase:
     def _ocr_name_variants(value: str, gender: str = "") -> tuple[str, ...]:
         """Build conservative variants for the noisy ``Lv. 名字 性别`` row."""
         raw = (value or "").strip()
-        raw = re.sub(r"^.*?\blv\.?\s*\d+", "", raw, flags=re.IGNORECASE).strip(" ：:'\"`·|")
+        raw = re.sub(r"^.*?\bl(?:[vw][.,，·]?|[.,，·])\s*\d+", "", raw, flags=re.IGNORECASE).strip(" ：:'\"`·|")
         variants = [raw]
 
         # RapidOCR often turns the tiny gender glyph into one trailing Han

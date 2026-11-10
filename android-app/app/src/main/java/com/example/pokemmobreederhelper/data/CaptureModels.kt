@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class CaptureLine(val text: String, val box: List<List<Int>>)
+data class CaptureLine(val text: String, val box: List<List<Int>>, val alternatives: List<String> = emptyList())
 
 @Serializable
 data class CaptureRecognition(

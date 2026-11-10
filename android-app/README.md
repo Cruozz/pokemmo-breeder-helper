@@ -1,6 +1,6 @@
 # Android 开发与验证
 
-原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.9.0（versionCode 16），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
+原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.9.1（versionCode 17），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
 
 ## 环境
 
@@ -57,10 +57,18 @@ python ../scripts/generate-capture-fixture.py --font 'C:\Windows\Fonts\msyh.ttc'
 
 ## 实时屏幕采集
 
-Android 0.9.0 使用 MediaProjection 前台服务与可最小化浮窗，每次开始请求新的系统授权。展开时冻结稳定识别预览，点“下一只”原子保存并推进仓位，再等待新精灵；“保存并结束”保存最后一只。最小化时自动入库，结果提示 5 秒或窗外触摸关闭。
+Android 0.9.1 使用 MediaProjection 前台服务与可最小化浮窗，每次开始请求新的系统授权。展开时冻结稳定识别预览，点“下一只”原子保存并推进仓位，再等待新精灵；“保存并结束”保存最后一只。最小化时自动入库，结果提示 5 秒或窗外触摸关闭。
 
 LiveCaptureGate 比较名字、性别、性格、六项 IV 等资料，连续稳定后才接收；下一只、空白过渡、暂停和旋转都不清除上一只记录。已知字段只在缺失／出现之间变化不算新精灵；完全一致的精灵无法仅凭画面区分，会继续等待。
 
 CaptureResultView 共用公蓝／母粉／31 绿渲染，未知字段明确显示待确认。CaptureOverlay 的按钮监听 ACTION_OUTSIDE；提示窗使用 FLAG_NOT_TOUCHABLE，alpha 不超过系统 maximumObscuringOpacityForTouch。浮窗／提示以及短暂保留的旧矩形均从整屏 OCR 画面遮罩。OverlayAppearance 在主界面持久化透明度、字号、自适应或手动尺寸，服务运行时即时更新。
 
 InventoryRepository 保留共享状态与原子写锁，直接入库记录 verified=false，仓位冲突保留草稿并暂停。静态帧精确复用 OCR，250ms 采样、500ms 稳定窗口。手动确认时保存冻结结果，防止游戏先切页后误存下一只。LiveCaptureJourneyTest 通过隔离合成页面验证真实屏幕授权、两种下一只顺序、性别／性格变化、去重、仓位翻页、提示超时及触摸、停止；OverlayAppearanceTest 验证设置与颜色。合成页面仅在 -PisolatedDeviceTests=true 时编入，正式 APK 不包含测试入口。
+
+### 仓库左侧面板识别
+
+识别范围需覆盖等级／名字及性别图标、个体值、性格，以及下方标记和四行技能；不要只框住精灵立绘。蓝色／粉色图标通过名字行附近的颜色连通区域判定，模糊或冲突时留空。技能列根据个体值和标记的位置定位，裁去属性标签后放大读取，并优先使用同一行的准确词典结果；ML Kit 没有行置信度，不套用桌面 OCR 的分数过滤。
+
+自动入库成功才显示五秒结果提示；下一次游戏触摸关闭，早于弹窗显示的迟到触摸不会关闭新结果。待补／待识别提示代表尚未入库，暂停时不会自动识别。展开预览增加技能，最小化提示仍保留紧凑的名字、性别、性格与六项 IV。
+
+CapturePanelGeometryTest 验证蓝／粉图标、不同缩放和干扰颜色；CapturePopupTest 验证旧触摸与新弹窗的时序。用户截图仅在本地私有测试目录验证，不提交仓库或打包到公开 APK。

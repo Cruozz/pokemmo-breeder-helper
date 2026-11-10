@@ -41,11 +41,16 @@ internal class CaptureOverlay(private val context: Context, retry: () -> Unit, n
   private val stylePrefs = OverlayAppearance.preferences(context)
   private var appearance = OverlayAppearance.load(context)
   private val main = Handler(Looper.getMainLooper())
+  private var popupShownAt = 0L
   private val retiredBounds = mutableListOf<Pair<Rect, Long>>()
   private val fontViews = mutableListOf<Pair<TextView, Int>>()
   private val root = object : LinearLayout(themed) {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-      if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) { dismissPopup(); return false }
+      if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+        // An earlier game tap can be delivered after asynchronous OCR/save finishes.
+        if (event.eventTime > popupShownAt) dismissPopup()
+        return false
+      }
       return super.dispatchTouchEvent(event)
     }
   }.apply { orientation = LinearLayout.VERTICAL; elevation = dp(3).toFloat() }
@@ -55,7 +60,7 @@ internal class CaptureOverlay(private val context: Context, retry: () -> Unit, n
   }
   private val status = text(9).apply { setTextColor(CaptureColors.muted); maxLines = 3 }
   private val positionButton = button("选择账号与仓位") { settings() }
-  private val result = CaptureResultView(themed).apply { visibility = View.GONE }
+  private val result = CaptureResultView(themed, includeMoves = true).apply { visibility = View.GONE }
   private val panel = LinearLayout(themed).apply { orientation = LinearLayout.VERTICAL }
   private val scroll = ScrollView(themed).apply { isFillViewport = false; addView(panel) }
   private val top = row()
@@ -172,7 +177,12 @@ internal class CaptureOverlay(private val context: Context, retry: () -> Unit, n
   }
   fun render(position:CapturePosition,count:Int,message:String,paused:Boolean,hasPreview:Boolean) {
     header.text="手动 · 已存 "+count
-    bubble.text=if(paused)"暂停" else "自动\n"+count
+    bubble.text=when {
+      paused -> "暂停"
+      message.startsWith("未完整") -> "待补\n"+count
+      message.startsWith("等待精灵") -> "待识别\n"+count
+      else -> "自动\n"+count
+    }
     positionButton.text=position.account+"  ·  仓 "+position.box+" / 格 "+position.slot
     positionButton.contentDescription="选择账号与仓位"
     status.text=message;status.contentDescription=message
@@ -207,11 +217,11 @@ internal class CaptureOverlay(private val context: Context, retry: () -> Unit, n
           else (params.y-view.measuredHeight-dp(4)).coerceAtLeast(0)
       }
     }
-    popup=view;wm.addView(view,p);main.postDelayed(hidePopup,5000)
+    popup=view;wm.addView(view,p);popupShownAt=SystemClock.uptimeMillis();main.postDelayed(hidePopup,5000)
   }
   fun dismissPopup() {
     main.removeCallbacks(hidePopup)
-    popup?.let { retire(it);runCatching { wm.removeView(it) } };popup=null
+    popup?.let { retire(it);runCatching { wm.removeView(it) } };popup=null;popupShownAt=0L
   }
 
   fun configure(position:CapturePosition,accounts:List<String>,

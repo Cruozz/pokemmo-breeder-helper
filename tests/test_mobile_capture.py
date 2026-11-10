@@ -73,3 +73,54 @@ def test_bad_geometry_and_excessive_input_are_rejected_safely():
     assert result["material"] is None
     with pytest.raises(ValueError):
         capture.parse_capture(json.dumps([line("text", 0)] * 1001))
+
+
+def test_colored_gender_hint_repairs_reviewed_name_and_only_real_name_suffix():
+    lines = [line("Lv.50 又字蝠'飞毒8", 20), line("个体值：31/3/7/9/2/11", 100)]
+    result = json.loads(capture.parse_capture(json.dumps(lines, ensure_ascii=False), "M"))
+    assert result["material"]["species"] == "叉字蝠"
+    assert result["material"]["gender"] == "M"
+    assert result["material"]["verified"] is False
+    assert parse(*lines)["material"]["species"] == ""
+    bad = [line("Lv.50 又字蝠火龙8", 20), line("个体值：31/3/7/9/2/11", 100)]
+    assert json.loads(capture.parse_capture(json.dumps(bad), "M"))["material"]["species"] == ""
+
+
+def test_mobile_moves_do_not_require_desktop_confidence_and_ignore_badges():
+    result = parse(line("Lv.50 伊布", 20), line("个体值：31/3/7/9/2/11", 100),
+                   line("标记: ○△□", 160, width=260),
+                   line("飞行", 192, x=10, width=45), line("勇乌猛攻", 192, x=100),
+                   line("超能力", 222, x=10, width=50), line("光墙", 222, x=100),
+                   line("原始之カ", 252, x=100), line("順风", 282, x=100))
+    assert result["material"]["moves"] == ["勇鸟猛攻", "光墙", "原始之力", "顺风"]
+    assert result["material"]["confidence"] is None
+    assert not result["material"]["verified"]
+
+
+def test_unanchored_skill_like_text_is_not_imported_as_moves():
+    result = parse(line("Lv.50 伊布", 20), line("个体值：31/3/7/9/2/11", 100),
+                   line("勇鸟猛攻", 200), line("高级搜索", 230))
+    assert result["material"]["moves"] == []
+
+
+def test_exact_same_row_original_wins_over_unknown_enlarged_move():
+    move = line("诱惑感", 200, x=100)
+    move["alternatives"] = ["诱惑"]
+    result = parse(line("Lv.50 伊布", 20), line("个体值：31/3/7/9/2/11", 100),
+                   line("标记:", 160, width=55), move)
+    assert result["material"]["moves"] == ["诱惑"]
+
+
+def test_small_mobile_level_comma_is_still_a_level_anchor():
+    result = parse(line("LV, 50 伊布 雄性", 20), line("个体值：31/3/7/9/2/11", 100))
+    assert result["material"]["species"] == "伊布"
+    assert result["material"]["gender"] == "M"
+
+
+@pytest.mark.parametrize("level", ["Lw.", "L.", "LV,", "Lv."])
+def test_small_level_w_and_reviewed_game_move_names(level):
+    result = parse(line(f"{level} 50 伊布 雄性", 20), line("个体值：31/3/7/9/2/11", 100),
+                   line("标记:", 160, width=55), line("移花援木", 200, x=100), line("汲取", 230, x=100))
+    assert result["material"]["species"] == "伊布"
+    assert result["material"]["gender"] == "M"
+    assert result["material"]["moves"] == ["移花接木", "汲取"]
