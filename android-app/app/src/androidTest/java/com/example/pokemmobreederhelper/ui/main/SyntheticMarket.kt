@@ -18,7 +18,7 @@ internal class SyntheticMarket {
           at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
           return parse_snapshot(dict(items=[], updatedAt=at, pokemonQueries=[
               dict(familyId=family, query=query, price=15000, quantity=100, listings=100, at=at)
-              for family in (29, 32, 133)
+              for family in (29, 32, 133, 198)
               for query in ('male', 'female', 'alpha_male', 'alpha_female')
           ]))
       _purchase_market_snapshot = _instrumentation_market

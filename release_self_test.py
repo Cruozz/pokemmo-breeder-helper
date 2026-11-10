@@ -327,6 +327,27 @@ def run_checks() -> dict[str, object]:
                                   "maternal_everstone": True,
                                   "evolved_nature_seed": True, "synthetic_data": True}
 
+    early_sample = [
+        Monster(id="selftest-early-body", species="黑暗鸦", gender="F",
+                ivs=[31, 31, 31, None, None, 31]),
+        Monster(id="selftest-early-hit", species="波波", gender="M", nature="固执",
+                ivs=[31, 31, 31, None, 31, None], nature_attempt_result="hit"),
+    ]
+    report, early_routes = make_report_with_candidates(early_sample, "黑暗鸦", "", "固执",
+        "31/31/31/x/31/31", [], allow_ditto=False, max_purchase_v=3,
+        preferred_material_ids={"selftest-early-hit"})
+    if not early_routes:
+        raise RuntimeError("Packaged early-nature replan failed: " + report)
+    early_plan = build_execution_plan(early_routes[0])
+    final = early_plan.steps[-1]
+    held_items = {final.parent_a_id: final.item_a, final.parent_b_id: final.item_b}
+    if not (held_items.get("selftest-early-hit") == "不变之石"
+            and final.child.nature == "固执" and final.child.ivs == [31,31,31,None,31,31]
+            and any("selftest-early-body" in {step.parent_a_id,step.parent_b_id} for step in early_plan.steps)):
+        raise RuntimeError("Packaged early male nature was lost or the owned mother was discarded")
+    checks["early_nature_replan"] = {"male_everstone_finish": True, "existing_mother_reused": True,
+                                      "purchase_limit": 3, "synthetic_data": True}
+
     protected_sample = [
         Monster(id="selftest-attack-gengar", species="耿鬼", gender="M", nature="慎重",
                 ivs=[31, 31, 13, 4, 18, 6]),

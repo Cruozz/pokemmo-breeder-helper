@@ -37,6 +37,60 @@ class StagedPlanningTest {
     }
   }
 
+  @Test fun earlyMurkrowNatureHitKeepsEverstoneAndReusesMotherAfterReload() {
+    for (gender in listOf("F", "M")) {
+      val context = isolatedApplication()
+      val bridge = PlannerBridge(context)
+      val repository = InventoryRepository(context)
+      val target = PlanRequest("黑暗鸦", nature = "固执", allowDitto = false,
+        ivs = listOf("31", "31", "31", "X", "31", "31"), maxPurchaseV = 3)
+      var inventory = emptyList<MonsterRecord>()
+      var response = bridge.generatePlan("[]", target)
+      assertTrue(response.error, response.ok)
+      val chosen = response.plan!!.steps.first { it.canRecordEarlyNature && it.child.gender == gender }
+      for (step in response.plan!!.steps) {
+        val result = bridge.completeStep(AppJson.codec.encodeToString(inventory), response,
+          StepOutcome(step.number, step.plannedGender, if (step.number == chosen.number) true else null))
+        assertTrue(result.error, result.ok)
+        inventory = result.inventory
+        response = result.response!!
+        if (step.number == chosen.number) break
+      }
+      assertTrue(response.plan!!.needsReplan)
+      assertEquals("固执", inventory.first { it.id == chosen.child.id }.nature)
+      repository.replace(WorkspaceSnapshot(inventory, SavedPlanSession(response,
+        request = response.plan!!.planningOptions)))
+      val restored = InventoryRepository(context).loadPlanSession()!!
+      response = bridge.generatePlan(AppJson.codec.encodeToString(inventory), restored.response.plan!!.planningOptions!!)
+      assertTrue(response.error, response.ok)
+      assertEquals("finish", response.plan!!.naturePhase)
+      val final = response.plan!!.steps.last()
+      assertTrue(chosen.child.id in listOf(final.parentAId, final.parentBId))
+      assertEquals("不变之石", if (final.parentAId == chosen.child.id) final.itemA else final.itemB)
+      val partnerId = if (final.parentAId == chosen.child.id) final.parentBId else final.parentAId
+      val partner = response.plan!!.steps.first { it.child.id == partnerId }.child
+      assertEquals(if (gender == "M") "F" else "M", partner.gender)
+      assertEquals(5, partner.perfectIvCount)
+      if (gender == "M") {
+        assertEquals("黑暗鸦", partner.species)
+        val mother = inventory.first { it.gender == "F" }
+        assertTrue(response.plan!!.steps.any { mother.id in listOf(it.parentAId, it.parentBId) })
+      }
+      for (step in response.plan!!.steps) {
+        val result = bridge.completeStep(AppJson.codec.encodeToString(inventory), response,
+          StepOutcome(step.number, step.plannedGender))
+        assertTrue(result.error, result.ok)
+        inventory = result.inventory
+        response = result.response!!
+        assertFalse(response.plan!!.needsReplan)
+      }
+      assertTrue(inventory.isEmpty())
+      assertEquals("黑暗鸦", final.child.species)
+      assertEquals("固执", final.child.nature)
+      assertEquals(5, final.child.perfectIvCount)
+    }
+  }
+
   @Test fun packagedFiveVAlphaLifecycleSurvivesSerializationAndFinishesMale() {
     val context = isolatedApplication()
     val bridge = PlannerBridge(context)

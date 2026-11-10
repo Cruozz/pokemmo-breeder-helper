@@ -1,6 +1,6 @@
 # Android 开发与验证
 
-原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.6.0（versionCode 12），共享规则 0.2.37；applicationId 保持 com.example.pokemmobreederhelper。
+原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.7.1（versionCode 14），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
 
 ## 环境
 

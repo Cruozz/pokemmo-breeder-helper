@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.7.0"
+        versionCode = 14
+        versionName = "0.7.1"
         buildConfigField("String", "PLANNER_RULES_VERSION", "\"$plannerRulesVersion\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {

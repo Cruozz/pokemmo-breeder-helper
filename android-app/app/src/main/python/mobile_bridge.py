@@ -21,7 +21,7 @@ from route_roles import RouteSource, classify_routes
 from chain_planner import ChainCandidate, is_ditto
 from breeding_cost import PriceBook
 
-RULES_VERSION = "0.2.38"
+RULES_VERSION = "0.2.39"
 _market_cache = None
 _market_cache_time = 0.0
 

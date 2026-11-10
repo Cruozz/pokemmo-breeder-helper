@@ -65,6 +65,8 @@ class ChainState:
     action: ChainAction | None = None
     has_hidden_ability: bool = False
     inherited_moves: frozenset[str] = field(default_factory=frozenset)
+    # A recorded nature hit must remain guaranteed along its entire lineage.
+    preserve_nature: bool = False
     # Selected egg moves that enter the target maternal line at this breed.
     # This is presentation metadata for the mind map, not an extra mechanic.
     introduced_moves: frozenset[str] = field(default_factory=frozenset)
@@ -128,6 +130,7 @@ class ChainState:
                 if self.action is not None
                 else None
             ),
+            "preserve_nature": self.preserve_nature,
             "has_hidden_ability": self.has_hidden_ability,
             "inherited_moves": sorted(self.inherited_moves),
             "introduced_moves": sorted(self.introduced_moves),
@@ -159,6 +162,7 @@ class ChainState:
             breeding_species=str(value.get("breeding_species", "")),
             is_virtual=bool(value.get("is_virtual", False)),
             leaf=Monster.from_dict(leaf_value) if isinstance(leaf_value, dict) else None,
+            preserve_nature=bool(value.get("preserve_nature", False)),
             has_hidden_ability=bool(value.get("has_hidden_ability", False)),
             inherited_moves=frozenset(str(item) for item in value.get("inherited_moves", []) or []),
             introduced_moves=frozenset(str(item) for item in value.get("introduced_moves", []) or []),
@@ -855,6 +859,11 @@ def _forced_child(
 ) -> ChainState | None:
     if parent_a.used_ids & parent_b.used_ids:
         return None
+    if (parent_a.preserve_nature or parent_b.preserve_nature) and not (
+        (parent_a.preserve_nature and everstone_a)
+        or (parent_b.preserve_nature and everstone_b)
+    ):
+        return None
     if (everstone_a and brace_a is not None) or (everstone_b and brace_b is not None):
         # One parent has one item slot; an Everstone cannot also lock an IV.
         return None
@@ -918,6 +927,7 @@ def _forced_child(
         gender=output_gender,
         egg_groups=profile.egg_groups,
         mask=mask,
+        preserve_nature=parent_a.preserve_nature or parent_b.preserve_nature,
         has_nature=everstone_a or everstone_b,
         nature=parent_a.nature if everstone_a else (parent_b.nature if everstone_b else ""),
         is_alpha=parent_a.is_alpha and parent_b.is_alpha,
@@ -1818,8 +1828,8 @@ def _same_species_pyramid(
                                     result = trim(candidates, required_mask, require_nature)
                                     memo[memo_key] = result
                                     return result
-                    for source in build(left_role, required_mask, False, "F", used):
-                        for holder in build("donor", holder_mask, True, "M", used | source.used_ids):
+                    for holder in build("donor", holder_mask, True, "M", used):
+                        for source in build(left_role, required_mask, False, "F", used | holder.used_ids):
                             child = regular_child(
                                 role, source, holder, gender, brace_a=stat, everstone_b=True
                             )
@@ -2252,10 +2262,13 @@ def _maternal_spine_pyramid(
                         if donor is not None:
                             options.append(make_regular(role, holder, donor, gender,
                                                         brace_male=missing_stat, everstone_female=True))
-                    source = build(role, stats, False, "F", used, female_moves)
-                    if source is not None:
-                        nature_donor = build("donor", holder_stats, True, "M", used | source.used_ids, male_moves)
-                        if nature_donor is not None:
+                    # Reserve the nature sire before building the IV mother.
+                    # Otherwise the cheapest plain mother can consume that
+                    # sire, then force us to manufacture a second nature hand.
+                    nature_donor = build("donor", holder_stats, True, "M", used, male_moves)
+                    if nature_donor is not None:
+                        source = build(role, stats, False, "F", used | nature_donor.used_ids, female_moves)
+                        if source is not None:
                             options.append(make_regular(role, source, nature_donor, gender,
                                                         brace_female=missing_stat, everstone_male=True))
                 if role != "line":
@@ -3729,6 +3742,9 @@ def find_chain_candidates(
             egg_groups=groups,
             mask=mask,
             has_nature=has_nature,
+            preserve_nature=has_nature and (
+                monster.nature_attempt_result == "hit" or leaf_id in preferred_material_ids
+            ),
             nature=monster.nature if has_nature else "",
             is_alpha=monster.is_alpha,
             used_ids=frozenset({leaf_id}),
@@ -4290,6 +4306,46 @@ def find_chain_candidates(
             if root is not None:
                 roots.append(root)
         return roots
+
+    if nature_phase == "finish" and "F" in target_profile.allowed_genders:
+        # An early male hit is a reserved finishing sire. Plan the mother
+        # independently, so neither a greedy IV branch nor a purchase-shaped
+        # pyramid can consume him or unnecessarily replace an owned mother.
+        reserved_sires = sorted((
+            state for state in checkpoint_nature_states
+            if state.gender == "M" and state.preserve_nature
+            and (target_mask & ~state.mask).bit_count() == 1
+        ), key=lambda state: (
+            not bool(state.used_ids & available_preferred_material_ids),
+            *_state_rank(state, strategy),
+        ))[:max_results]
+        reserved_goals = []
+        for sire in reserved_sires:
+            sire_passes_hidden = (sire.has_hidden_ability
+                                  and normalize_text(sire.species) == species_key)
+            mothers, _ = find_chain_candidates(
+                [monster for monster in inventory if monster.id not in sire.used_ids],
+                species=requested_species, target_gender="F", nature_key="",
+                target_ivs=target_ivs, egg_groups=egg_groups,
+                max_results=max_results, beam_per_signature=beam_per_signature,
+                target_allowed_genders=target_allowed_genders,
+                target_gender_species=target_gender_species,
+                target_alpha=target_alpha, allow_ditto=allow_ditto, strategy=strategy,
+                target_family_species=target_family_species, target_goal_species=target_goal_species,
+                offspring_species=offspring_species, breeding_species=breeding_species,
+                allow_alpha_materials=allow_alpha_materials,
+                intermediate_gender_strategy=intermediate_gender_strategy,
+                need_hidden_ability=need_hidden_ability and not sire_passes_hidden,
+                target_moves=tuple(required_moves - sire.inherited_moves),
+                egg_move_donors=egg_move_donors, prefer_ditto=prefer_ditto,
+                convert_maternal_with_ditto=convert_maternal_with_ditto,
+                preferred_material_ids=available_preferred_material_ids - sire.used_ids,
+                max_purchase_v=max_purchase_v, cost_pricing=book,
+            )
+            for mother in mothers:
+                reserved_goals.extend(finish_from_nature_upper(sire, mother.root))
+        if reserved_goals:
+            custom_goals = reserved_goals
 
     if nature_phase == "promote":
         custom_goals = []
