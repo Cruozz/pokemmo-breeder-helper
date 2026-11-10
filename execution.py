@@ -159,6 +159,16 @@ class ExecutionPlan:
             and sum(value is not None for value in step.child.ivs) >= self.nature_check_min_ivs
         )
 
+    def can_record_early_nature(self, step: ExecutionStep) -> bool:
+        """An optional observation, independent of the planned maternal checkpoint."""
+        return bool(
+            self.adaptive_nature and self.target_nature and not step.uses_everstone
+            and not step.completed and not self.should_check_nature(step)
+            and self.required_iv_count >= 3
+            and sum(value is not None for value in step.child.ivs) >= self.required_iv_count - 1
+            and step.child.gender in {"F", "M"}
+        )
+
     def _producer_by_child_id(self) -> dict[str, ExecutionStep]:
         return {step.child.id: step for step in self.steps}
 

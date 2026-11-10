@@ -54,3 +54,9 @@ Python 的执行字段如果需要保存或回传，必须同时进入 data/Mode
 ```powershell
 python ../scripts/generate-capture-fixture.py --font 'C:\Windows\Fonts\msyh.ttc'
 ```
+
+## 实时屏幕采集
+
+Android 0.7.0 使用 MediaProjection 前台服务与可拖动悬浮窗，复用 CaptureOcr 和 CaptureStore。每次开始使用新的系统授权，旋转时调整已有 VirtualDisplay，停止后保留已写入的草稿。LiveCaptureGate 检查完整六项 IV、稳定时间及连续重复；相同名字与 IV 的不同精灵由“下一只”明确区分。
+
+LiveCaptureJourneyTest 使用隔离包内的合成页面检查授权、自动保存、去重、位置递增与停止。该页面仅在 `-PisolatedDeviceTests=true` 时编入 APK，正常发布不包含它。

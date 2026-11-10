@@ -69,8 +69,8 @@ def execution_map(plan: ExecutionPlan, inventory, expanded, species_db) -> MindM
         status = ("已完成 · 来源已展开" if opened else "已完成 · 来源已折叠") if step.completed else (
             "执行暂停" if plan.needs_replan else "孵化中" if step.in_progress else "当前可执行" if ready else "等待下级完成")
         nature = "性格：锁定" if step.uses_everstone else (
-            f"性格：{child.nature or '未命中目标'}" if step.completed and plan.should_check_nature(step)
-            else "爆性格：待确认" if plan.should_check_nature(step) else "性格：暂不统计")
+            f"性格：{child.nature or '未命中目标'}" if step.completed and (plan.should_check_nature(step) or child.nature_attempt_result)
+            else "爆性格：待确认" if plan.should_check_nature(step) else "性格：可登记提前命中" if plan.can_record_early_nature(step) else "性格：暂不统计")
         node = MindMapNode(
             key=f"{plan.id}-step-{step.number}", step_number=step.number,
             species_name=child.species,

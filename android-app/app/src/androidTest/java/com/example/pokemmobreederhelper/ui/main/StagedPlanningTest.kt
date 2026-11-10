@@ -14,9 +14,14 @@ import kotlinx.serialization.encodeToString
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 
 class StagedPlanningTest {
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  private val market = SyntheticMarket()
+  @Before fun fixedMarket() = market.install()
+  @After fun restoreMarket() = market.close()
 
   private val request = PlanRequest("尼多王", nature = "内敛", targetAlpha = true,
     needHiddenAbility = true, allowDitto = false, ivs = listOf("31", "X", "31", "31", "31", "31"),

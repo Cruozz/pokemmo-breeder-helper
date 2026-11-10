@@ -10,40 +10,17 @@ import androidx.core.graphics.scale
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 class InventoryMediaScanner(private val context: Context, private val bridge: PlannerBridge) {
   suspend fun scan(
     uris: List<Uri>, video: Boolean,
     onFrame: suspend (CaptureRecognition?, Bitmap?, String, Long?, Int, Int, String?) -> Unit,
   ) = withContext(Dispatchers.IO) {
-    val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-    suspend fun recognize(bitmap: Bitmap): CaptureRecognition {
-      // Wait for the current ML task to finish before recycling its bitmap, even on cancellation.
-      val text = suspendCoroutine { continuation ->
-        recognizer.process(InputImage.fromBitmap(bitmap, 0))
-          .addOnSuccessListener { continuation.resume(it) }
-          .addOnFailureListener { continuation.resumeWithException(it) }
-          .addOnCanceledListener { continuation.resumeWithException(java.util.concurrent.CancellationException()) }
-      }
-      currentCoroutineContext().ensureActive()
-      val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
-        val box = line.boundingBox ?: return@mapNotNull null
-        CaptureLine(line.text, listOf(listOf(box.left, box.top), listOf(box.right, box.top),
-          listOf(box.right, box.bottom), listOf(box.left, box.bottom)))
-      }
-      return bridge.parseCapture(AppJson.codec.encodeToString(lines))
-    }
+    val recognizer = CaptureOcr(bridge)
     suspend fun frame(bitmap: Bitmap?, label: String, ms: Long?, done: Int, total: Int) {
       if (bitmap == null) {
         onFrame(null, null, label, ms, done, total, "无法解码画面，可重新截图后导入。")
@@ -52,7 +29,7 @@ class InventoryMediaScanner(private val context: Context, private val bridge: Pl
       try {
         currentCoroutineContext().ensureActive()
         // Consumer failures (e.g. full disk) must stop the scan, not be reported as an OCR miss.
-        val recognition = try { recognize(bitmap) }
+        val recognition = try { recognizer.recognize(bitmap) }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (error: Exception) {
           onFrame(null, null, label, ms, done, total, "识别失败：${error.message}")

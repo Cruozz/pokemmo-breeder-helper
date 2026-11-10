@@ -21,7 +21,7 @@ from route_roles import RouteSource, classify_routes
 from chain_planner import ChainCandidate, is_ditto
 from breeding_cost import PriceBook
 
-RULES_VERSION = "0.2.37"
+RULES_VERSION = "0.2.38"
 _market_cache = None
 _market_cache_time = 0.0
 
@@ -157,6 +157,7 @@ def _present_plan(plan: ExecutionPlan, inventory: list[Monster]) -> dict[str, An
             gender_policy=step.effective_gender_policy,
             requires_purchase=step.requires_purchase,
             should_check_nature=plan.should_check_nature(step),
+            can_record_early_nature=plan.can_record_early_nature(step),
             is_final=plan.is_final_step(step),
             dependencies=[key for key in (step.parent_a_id, step.parent_b_id) if key in producers],
             child_species_id=_species_id(database, step.child.species),
@@ -376,6 +377,10 @@ def complete_step(inventory_json: str, response_json: str, outcome_json: str) ->
             child.gender = step.expected_gender
             child.gender_unconfirmed = step.effective_gender_policy == "irrelevant"
         checked = plan.should_check_nature(step)
+        if not checked and outcome.get("nature_hit") is True:
+            if not plan.can_record_early_nature(step):
+                raise ValueError("本步尚未达到提前性格记录档位，或已经使用不变之石。")
+            checked = True
         hit = False
         if checked:
             if type(outcome.get("nature_hit")) is not bool:

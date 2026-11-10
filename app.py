@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.37"
+APP_VERSION = "0.2.38"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -2253,6 +2253,7 @@ class App:
             command=self._toggle_selected_plan_step_in_progress,
         )
         self.mark_step_progress_button.pack(side=RIGHT, padx=(8, 0))
+        self.early_nature_button = ttk.Button(self.next_step_gender_frame, text="提前爆出目标性格", command=lambda: self.complete_next_step(early_nature_hit=True))
         self.plan_status_label = ttk.Label(
             parent,
             textvariable=self.plan_status_var,
@@ -2484,6 +2485,13 @@ class App:
                 if not self.next_step_gender_frame.winfo_manager():
                     before_widget = self.plan_map if self.planner_details_collapsed else self.plan_status_label
                     self.next_step_gender_frame.pack(fill=X, pady=(0, 6), before=before_widget)
+        if hasattr(self, "early_nature_button"):
+            eligible = bool(can_complete and self.active_plan and self.active_plan.can_record_early_nature(selected_step))
+            if eligible:
+                self.early_nature_button.configure(text=f"步骤 {selected_step.number} 提前爆出 {self.active_plan.target_nature}")
+                self.early_nature_button.pack(side=LEFT, padx=6)
+            else:
+                self.early_nature_button.pack_forget()
         self._update_plan_compact_summary()
         if hasattr(self, "clear_plan_exclusions_button"):
             self.clear_plan_exclusions_button.configure(
@@ -6273,7 +6281,7 @@ class App:
             self.plan_status_var.set("新建议仅供预览；确认并启用后才能执行，不会影响原路线。")
         self._update_plan_action_states()
 
-    def complete_next_step(self, requested_step: ExecutionStep | None = None) -> None:
+    def complete_next_step(self, requested_step: ExecutionStep | None = None, *, early_nature_hit: bool = False) -> None:
         plan = self.active_plan
         if plan is None:
             messagebox.showwarning("没有执行方案", "请先生成并启用最佳方案。")
@@ -6293,6 +6301,9 @@ class App:
             return
         if not plan.is_step_ready(step):
             messagebox.showwarning("依赖尚未完成", "这个节点直接连接的下级子代尚未完成。")
+            return
+        if early_nature_hit and not plan.can_record_early_nature(step):
+            messagebox.showwarning("无法提前记录", "本步尚未达到目标前一档，或已经锁定性格。")
             return
         plan_snapshot_before_completion = plan.to_dict()
         snapshot_candidate = self.plan_candidate_cache.get(plan.id)
@@ -6332,6 +6343,8 @@ class App:
             "中间代会写入素材库存；达到最终成品时只完成核销，不再入库。\n"
             "该操作只修改工具的本地数据库，不会操作游戏。"
         )
+        if early_nature_hit:
+            prompt += f"\n\n已确认子代提前爆出目标性格【{plan.target_nature}】；保存后将按原目标生成新建议。"
         if not messagebox.askyesno("确认核销父母", prompt):
             return
         child_to_save = Monster.from_dict(step.child.to_dict())
@@ -6368,7 +6381,7 @@ class App:
             child_to_save.gender = step.expected_gender
         nature_hit = False
         nature_missed = False
-        nature_checked = plan.should_check_nature(step)
+        nature_checked = plan.should_check_nature(step) or early_nature_hit
         if nature_checked:
             nature_hand_step = step.nature_check_role == "nature_hand"
             prompt_intro = (
@@ -6381,7 +6394,7 @@ class App:
                 if nature_hand_step
                 else "否：按未命中保存；若这是满 IV 母体，将自动进入性格手阶段。"
             )
-            nature_answer = messagebox.askyesnocancel(
+            nature_answer = True if early_nature_hit else messagebox.askyesnocancel(
                 "记录随机性格",
                 f"{prompt_intro}\n\n"
                 f"是否爆出了目标性格“{plan.target_nature}”？\n\n"

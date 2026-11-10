@@ -132,6 +132,7 @@ data class ExecutionStepRecord(
   val preparations: List<SkillPreparation> = emptyList(),
   @SerialName("requires_purchase") val requiresPurchase: Boolean = false,
   @SerialName("should_check_nature") val shouldCheckNature: Boolean = false,
+  @SerialName("can_record_early_nature") val canRecordEarlyNature: Boolean = false,
   @SerialName("is_final") val isFinal: Boolean = false,
   val dependencies: List<String> = emptyList(),
   @SerialName("route_role") val routeRole: String = "iv",

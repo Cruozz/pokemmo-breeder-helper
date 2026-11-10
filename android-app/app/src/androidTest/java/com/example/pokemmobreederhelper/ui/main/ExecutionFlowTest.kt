@@ -32,6 +32,23 @@ class ExecutionFlowTest {
     assertEquals(1, calls)
   }
 
+  @Test fun earlyNatureIsOptionalAndOnlySelectedHitIsSubmitted() {
+    val outcomes = mutableListOf<Boolean?>()
+    val step = ExecutionStepRecord(1, "a", "b", child = MonsterRecord(id = "child", gender = "M"),
+      genderPolicy = "locked", canRecordEarlyNature = true)
+    rule.setContent { PokeMMOBreederHelperTheme {
+      CompletionDialog(step, "内敛", {}, { _, hit, _ -> outcomes.add(hit) }, {})
+    } }
+    rule.onNodeWithText("确认已孵完").assertIsEnabled().performClick()
+    assertEquals(listOf<Boolean?>(null), outcomes)
+    rule.onNodeWithText("提前爆出目标性格：内敛").performScrollTo().performClick()
+    rule.onNodeWithText("确认已孵完").performClick()
+    assertEquals(listOf(null, true), outcomes)
+    rule.onNodeWithText("提前爆出目标性格：内敛").performScrollTo().performClick()
+    rule.onNodeWithText("确认已孵完").performClick()
+    assertEquals(listOf(null, true, null), outcomes)
+  }
+
   @Test fun dittoMateDoesNotAskGender() {
     val step = ExecutionStepRecord(1, "a", "buy:ditto", child = MonsterRecord(id = "child"), genderPolicy = "irrelevant")
     rule.setContent { PokeMMOBreederHelperTheme { CompletionDialog(step, "", {}, { _, _, _ -> }, {}) } }

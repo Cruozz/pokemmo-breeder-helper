@@ -12,9 +12,14 @@ import kotlinx.serialization.encodeToString
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 
 class PreviewPlanningTest {
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+  private val market = SyntheticMarket()
+  @Before fun fixedMarket() = market.install()
+  @After fun restoreMarket() = market.close()
   private val request = PlanRequest("伊布", ivs = listOf("31", "31", "31", "X", "X", "X"), allowDitto = false)
   private val inventory = listOf(
     MonsterRecord(id = "preview-mother", species = "伊布", gender = "F", ivs = listOf(31,31,null,null,null,null)),

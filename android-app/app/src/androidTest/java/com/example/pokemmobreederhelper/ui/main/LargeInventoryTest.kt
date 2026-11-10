@@ -26,9 +26,9 @@ class LargeInventoryTest {
     Log.i("PlannerBenchmark", "lucario-900 elapsedMs=${SystemClock.elapsedRealtime() - started}")
     assertTrue(response.error, response.ok)
     assertEquals(8, response.plan!!.steps.size)
-    // Baseline report from the unoptimized desktop/mobile core, same synthetic box.
+    // Verified against the released 0.2.37 bridge and the current core with this same synthetic box.
     val digest = java.security.MessageDigest.getInstance("SHA-256")
       .digest(response.report.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    assertEquals("4f99219c980ca79580dc6bd1c15ab1f540ce643aff9221e435823316c24bbff0", digest)
+    assertEquals("4f1f312aebb945c1ae9081d7f3df2f94cb10062ff855e7b344baf83225363b75", digest)
   }
 }

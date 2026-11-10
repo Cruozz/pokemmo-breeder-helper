@@ -34,17 +34,18 @@ internal fun InventoryCaptureDialog(state: CaptureUiState, vm: InventoryCaptureV
     if (it != null) vm.scan(listOf(it), true)
   }
   var confirmClear by rememberSaveable { mutableStateOf(false) }
-  val canEdit = !state.busy && !inventoryBusy
+  val canEdit = !state.busy && !state.liveActive && !inventoryBusy
   Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.background) {
       Column {
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-          Text("截图 / 录屏采集", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+          Text("精灵库存采集", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
           TextButton(onClick = onDismiss) { Text("返回") }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          item { LiveCaptureControls(enabled = canEdit) }
           item {
-            Text("先用手机系统录屏，在游戏中逐只打开精灵详情与个体值页，每只停留至少 2 秒，再回到这里导入。")
+            Text("也可以先用手机系统录屏，在游戏中逐只打开精灵详情与个体值页，每只停留至少 2 秒，再回到这里导入。")
             Text("每批 20 张截图，或 2 分钟以内的录屏；每秒取一帧。采集结果先存为草稿，核对入库后参与规划。",
               style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
           }

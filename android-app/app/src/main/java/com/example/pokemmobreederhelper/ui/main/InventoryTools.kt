@@ -74,7 +74,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
             }
             PokemonPortrait(state.inventory.firstOrNull()?.species?.let { state.speciesIcons[it] } ?: 133)
           }
-          OutlinedButton(onClick = onCapture, enabled = !state.isPlanning, modifier = Modifier.fillMaxWidth()) { Text("从截图 / 录屏采集库存") }
+          OutlinedButton(onClick = onCapture, enabled = !state.isPlanning, modifier = Modifier.fillMaxWidth()) { Text("实时浮窗 / 截图 / 录屏采集库存") }
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { vm.editMaterial() }, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("新增素材") }
             OutlinedButton(onClick = onImport, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("导入 JSON") }

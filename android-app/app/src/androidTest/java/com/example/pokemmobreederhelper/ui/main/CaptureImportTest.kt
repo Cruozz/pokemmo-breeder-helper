@@ -48,8 +48,8 @@ class CaptureImportTest {
 
   @Test fun screenshotIsLocalAndRequiresReviewBeforeInventoryChanges() {
     val uri = screenshot()
-    rule.waitUntil(15000) { rule.onAllNodesWithText("从截图 / 录屏采集库存").fetchSemanticsNodes().size == 1 }
-    rule.onNodeWithText("从截图 / 录屏采集库存").performClick()
+    rule.waitUntil(15000) { rule.onAllNodesWithText("实时浮窗 / 截图 / 录屏采集库存").fetchSemanticsNodes().size == 1 }
+    rule.onNodeWithText("实时浮窗 / 截图 / 录屏采集库存").performClick()
     rule.runOnUiThread { captureVm.scan(listOf(uri), false) }
     rule.waitUntil(90000) { !captureVm.state.value.busy }
     val draft = captureVm.state.value.drafts.single()

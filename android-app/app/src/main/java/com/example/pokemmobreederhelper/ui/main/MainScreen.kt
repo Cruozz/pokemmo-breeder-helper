@@ -224,13 +224,19 @@ internal fun CompletionDialog(step: ExecutionStepRecord, targetNature: String,
             FilterChip(selected = natureChoice == "miss", onClick = { natureChoice = "miss" }, label = { Text("没有爆性格") })
           }
         }
+        if (step.canRecordEarlyNature) {
+          FilterChip(selected = natureChoice == "hit",
+            onClick = { natureChoice = if (natureChoice == "hit") "" else "hit" },
+            label = { Text("提前爆出目标性格：$targetNature") })
+          Text("已核对实际性格时勾选；完成本步后保存子代并按原目标生成新建议。", style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedButton(onClick = onMemo, modifier = Modifier.fillMaxWidth()) {
           Text(if (step.inProgress) "取消孵化中备注" else "只标记孵化中，不核销")
         }
       }
     },
     confirmButton = { Button(enabled = canConfirm, onClick = {
-      onComplete(gender, if (step.shouldCheckNature) natureChoice == "hit" else null, preparationsConfirmed)
+      onComplete(gender, if (step.shouldCheckNature) natureChoice == "hit" else if (step.canRecordEarlyNature && natureChoice == "hit") true else null, preparationsConfirmed)
     }) { Text("确认已孵完") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }
@@ -858,6 +864,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
       val lockedNature = (step.itemA == "不变之石" || step.itemB == "不变之石") && step.child.nature.isNotBlank()
       Text(if (lockedNature) "性格保证：${step.child.nature}（不变石）"
         else if (step.shouldCheckNature) "性格随机，孵完后记录实际结果"
+        else if (step.canRecordEarlyNature) "若提前爆出目标性格，完成本步时可登记并重规划"
         else "性格：${step.child.nature.ifBlank { "随机" }}", color = MaterialTheme.colorScheme.secondary)
       if (step.shouldCheckNature) {
         Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(8.dp)) {

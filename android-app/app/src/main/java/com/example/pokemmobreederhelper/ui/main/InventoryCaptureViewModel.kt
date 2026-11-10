@@ -3,6 +3,8 @@ package com.example.pokemmobreederhelper.ui.main
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import com.example.pokemmobreederhelper.capture.LiveCaptureState
+import kotlinx.coroutines.flow.collect
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pokemmobreederhelper.data.*
@@ -17,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 internal data class CaptureUiState(
   val drafts: List<CaptureDraft> = emptyList(),
   val busy: Boolean = false,
+  val liveActive: Boolean = false,
   val processed: Int = 0,
   val total: Int = 0,
   val skipped: Int = 0,
@@ -35,6 +38,19 @@ internal class InventoryCaptureViewModel(application: Application) : AndroidView
   private var scanJob: Job? = null
   private val scanner by lazy { InventoryMediaScanner(application, PlannerBridge(application)) }
 
+  init {
+    viewModelScope.launch {
+      LiveCaptureState.state.collect { live ->
+        lock.withLock {
+          if (!_state.value.busy) {
+            val drafts = withContext(Dispatchers.IO) { store.load() }
+            _state.update { it.copy(liveActive = live.running, drafts = drafts, error = store.loadError) }
+          }
+        }
+      }
+    }
+  }
+
   fun imagePath(draft: CaptureDraft): String = store.imageFile(draft.imageName).absolutePath
 
   private suspend fun change(transform: (List<CaptureDraft>) -> List<CaptureDraft>) = lock.withLock {
@@ -46,7 +62,7 @@ internal class InventoryCaptureViewModel(application: Application) : AndroidView
   }
 
   fun scan(uris: List<Uri>, video: Boolean) {
-    if (_state.value.busy || uris.isEmpty() || store.loadError.isNotBlank()) return
+    if (_state.value.busy || _state.value.liveActive || uris.isEmpty() || store.loadError.isNotBlank()) return
     if (_state.value.drafts.size >= CaptureLimits.MAX_DRAFTS) {
       _state.update { it.copy(error = "待核对列表已满，请先核对或忽略部分草稿。") }; return
     }
@@ -107,12 +123,12 @@ internal class InventoryCaptureViewModel(application: Application) : AndroidView
 
   /** Inventory is committed first; stable UUIDs prevent duplicates if the process dies between writes. */
   fun pruneSaved(ids: Set<String>) {
-    if (_state.value.busy || _state.value.drafts.none { it.material.id in ids }) return
+    if (_state.value.busy || _state.value.liveActive || _state.value.drafts.none { it.material.id in ids }) return
     mutate { items -> items.filterNot { it.material.id in ids } }
   }
 
   private fun mutate(transform: (List<CaptureDraft>) -> List<CaptureDraft>) {
-    if (_state.value.busy || store.loadError.isNotBlank()) return
+    if (_state.value.busy || _state.value.liveActive || store.loadError.isNotBlank()) return
     viewModelScope.launch {
       try { change(transform) }
       catch (error: Exception) { _state.update { it.copy(error = error.message ?: "草稿保存失败。") } }

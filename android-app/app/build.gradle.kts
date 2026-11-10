@@ -15,13 +15,20 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.6.0"
+        versionCode = 13
+        versionName = "0.7.0"
         buildConfigField("String", "PLANNER_RULES_VERSION", "\"$plannerRulesVersion\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
           abiFilters += listOf("arm64-v8a", "x86_64")
         }
+    }
+
+    if (providers.gradleProperty("isolatedDeviceTests").orNull == "true") {
+      sourceSets.getByName("debug") {
+        kotlin.srcDir("src/deviceTestFixtures/java")
+        manifest.srcFile("src/deviceTestFixtures/AndroidManifest.xml")
+      }
     }
 
     buildTypes {

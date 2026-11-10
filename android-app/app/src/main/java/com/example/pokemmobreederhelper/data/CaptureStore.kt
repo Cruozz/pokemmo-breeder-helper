@@ -14,13 +14,13 @@ class CaptureStore(context: Context) {
   var loadError: String = ""
     private set
 
-  fun load(): List<CaptureDraft> = try {
+  fun load(): List<CaptureDraft> = synchronized(writeLock) { try {
     if (!index.baseFile.exists() && !File(directory, "drafts.json.bak").exists()) emptyList()
     else index.openRead().bufferedReader().use { AppJson.codec.decodeFromString(it.readText()) }
   } catch (error: Exception) {
     loadError = "采集草稿无法读取，原文件已保留：${error.message}"
     emptyList()
-  }
+  } }
 
   fun imageFile(name: String): File {
     require(name.matches(Regex("[a-fA-F0-9-]+\\.jpg"))) { "无效的预览文件名。" }
@@ -37,7 +37,19 @@ class CaptureStore(context: Context) {
     } finally { if (preview !== bitmap) preview.recycle() }
   }
 
-  fun save(drafts: List<CaptureDraft>) {
+  /** Service appends to the on-disk list, so a resumed Activity cannot overwrite new drafts. */
+  fun append(draft: CaptureDraft, bitmap: Bitmap) = synchronized(writeLock) {
+    val current = load()
+    check(loadError.isBlank()) { loadError }
+    require(current.size < CaptureLimits.MAX_DRAFTS) { "待核对列表已满（200 只），请先结束采集并核对。" }
+    require(current.none { it.material.id == draft.material.id }) { "这条采集已保存。" }
+    saveImage(draft.imageName, bitmap)
+    save(current + draft)
+  }
+
+  companion object { private val writeLock = Any() }
+
+  fun save(drafts: List<CaptureDraft>) = synchronized(writeLock) {
     check(loadError.isBlank()) { loadError }
     val stream = index.startWrite()
     try {
