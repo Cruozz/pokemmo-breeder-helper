@@ -59,7 +59,9 @@ class CaptureImportTest {
     assertFalse(draft.material.verified)
     assertTrue(mainVm.uiState.value.inventory.isEmpty())
     assertEquals(1, CaptureStore(rule.activity).load().size)
-    rule.onNodeWithText("核对入库").performScrollTo().performClick()
+    rule.onNode(hasScrollAction() and hasAnyDescendant(hasText("实时悬浮采集")))
+      .performScrollToNode(hasText("核对入库"))
+    rule.onNodeWithText("核对入库").performClick()
     rule.onNodeWithText("确认入库").performClick()
     rule.onNodeWithText("请对照原画面核对，并勾选“已核对，可参与规划”。").assertIsDisplayed()
     // Model output is a draft; the review must also support correcting an unreadable name.

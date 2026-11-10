@@ -1,6 +1,6 @@
 # Android 开发与验证
 
-原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.8.0（versionCode 15），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
+原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.9.0（versionCode 16），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
 
 ## 环境
 
@@ -57,8 +57,10 @@ python ../scripts/generate-capture-fixture.py --font 'C:\Windows\Fonts\msyh.ttc'
 
 ## 实时屏幕采集
 
-Android 0.8.0 使用 MediaProjection 前台服务与可拖动悬浮窗，复用 CaptureOcr 和 CaptureStore。每次开始使用新的系统授权，旋转时调整已有 VirtualDisplay，停止后保留已写入的草稿。LiveCaptureGate 检查完整六项 IV、稳定时间及连续重复；相同名字与 IV 的不同精灵由“下一只”明确区分。
+Android 0.9.0 使用 MediaProjection 前台服务与可最小化浮窗，每次开始请求新的系统授权。展开时冻结稳定识别预览，点“下一只”原子保存并推进仓位，再等待新精灵；“保存并结束”保存最后一只。最小化时自动入库，结果提示 5 秒或窗外触摸关闭。
 
-LiveCaptureJourneyTest 使用隔离包内的合成页面检查授权、自动保存、去重、位置递增与停止。该页面仅在 `-PisolatedDeviceTests=true` 时编入 APK，正常发布不包含它。
+LiveCaptureGate 比较名字、性别、性格、六项 IV 等资料，连续稳定后才接收；下一只、空白过渡、暂停和旋转都不清除上一只记录。已知字段只在缺失／出现之间变化不算新精灵；完全一致的精灵无法仅凭画面区分，会继续等待。
 
-0.8.0 浮窗默认将稳定的完整识别直接写入库存（verified=false），CaptureStore 仅保留待核对草稿和冲突项。关闭直接入库可使用旧流程。InventoryRepository 按应用目录共享状态和写锁，界面观察 StateFlow，异步核销检查原库存快照以避免覆盖采集结果。静态帧使用 Bitmap.sameAs 的精确比较复用 OCR，采样250ms，稳定窗口500ms。LiveInventoryRepositoryTest 检查多实例并发、仓位冲突、撤销和 JSON 经实际桌面 Monster 模型往返；LiveCaptureJourneyTest 检查账号选择、收放、自动入库及草稿模式。
+CaptureResultView 共用公蓝／母粉／31 绿渲染，未知字段明确显示待确认。CaptureOverlay 的按钮监听 ACTION_OUTSIDE；提示窗使用 FLAG_NOT_TOUCHABLE，alpha 不超过系统 maximumObscuringOpacityForTouch。浮窗／提示以及短暂保留的旧矩形均从整屏 OCR 画面遮罩。OverlayAppearance 在主界面持久化透明度、字号、自适应或手动尺寸，服务运行时即时更新。
+
+InventoryRepository 保留共享状态与原子写锁，直接入库记录 verified=false，仓位冲突保留草稿并暂停。静态帧精确复用 OCR，250ms 采样、500ms 稳定窗口。手动确认时保存冻结结果，防止游戏先切页后误存下一只。LiveCaptureJourneyTest 通过隔离合成页面验证真实屏幕授权、两种下一只顺序、性别／性格变化、去重、仓位翻页、提示超时及触摸、停止；OverlayAppearanceTest 验证设置与颜色。合成页面仅在 -PisolatedDeviceTests=true 时编入，正式 APK 不包含测试入口。

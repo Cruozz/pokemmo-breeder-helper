@@ -22,6 +22,8 @@ internal fun LiveCaptureControls(enabled: Boolean) {
   val context=LocalContext.current
   val live by LiveCaptureState.state.collectAsState()
   var error by remember { mutableStateOf("") }
+  var appearance by remember { mutableStateOf(false) }
+  if(appearance) OverlayAppearanceSettings { appearance=false }
   val projection=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
     if(result.resultCode==Activity.RESULT_OK && result.data!=null) {
       runCatching { ContextCompat.startForegroundService(context,Intent(context,InventoryCaptureService::class.java)
@@ -36,8 +38,8 @@ internal fun LiveCaptureControls(enabled: Boolean) {
   OutlinedCard {
     Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
       Text("实时悬浮采集",style=MaterialTheme.typography.titleMedium)
-      Text("在浮窗选择用户名，填写仓库页和格位。逐只打开个体值页，看到“已入库”后切换下一只，位置会自动递增。")
-      Text("默认直接存入库存并标为待确认，可修改、批量确认或导出电脑通用 JSON。跳格请改位置；同种同 IV 精灵请点“下一只”。",style=MaterialTheme.typography.bodySmall)
+      Text("展开时先预览，点“下一只”确认入库并等待新画面；最后一只可点“保存并结束”。最小化后自动识别入库，短暂显示彩色结果。")
+      Text("相同资料会继续等待，先切游戏或先点下一只都不会重复录入旧画面。跳格请改位置；库存可修改、批量确认或导出电脑通用 JSON。",style=MaterialTheme.typography.bodySmall)
       if(live.running) {
         Text("已保存 ${live.saved} 只 · ${live.message}")
         Button(onClick={ context.stopService(Intent(context,InventoryCaptureService::class.java)) }) { Text("结束采集") }
@@ -48,6 +50,7 @@ internal fun LiveCaptureControls(enabled: Boolean) {
         }) { Text("开启实时采集浮窗") }
         if(live.message.isNotBlank())Text(live.message,style=MaterialTheme.typography.bodySmall)
       }
+      OutlinedButton(onClick={appearance=true}) { Text("浮窗外观") }
       if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error)
     }
   }

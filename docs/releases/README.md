@@ -4,6 +4,7 @@ Windows 与 Android 使用各自的应用版本号；同一次 GitHub Release �
 
 ## Windows
 
+- [Windows 0.2.41](windows/DESKTOP_0241_NOTES.md)
 - [Windows 0.2.40](windows/DESKTOP_0240_NOTES.md)
 
 - [Windows 0.2.39](windows/DESKTOP_0239_NOTES.md)
@@ -44,6 +45,7 @@ Windows 与 Android 使用各自的应用版本号；同一次 GitHub Release �
 
 ## Android
 
+- [Android 0.9.0](android/ANDROID_090_NOTES.md)
 - [Android 0.8.0](android/ANDROID_080_NOTES.md)
 
 - [Android 0.7.1](android/ANDROID_071_NOTES.md)

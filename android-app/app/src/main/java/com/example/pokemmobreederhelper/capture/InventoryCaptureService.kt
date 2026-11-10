@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal data class LiveCaptureStatus(val running: Boolean = false, val paused: Boolean = false,
-  val saved: Int = 0, val message: String = "")
+  val saved: Int = 0, val message: String = "", val minimized: Boolean = false, val hasPreview: Boolean = false)
 internal object LiveCaptureState {
   val mutable = MutableStateFlow(LiveCaptureStatus())
   val state = mutable.asStateFlow()
@@ -56,12 +56,10 @@ class InventoryCaptureService : Service() {
   private var closed = false
   private var interacting = false
   private var paused = false
-  private var automatic = true
-  private var direct = true
-  private var requested = false
-  private var hasSavedAtPosition = false
+  private var automatic = false
+  private var pending: CaptureRecognition? = null
+  private var pendingImage: Bitmap? = null
   private var saving = false
-  private var queuedNext = false
   private var saved = 0
   private val batch = UUID.randomUUID().toString()
   private val gate = LiveCaptureGate()
@@ -91,11 +89,11 @@ class InventoryCaptureService : Service() {
       else startForeground(71, notification())
       position = runCatching { CapturePosition(prefs.getString("account", "主账号")!!,
         prefs.getInt("box", 1), prefs.getInt("slot", 1), prefs.getInt("slots", 60)) }.getOrDefault(position)
-      automatic = prefs.getBoolean("auto", true)
-      direct = prefs.getBoolean("direct", true)
+      automatic = prefs.getBoolean("minimized", false)
       region = if (prefs.contains("left")) RectF(prefs.getFloat("left",0f), prefs.getFloat("top",0f),
         prefs.getFloat("right",1f), prefs.getFloat("bottom",1f)) else null
-      overlay = CaptureOverlay(this, ::captureCurrent, ::nextSpecimen, ::togglePause, ::configure, ::calibrate, ::stopSelf)
+      overlay = CaptureOverlay(this, ::captureCurrent, ::nextSpecimen, ::togglePause, ::configure, ::calibrate, ::stopSelf,
+        { confirmPreview(finish = true) }, ::changeMode)
       projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(Activity.RESULT_OK, token)
       projection!!.registerCallback(object : MediaProjection.Callback() {
         override fun onStop() { stopSelf() }
@@ -114,7 +112,7 @@ class InventoryCaptureService : Service() {
       display = projection!!.createVirtualDisplay("InventoryCapture", width, height, metrics.densityDpi,
         DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, main)
       main.post(sample)
-      message("选择账号与仓位，打开个体值页；看到“已入库”后切换下一只")
+      message(if (automatic) "自动识别已开启，请打开精灵个体值页" else "打开精灵个体值页，识别后点下一只确认入库")
     } catch (error: Exception) {
       finalMessage = "无法开启采集：${error.message}"
       LiveCaptureState.mutable.value = LiveCaptureStatus(message = finalMessage)
@@ -156,7 +154,7 @@ class InventoryCaptureService : Service() {
   }
 
   private fun frame(source: ImageReader) {
-    if (closed || !visible || paused || interacting || !processing.compareAndSet(false, true)) return
+    if (closed || !visible || paused || interacting || saving || (!automatic && pending != null) || !processing.compareAndSet(false, true)) return
     val image = runCatching { source.acquireLatestImage() }.getOrNull()
     val now = SystemClock.elapsedRealtime()
     val epoch = generation
@@ -172,7 +170,7 @@ class InventoryCaptureService : Service() {
         // Mask our floating controls only when sharing the entire display.
         val bounds = overlay?.bounds()
         if (bounds != null && actual.width == overlay?.screenWidth() && actual.height == overlay?.screenHeight()) {
-          Canvas(actual).drawRect(bounds, Paint().apply { color = Color.BLACK })
+          OverlayFrameMask.apply(actual, bounds)
         }
         preview?.recycle(); preview = actual.copy(Bitmap.Config.ARGB_8888, false)
         actual
@@ -198,7 +196,7 @@ class InventoryCaptureService : Service() {
           recognized
         }
         withContext(Dispatchers.Main) {
-          if (!closed && epoch == generation && visible && !paused && !interacting) accept(result, cropped, now)
+          if (!closed && epoch == generation && visible && !paused && !interacting && !saving && pending == null) accept(result, cropped, now)
         }
       } catch (_: CancellationException) { }
       catch (error: Exception) { withContext(Dispatchers.Main) { if (!closed) { gate.failed(); message("识别失败：${error.message}") } } }
@@ -208,82 +206,105 @@ class InventoryCaptureService : Service() {
 
   private suspend fun accept(result: CaptureRecognition, bitmap: Bitmap, now: Long) {
     val material = result.material
-    val key = LiveCaptureGate.key(material)
-    if (key == null) {
+    if (LiveCaptureGate.key(material) == null) {
       gate.observe(null, now)
-      message(if (material != null) "已读到${material.species.ifBlank { "精灵" }}，等待完整六项个体值；可用“采集当前”保留部分资料" else "等待精灵详情，请打开个体值页或重新定位")
-      if (requested && material != null) save(result, bitmap, "partial:${material.id}", false)
+      message(if (material != null) "未完整："+material.species.ifBlank { "名称待确认" }+" · "+material.ivText+"；请保持详情页可见" else "等待精灵详情，请打开个体值页或重新定位")
       return
     }
-    if (!(automatic || requested)) { message("已识别 ${material!!.species} · ${material.ivText}，点击采集当前保存"); return }
-    if (!gate.observe(key, now, LiveCaptureGate.observationKey(material))) return
-    save(result, bitmap, key, true)
-  }
-
-  private suspend fun save(result: CaptureRecognition, bitmap: Bitmap, key: String, stable: Boolean) {
-    val material = result.material ?: return
-    val destination = if (hasSavedAtPosition) position.next() else position
-    val child = material.copy(id = UUID.randomUUID().toString(), account = destination.account, page = destination.box.toString(), slot = destination.slot.toString(),
-      source = "mobile-live", verified = false, notes = "屏幕实时采集，尚未人工确认；请核对性别、性格、头目、梦特、技能与实际仓位。")
-    val draft = CaptureDraft(child, result.warnings, result.rawText, key, child.id + ".jpg",
-      "实时采集 · ${destination.account} · 仓${destination.box} 第${destination.slot}个", batch)
-    saving = true
-    try {
-      // Keep both the durable draft and next-position metadata consistent if stopped during I/O.
-      withContext(NonCancellable) {
-        val insertion = withContext(Dispatchers.IO) {
-          if (direct && stable) repository.insertCapture(child) else null
-        }
-        if (insertion == CaptureInsertResult.SLOT_OCCUPIED) {
-          withContext(Dispatchers.IO) { store.append(draft.copy(warnings = draft.warnings + "此仓位已有其他素材，未覆盖库存，请核对位置。"), bitmap) }
-          position = destination; hasSavedAtPosition = false; persist(position)
-          gate.committed(key); requested = false; paused = true; queuedNext = false
-          message("此仓位已有其他素材，已保留草稿并暂停；请修改仓位或回库存处理")
-          return@withContext
-        }
-        if (insertion == null) withContext(Dispatchers.IO) { store.append(draft, bitmap) }
-        position = destination; hasSavedAtPosition = true; requested = false; saved++
-        if (stable) gate.committed(key) else { gate.next(); paused = true }
-        persist(position.next())
-        val action = when (insertion) {
-          CaptureInsertResult.ADDED -> "已入库（待确认）"
-          CaptureInsertResult.ALREADY_PRESENT -> "此仓位已有相同记录，未重复入库"
-          else -> "已存待核对草稿"
-        }
-        message(action + " · " + child.species.ifBlank { "待确认精灵" } + " · " + child.ivText +
-          if (stable) "；可切换下一只" else "；部分资料已保存，请点下一只后继续")
-      }
-    } catch (error: Exception) { gate.failed(); paused = true; queuedNext = false; message("保存失败，采集已暂停：${error.message}") }
-    finally {
-      saving = false
-      if (queuedNext && !closed) { queuedNext = false; nextSpecimen() }
+    if (gate.isPrevious(material)) {
+      gate.observe(material, now)
+      message("与上一只资料相同，等待新的精灵画面")
+      return
+    }
+    if (!gate.observe(material, now)) return
+    pending = result
+    pendingImage?.recycle(); pendingImage = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+    if (automatic) savePending(false)
+    else {
+      overlay?.preview(material)
+      message("请核对；点下一只确认入库，或保存并结束")
     }
   }
 
-  private fun captureCurrent() {
-    if (saving || interacting) { message("正在保存，请稍候再操作"); return }
-    if (hasSavedAtPosition) { message("本只已保存；另一只属性相同的精灵请点“下一只”"); return }
-    requested = true; paused = false; gate.next(); generation++; message("等待当前画面稳定后保存")
+  private suspend fun savePending(finish: Boolean) {
+    if (saving) return
+    val result = pending ?: return
+    val material = result.material ?: return
+    val bitmap = pendingImage ?: return
+    val destination = position
+    val key = LiveCaptureGate.key(material) ?: return
+    val child = material.copy(id = UUID.randomUUID().toString(), account = destination.account,
+      page = destination.box.toString(), slot = destination.slot.toString(), source = "mobile-live", verified = false,
+      notes = "屏幕实时采集，尚未标记为已核对；请核对性别、性格、头目、梦特、技能与实际仓位。")
+    val draft = CaptureDraft(child, result.warnings, result.rawText, key, child.id + ".jpg",
+      "实时采集 · "+destination.account+" · 仓"+destination.box+" 第"+destination.slot+"个", batch)
+    saving = true
+    generation++
+    message("正在保存，请稍候")
+    try {
+      // A stop during disk I/O still completes the inventory write and next-position metadata.
+      withContext(NonCancellable) {
+        val insertion = withContext(Dispatchers.IO) { repository.insertCapture(child) }
+        if (insertion == CaptureInsertResult.SLOT_OCCUPIED) {
+          withContext(Dispatchers.IO) { store.append(draft.copy(warnings = draft.warnings + "此仓位已有其他素材，未覆盖库存，请核对位置。"), bitmap) }
+          paused = true
+          gate.failed()
+          message("仓位已有其他素材，已留草稿并暂停；请修改仓位后保存")
+          return@withContext
+        }
+        saved++
+        gate.committed(material)
+        position = destination.next(); persist(position)
+        pending = null; pendingImage = null; bitmap.recycle()
+        overlay?.preview(null)
+        if (automatic) overlay?.showSaved(child)
+        message(if (insertion == CaptureInsertResult.ADDED) "已入库；等待新的精灵画面" else "仓位已有相同记录，未重复入库；等待新画面")
+        if (finish && !closed) stopSelf()
+      }
+    } catch (error: Exception) {
+      gate.failed(); paused = true
+      message("保存失败，当前预览已保留："+error.message)
+    } finally {
+      saving = false
+      if (!closed) message(LiveCaptureState.state.value.message)
+    }
   }
-  private fun nextSpecimen() {
-    if (saving) { queuedNext = true; message("本只保存后切换下一只"); return }
-    if (interacting) return
-    position = position.next(); hasSavedAtPosition = false; requested = true; paused = false
-    gate.next(); generation++; persist(position); message("已切到仓${position.box} 第${position.slot}个，等待游戏画面")
+
+  private fun confirmPreview(finish: Boolean = false) {
+    if (saving || interacting) { message("正在处理，请稍候"); return }
+    if (pending == null) { message("等待新的识别结果，仓位不会提前跳格"); return }
+    scope.launch(Dispatchers.Main) { savePending(finish) }
+  }
+  private fun captureCurrent() {
+    if (saving || interacting) return
+    pending = null; pendingImage?.recycle(); pendingImage = null
+    overlay?.preview(null)
+    paused = false; gate.resetObservation(); generation++
+    message("重新识别当前画面，确认前不会入库")
+  }
+  private fun nextSpecimen() { confirmPreview() }
+  private fun changeMode(minimized: Boolean): Boolean {
+    if (saving || interacting) { message("正在处理，请稍候再切换"); return false }
+    automatic = minimized; generation++; gate.resetObservation()
+    if (minimized && pending != null && !paused) scope.launch(Dispatchers.Main) { savePending(false) }
+    message(if (paused) "已暂停，点继续恢复" else if (minimized) "自动识别入库已开启" else "手动核对：识别后点下一只确认入库")
+    return true
   }
   private fun togglePause() {
-    paused = !paused; generation++; message(if (paused) "已暂停，已保存结果保留" else "继续采集，请保持精灵详情可见")
+    paused = !paused; generation++; gate.resetObservation()
+    overlay?.dismissPopup()
+    message(if (paused) "已暂停，当前预览与库存保留" else "继续采集，请保持精灵详情可见")
+    if (!paused && automatic && pending != null) scope.launch(Dispatchers.Main) { savePending(false) }
   }
   private fun configure() {
     if (saving) { message("正在保存，请稍候"); return }
     interacting = true; generation++
     val accounts = (repository.inventory.value.map { it.account } + prefs.getStringSet("accounts", emptySet()).orEmpty()).distinct().sorted()
-    overlay?.configure(position, automatic, direct, accounts, onDone = { value, auto, intoInventory ->
-      val changed = value != position
-      position = value; automatic = auto; direct = intoInventory
-      if (changed) { gate.next(); hasSavedAtPosition = false }
-      persist(position); message("位置已更新 · ${if (automatic) "自动采集" else "手动采集"}")
-    }, onClose = { interacting = false })
+    overlay?.configure(position, accounts, onDone = { value ->
+      position = value
+      persist(position)
+      message(if (pending != null) "当前预览将保存到新仓位，请核对后点下一只" else "位置已更新，等待新的精灵画面")
+    }, onClose = { interacting = false; gate.resetObservation() })
   }
   private fun calibrate() {
     if (saving) { message("正在保存，请稍候"); return }
@@ -299,13 +320,13 @@ class InventoryCaptureService : Service() {
   }
   private fun persist(next: CapturePosition) {
     prefs.edit().putString("account",next.account).putInt("box",next.box).putInt("slot",next.slot)
-      .putInt("slots",next.slotsPerBox).putBoolean("auto",automatic).putBoolean("direct",direct)
+      .putInt("slots",next.slotsPerBox)
       .putStringSet("accounts", prefs.getStringSet("accounts",emptySet()).orEmpty() + next.account).apply()
   }
   private fun message(text: String) {
     if (closed) return
-    LiveCaptureState.mutable.value = LiveCaptureStatus(true, paused, saved, text)
-    overlay?.render(position, saved, text, paused, automatic)
+    LiveCaptureState.mutable.value = LiveCaptureStatus(true, paused, saved, text, automatic, pending != null && !saving)
+    overlay?.render(position, saved, text, paused, pending != null && !saving)
   }
   override fun onDestroy() {
     closed = true; generation++
@@ -320,6 +341,7 @@ class InventoryCaptureService : Service() {
     job.invokeOnCompletion {
       if (ocrProvider.isInitialized()) runCatching { ocr.close() }
       cachedFrame?.recycle(); cachedFrame = null; cachedRecognition = null
+      pendingImage?.recycle(); pendingImage = null; pending = null
       LiveCaptureState.mutable.value = LiveCaptureStatus(saved = saved, message = finalMessage)
     }
     scope.cancel()
