@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.pokemmobreederhelper.data.CostSettings
 import com.example.pokemmobreederhelper.data.ExecutionStepRecord
 import com.example.pokemmobreederhelper.BuildConfig
 import com.example.pokemmobreederhelper.data.InventoryRepository
@@ -43,6 +44,11 @@ data class MainScreenUiState(
   val availableMoves: List<String> = emptyList(),
   val ivs: List<String> = List(6) { "X" },
   val strategy: String = "inventory",
+  val maxPurchaseV: Int? = null,
+  val bracePrice: String = "10000",
+  val genderPrice: String = "5000",
+  val everstonePrice: String = "",
+  val costPricing: CostSettings = CostSettings(requireMarketAvailability = true),
   val targetAlpha: Boolean = false,
   val allowDitto: Boolean = true,
   val allowAlphaMaterials: Boolean = false,
@@ -71,11 +77,28 @@ data class MainScreenUiState(
 private fun MainScreenUiState.withRequest(request: PlanRequest): MainScreenUiState = copy(
   speciesQuery = request.species, selectedSpecies = null, speciesSuggestions = emptyList(), nature = request.nature, ivs = request.ivs,
   strategy = request.strategy, targetAlpha = request.targetAlpha, allowDitto = request.allowDitto,
+  maxPurchaseV = request.maxPurchaseV, costPricing = request.costPricing,
+  bracePrice = request.costPricing.brace.toString(), genderPrice = request.costPricing.gender.toString(),
+  everstonePrice = request.costPricing.everstone?.toString().orEmpty(),
   allowAlphaMaterials = request.allowAlphaMaterials, needHiddenAbility = request.needHiddenAbility,
   convertMaternalWithDitto = request.convertMaternalWithDitto, lockGender = request.lockGender,
   targetGender = request.targetGender, targetMoves = request.targetMoves,
   natureStrategy = request.natureStrategy, intermediateGenderStrategy = request.intermediateGenderStrategy,
 )
+
+internal fun MainScreenUiState.defaultPurchaseLimit(): Int =
+  maxOf(if (targetAlpha) 2 else 1, ivs.count { it == "31" } - 2)
+
+internal fun MainScreenUiState.costSettings(): CostSettings {
+  fun price(value: String, label: String): Long {
+    val amount = value.toLongOrNull()
+    require(amount != null && amount in 0..1_000_000_000_000L) { "$label 请填写 0–1,000,000,000,000 的整数。" }
+    return amount
+  }
+  return costPricing.copy(brace = price(bracePrice, "护腕价格"), gender = price(genderPrice, "指定性别费用"),
+    everstone = if (everstonePrice.isBlank()) null else price(everstonePrice, "不变之石价格"),
+    requireMarketAvailability = true)
+}
 
 class MainScreenViewModel(application: Application) : AndroidViewModel(application) {
   private val repository = InventoryRepository(application.applicationContext)
@@ -273,7 +296,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     // Completion/import writes must finish; only a pure search can be invalidated.
     if (_uiState.value.isPlanning && planningJob == null) return
     val state = _uiState.value
-    val target = PlanRequest(species = state.speciesQuery, nature = state.nature, ivs = state.ivs,
+    val pricing = runCatching { state.costSettings() }.getOrElse { fail(it); return }
+    val target = PlanRequest(maxPurchaseV = state.maxPurchaseV, costPricing = pricing, species = state.speciesQuery, nature = state.nature, ivs = state.ivs,
       strategy = state.strategy, targetAlpha = state.targetAlpha, allowDitto = state.allowDitto,
       allowAlphaMaterials = state.allowAlphaMaterials, needHiddenAbility = state.needHiddenAbility,
       convertMaternalWithDitto = state.convertMaternalWithDitto, lockGender = state.lockGender,
@@ -314,6 +338,13 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun setStrategy(value: String) = _uiState.update { it.copy(strategy = value) }
+  fun setMaxPurchaseV(value: Int?) {
+    if (value != null && value !in 1..6) return
+    _uiState.update { it.copy(maxPurchaseV = value) }
+  }
+  fun setBracePrice(value: String) = _uiState.update { it.copy(bracePrice = value) }
+  fun setGenderPrice(value: String) = _uiState.update { it.copy(genderPrice = value) }
+  fun setEverstonePrice(value: String) = _uiState.update { it.copy(everstonePrice = value) }
   fun setTargetAlpha(value: Boolean) = _uiState.update { it.copy(targetAlpha = value) }
   fun setAllowDitto(value: Boolean) = _uiState.update { it.copy(allowDitto = value) }
   fun setAllowAlphaMaterials(value: Boolean) = _uiState.update { it.copy(allowAlphaMaterials = value) }
@@ -337,8 +368,11 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
       _uiState.update { it.copy(error = "个体值只能填写 0–31 或 X。") }
       return
     }
+    val pricing = runCatching { state.costSettings() }.getOrElse { fail(it); return }
     val request =
       PlanRequest(
+        maxPurchaseV = state.maxPurchaseV ?: state.defaultPurchaseLimit(),
+        costPricing = pricing,
         species = species,
         natureStrategy = state.natureStrategy,
         intermediateGenderStrategy = state.intermediateGenderStrategy,
@@ -390,7 +424,11 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
 
   fun suggestNext() {
     if (_uiState.value.isPlanning) return
-    val request = _uiState.value.plannerResponse?.plan?.planningOptions
+    val saved = _uiState.value.plannerResponse?.plan?.planningOptions
+    val request = saved?.copy(
+      maxPurchaseV = saved.maxPurchaseV ?: maxOf(if (saved.targetAlpha) 2 else 1, saved.ivs.count { it == "31" } - 2),
+      costPricing = saved.costPricing.copy(requireMarketAvailability = true),
+    )
     if (request != null) {
       _uiState.update { it.withRequest(request) }
       startPlanning(request)
@@ -457,7 +495,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
 
   fun dismissCompletion() = _uiState.update { it.copy(pendingStep = null) }
 
-  fun completeStep(gender: String, natureHit: Boolean?) {
+  fun completeStep(gender: String, natureHit: Boolean?, preparationsConfirmed: Boolean = false) {
     val state = _uiState.value
     if (state.isPlanning) return
     val step = state.pendingStep ?: return
@@ -466,7 +504,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     viewModelScope.launch {
       runCatching {
         val result = withContext(Dispatchers.Default) {
-          plannerBridge.completeStep(repository.inventoryJson(), response, StepOutcome(step.number, gender, natureHit))
+          plannerBridge.completeStep(repository.inventoryJson(), response, StepOutcome(step.number, gender, natureHit, preparationsConfirmed))
         }
         check(result.ok) { result.error }
         val next = checkNotNull(result.response)

@@ -44,7 +44,7 @@ class MobileParity028Tests(unittest.TestCase):
         self.assertEqual(response["plan"]["planning_options"]["target_moves"], ["祈愿"])
         inventory = []
         for step in response["plan"]["steps"]:
-            result = json.loads(bridge.complete_step(json.dumps(inventory), json.dumps(response), json.dumps(dict(number=step["number"], gender=step["planned_gender"]))))
+            result = json.loads(bridge.complete_step(json.dumps(inventory), json.dumps(response), json.dumps(dict(number=step["number"], gender=step["planned_gender"], preparations_confirmed=True))))
             self.assertTrue(result["ok"], result)
             response, inventory = result["response"], result["inventory"]
         self.assertIn("祈愿", response["plan"]["steps"][-1]["child"]["moves"])

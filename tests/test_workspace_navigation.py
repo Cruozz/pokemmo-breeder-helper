@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import tkinter as tk
 import unittest
 from types import SimpleNamespace
@@ -27,6 +28,15 @@ class WorkspaceNavigationTests(unittest.TestCase):
         self.root.destroy()
         self.environment.stop()
         self.directory.cleanup()
+
+    def wait_until_mapped(self, widget):
+        # Configure events may replace the immediate layout with its 40 ms debounce.
+        # A single update() does not wait for that scheduled layout on a fresh process.
+        deadline = time.monotonic() + 2
+        while not widget.winfo_ismapped() and time.monotonic() < deadline:
+            self.root.update()
+            time.sleep(0.01)
+        self.assertTrue(widget.winfo_ismapped())
 
     def test_three_entries_show_separate_pages_in_narrow_and_wide_windows(self):
         app = self.app
@@ -79,7 +89,7 @@ class WorkspaceNavigationTests(unittest.TestCase):
         self.assertEqual(tuple(map(str, app.main_pane.panes())), (str(app.left_panel),))
         app._set_compact_scan_view("result")
         self.root.update()
-        self.assertTrue(app.current_tab.winfo_ismapped())
+        self.wait_until_mapped(app.current_tab)
 
     def test_duplicate_location_and_inventory_edit_use_the_correct_workspace(self):
         app = self.app
@@ -92,12 +102,12 @@ class WorkspaceNavigationTests(unittest.TestCase):
         app._focus_duplicate_record(tree, {"pair": (monster.id, "other")}, 0, None)
         self.root.update()
         self.assertEqual(app.workspace_mode_var.get(), "素材库存")
-        self.assertTrue(app.inventory_tab.winfo_ismapped())
+        self.wait_until_mapped(app.inventory_tab)
         self.assertEqual(app.inventory_tree.selection(), (monster.id,))
         app.edit_inventory_selected()
         self.root.update()
         self.assertEqual(app.workspace_mode_var.get(), "扫描素材")
-        self.assertTrue(app.current_tab.winfo_ismapped())
+        self.wait_until_mapped(app.current_tab)
         self.assertEqual(app.editing_monster_id, monster.id)
         self.assertEqual(app.species_var.get(), monster.species)
         self.assertEqual(app.iv_var.get(), monster.iv_string)

@@ -9,3 +9,10 @@ dist-update/
 vendor/
 .runtime/
 .venv/
+
+.pytest_cache/
+*.apk
+*.aab
+*.jks
+*.keystore
+local.properties

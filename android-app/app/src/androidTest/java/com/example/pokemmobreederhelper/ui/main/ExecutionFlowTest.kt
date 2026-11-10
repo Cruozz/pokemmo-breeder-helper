@@ -19,7 +19,7 @@ class ExecutionFlowTest {
     val step = ExecutionStepRecord(1, "a", "b", child = MonsterRecord(id = "child", species = "索罗亚"),
       genderPolicy = "random", shouldCheckNature = true)
     rule.setContent { PokeMMOBreederHelperTheme {
-      CompletionDialog(step, "固执", { }, { _, _ -> calls++ }, { })
+      CompletionDialog(step, "固执", { }, { _, _, _ -> calls++ }, { })
     } }
     rule.onNodeWithText("确认已孵完").assertIsNotEnabled()
     rule.onNodeWithText("母").performScrollTo().performClick()
@@ -34,7 +34,7 @@ class ExecutionFlowTest {
 
   @Test fun dittoMateDoesNotAskGender() {
     val step = ExecutionStepRecord(1, "a", "buy:ditto", child = MonsterRecord(id = "child"), genderPolicy = "irrelevant")
-    rule.setContent { PokeMMOBreederHelperTheme { CompletionDialog(step, "", {}, { _, _ -> }, {}) } }
+    rule.setContent { PokeMMOBreederHelperTheme { CompletionDialog(step, "", {}, { _, _, _ -> }, {}) } }
     rule.onNodeWithText("实际孵出的性别（必选）").assertDoesNotExist()
     rule.onNodeWithText("确认已孵完").assertIsEnabled()
   }

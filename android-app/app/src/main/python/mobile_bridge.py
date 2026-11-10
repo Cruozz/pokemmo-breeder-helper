@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import traceback
+import time
 from typing import Any
 
 from execution import ExecutionPlan, build_execution_plan
@@ -17,9 +18,27 @@ from planner import make_report_with_candidates, nature_matches, normalize_natur
 from species_data import get_species_database
 from reference_data import get_reference_database
 from route_roles import RouteSource, classify_routes
-from chain_planner import is_ditto
+from chain_planner import ChainCandidate, is_ditto
+from breeding_cost import PriceBook
 
-RULES_VERSION = "0.2.26"
+RULES_VERSION = "0.2.37"
+_market_cache = None
+_market_cache_time = 0.0
+
+
+def _purchase_market_snapshot(current):
+    """Fetch public listings only; never send inventory or target data."""
+    global _market_cache, _market_cache_time
+    from market_data import MarketClient, MarketError
+    if _market_cache is not None and not _market_cache.stale and 0 <= time.monotonic() - _market_cache_time < 600:
+        return _market_cache
+    try:
+        snapshot = MarketClient().snapshot()
+    except MarketError:
+        return None
+    _market_cache, _market_cache_time = snapshot, time.monotonic()
+    return snapshot
+
 
 
 def inventory_duplicates(inventory_json: str) -> str:
@@ -149,6 +168,8 @@ def _present_plan(plan: ExecutionPlan, inventory: list[Monster]) -> dict[str, An
             item[f"parent_{side}_record"] = parent.to_dict() if parent else None
             item[f"parent_{side}_role"] = roles.get(parent_id, "iv")
             item[f"parent_{side}_moves"] = sorted(target_moves.intersection(parent.moves)) if parent else []
+    if plan.candidate_snapshot:
+        value["cost_summary"] = ChainCandidate.from_dict(plan.candidate_snapshot).cost_report().summary()
     value["status_text"] = plan.status_text()
     value["final_target"] = _final_target(plan).to_dict()
     value["final_target_species_id"] = _species_id(database, plan.target_species)
@@ -244,6 +265,16 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
         selected_moves = get_reference_database().normalize_egg_move_selection(record.id, request.get("target_moves"))
         request["target_moves"] = list(selected_moves)
 
+        pricing = PriceBook(request.get("cost_pricing") or {"include_inventory_value": False})
+        if pricing.require_market_availability:
+            pricing.market_loader = _purchase_market_snapshot
+        purchase_limit = request.get("max_purchase_v")
+        if purchase_limit is not None and (type(purchase_limit) is not int or not 1 <= purchase_limit <= 6):
+            raise ValueError("补购最高 V 数必须是 1–6。")
+        strategy = request.get("strategy", "inventory")
+        if strategy not in {"inventory", "steps", "cost"}:
+            raise ValueError("请选择有效的计算策略。")
+
         report, candidates = make_report_with_candidates(
             inventory,
             record.display_name,
@@ -253,7 +284,7 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
             groups,
             bool(request.get("target_alpha", False)),
             bool(request.get("allow_ditto", True)),
-            "steps" if request.get("strategy") == "steps" else "inventory",
+            strategy,
             "chain" if request.get("nature_strategy") == "chain" else "late",
             bool(request.get("allow_alpha_materials", False)),
             frozenset(request.get("excluded_ids") or ()),
@@ -262,12 +293,16 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
             selected_moves,
             bool(request.get("convert_maternal_with_ditto", False)),
             frozenset(request.get("preferred_material_ids") or ()),
+            cost_pricing=pricing,
+            max_purchase_v=purchase_limit,
         )
         if not candidates:
             return _response(
                 {
                     "ok": False,
-                    "error": "没有找到可执行路线。",
+                    "error": ("没有找到可执行路线。未获取到可用采购行情，请检查网络或补充库存。"
+                              if pricing.require_market_availability and pricing._purchase_market_checked and pricing.snapshot is None
+                              else "没有找到可执行路线。"),
                     "report": report,
                     "candidate_count": 0,
                     "plan": None,
@@ -320,6 +355,8 @@ def complete_step(inventory_json: str, response_json: str, outcome_json: str) ->
         step = next((item for item in plan.steps if item.number == int(outcome["number"])), None)
         if step is None or not plan.is_step_ready(step):
             raise ValueError("步骤已完成、尚有依赖，或路线已暂停；不能核销。")
+        if step.preparations and outcome.get("preparations_confirmed") is not True:
+            raise ValueError("请先确认已完成本步的配种前技能准备。")
         actual_ids = {step.parent_a_id, step.parent_b_id} - {
             key for key in (step.parent_a_id, step.parent_b_id) if key.startswith("buy:")
         }

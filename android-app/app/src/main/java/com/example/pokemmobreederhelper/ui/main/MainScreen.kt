@@ -85,6 +85,12 @@ fun MainScreen(
   viewModel: MainScreenViewModel = viewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val captureViewModel: InventoryCaptureViewModel = viewModel()
+  val captureState by captureViewModel.state.collectAsStateWithLifecycle()
+  var captureVisible by rememberSaveable { mutableStateOf(false) }
+  LaunchedEffect(state.inventory, captureState.busy, captureState.drafts) {
+    captureViewModel.pruneSaved(state.inventory.map { it.id }.toSet())
+  }
   val tabStates = rememberSaveableStateHolder()
   var pendingImport by rememberSaveable { mutableStateOf<String?>(null) }
   var confirmUndo by rememberSaveable { mutableStateOf(false) }
@@ -144,7 +150,7 @@ fun MainScreen(
       tabStates.SaveableStateProvider(state.tab.name) {
         when (state.tab) {
           MainTab.Inventory ->
-            PokedexInventory(state, viewModel) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
+            PokedexInventory(state, viewModel, onCapture = { captureVisible = true }) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
           MainTab.Planner -> PlannerScreen(state, viewModel)
         }
       }
@@ -166,7 +172,14 @@ fun MainScreen(
     CompletionDialog(step, state.plannerResponse?.plan?.targetNature.orEmpty(),
       viewModel::dismissCompletion, viewModel::completeStep, viewModel::markInProgress)
   }
-  state.editingMaterial?.let { MaterialEditor(it, state.materialError, state.isPlanning, viewModel::dismissMaterialEditor, viewModel::saveMaterial, viewModel::searchMaterialSpecies) }
+  if (captureVisible) InventoryCaptureDialog(captureState, captureViewModel, state.isPlanning,
+    onDismiss = { captureVisible = false }, onReview = { viewModel.editMaterial(it.material) })
+  state.editingMaterial?.let { material ->
+    val draft = captureState.drafts.firstOrNull { it.material.id == material.id }
+    MaterialEditor(material, state.materialError, state.isPlanning, viewModel::dismissMaterialEditor,
+      viewModel::saveMaterial, viewModel::searchMaterialSpecies, reviewMode = draft != null,
+      reviewContent = if (draft != null) { { CaptureReviewPreview(draft, captureViewModel.imagePath(draft)) } } else null)
+  }
   DuplicateReview(state, viewModel)
   state.referenceLines?.let { lines ->
     AlertDialog(onDismissRequest = viewModel::dismissReference, title = { Text("精灵资料") },
@@ -177,11 +190,13 @@ fun MainScreen(
 
 @Composable
 internal fun CompletionDialog(step: ExecutionStepRecord, targetNature: String,
-  onDismiss: () -> Unit, onComplete: (String, Boolean?) -> Unit, onMemo: () -> Unit) {
+  onDismiss: () -> Unit, onComplete: (String, Boolean?, Boolean) -> Unit, onMemo: () -> Unit) {
   var gender by rememberSaveable(step.child.id) { mutableStateOf("") }
   var natureChoice by rememberSaveable(step.child.id) { mutableStateOf("") }
+  var preparationsConfirmed by rememberSaveable(step.child.id) { mutableStateOf(false) }
   val canConfirm = (step.genderPolicy != "random" || gender.isNotEmpty()) &&
-    (!step.shouldCheckNature || natureChoice.isNotEmpty())
+    (!step.shouldCheckNature || natureChoice.isNotEmpty()) &&
+    (step.preparations.isEmpty() || preparationsConfirmed)
   AlertDialog(onDismissRequest = onDismiss, title = { Text("完成步骤 ${step.number} 并核销") },
     text = {
       Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -189,6 +204,11 @@ internal fun CompletionDialog(step: ExecutionStepRecord, targetNature: String,
         Text("父母 A：${step.parentALabel}\n携带：${step.itemA.ifBlank { "无" }}")
         Text("父母 B：${step.parentBLabel}\n携带：${step.itemB.ifBlank { "无" }}")
         if (step.requiresPurchase) Text("请确认交易行素材已购买并用于孵化，无需另行扫描入库。", color = MaterialTheme.colorScheme.error)
+        SkillPreparationList(step.preparations)
+        if (step.preparations.isNotEmpty()) {
+          OptionSwitch("已完成上述技能准备", "确认亲本实际会招式后再核销", preparationsConfirmed,
+            onCheckedChange = { preparationsConfirmed = it })
+        }
         Text(step.genderInstruction)
         if (step.genderPolicy == "random") {
           Text("实际孵出的性别（必选）")
@@ -210,7 +230,7 @@ internal fun CompletionDialog(step: ExecutionStepRecord, targetNature: String,
       }
     },
     confirmButton = { Button(enabled = canConfirm, onClick = {
-      onComplete(gender, if (step.shouldCheckNature) natureChoice == "hit" else null)
+      onComplete(gender, if (step.shouldCheckNature) natureChoice == "hit" else null, preparationsConfirmed)
     }) { Text("确认已孵完") } },
     dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }
@@ -590,7 +610,10 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
           onClick = { viewModel.setStrategy("steps") },
           label = { Text("步骤优先") },
         )
+        FilterChip(selected = state.strategy == "cost", onClick = { viewModel.setStrategy("cost") },
+          enabled = !state.isPlanning, label = { Text("省钱规划") }, modifier = Modifier.heightIn(min = 48.dp))
       }
+      PlanningCosts(state, viewModel)
       Text("百变怪用途", fontWeight = FontWeight.SemiBold)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(Triple("不使用", false, false), Triple("仅转母", false, true), Triple("全部可用", true, true))
@@ -753,6 +776,8 @@ private fun PlanSummary(plan: ExecutionPlanRecord, candidateCount: Int, complete
       if (plan.phaseLabel.isNotBlank()) Text("当前阶段：${plan.phaseLabel}", fontWeight = FontWeight.SemiBold)
       Text(if (preview) "本阶段 ${plan.steps.size} 步 · 可选方案 $candidateCount 个" else "本阶段 $completedCount/${plan.steps.size} 步 · 可执行 $readyCount 步 · 可选方案 $candidateCount 个")
       Text("使用库存 ${plan.inventoryUsedCount} 只 · 交易行补充 ${plan.purchaseRequirements.size} 项")
+      if (plan.costSummary.isNotBlank()) Text(plan.costSummary, style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
       if (plan.steps.isEmpty()) Text("库存中已经有满足目标的素材，无需继续孵化。", color = MaterialTheme.colorScheme.secondary)
     }
   }
@@ -824,6 +849,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
       }
       Text(when (step.routeRole) { "maternal" -> "母体主线"; "nature" -> "性格手"; else -> "IV 素材" })
       if (step.routeMoves.isNotEmpty()) Text("遗传技能：${step.routeMoves.joinToString("、")}")
+      SkillPreparationList(step.preparations)
       StepParentCard("父母 A", step.parentALabel, step.parentARecord, step.parentASpeciesId, step.itemA)
       StepParentCard("父母 B", step.parentBLabel, step.parentBRecord, step.parentBSpeciesId, step.itemB)
       HorizontalDivider()

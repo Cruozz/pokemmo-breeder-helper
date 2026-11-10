@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.pokemmobreederhelper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.5.1"
+        versionCode = 12
+        versionName = "0.6.0"
         buildConfigField("String", "PLANNER_RULES_VERSION", "\"$plannerRulesVersion\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -25,6 +25,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Instrumentation fixtures must never clear the installed user app.
+            if (providers.gradleProperty("isolatedDeviceTests").orNull == "true") {
+                applicationIdSuffix = ".devtest"
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -55,15 +61,10 @@ kotlin {
 val plannerPythonDir = layout.buildDirectory.dir("generated/python/planner")
 val syncPlannerPython by tasks.registering(Sync::class) {
   from(rootProject.projectDir.parentFile) {
-    include("models.py")
-    include("storage.py")
-    include("nature_data.py")
-    include("species_data.py")
-    include("reference_data.py")
-    include("chain_planner.py")
-    include("planner.py")
-    include("execution.py")
-    include("route_roles.py")
+    rootProject.file("planner-modules.txt").readLines()
+      .map { it.substringBefore("#").trim() }
+      .filter { it.isNotEmpty() }
+      .forEach { include(it) }
     include("data/**")
   }
   into(plannerPythonDir)
@@ -94,6 +95,10 @@ dependencies {
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
   androidTestImplementation(composeBom)
+
+  // Bundled Chinese/Latin OCR model: available without a first-run model download.
+  implementation(libs.mlkit.text.chinese)
+  implementation(libs.androidx.exif)
 
   // Core Android dependencies
   implementation(libs.androidx.core.ktx)

@@ -67,6 +67,25 @@ data class SpeciesSuggestion(
 data class SpeciesSearchResponse(val items: List<SpeciesSuggestion> = emptyList())
 
 @Serializable
+data class CostSettings(
+  @SerialName("include_inventory_value") val includeInventoryValue: Boolean = false,
+  @SerialName("require_market_availability") val requireMarketAvailability: Boolean = false,
+  val brace: Long = 10000,
+  val gender: Long = 5000,
+  val everstone: Long? = null,
+  val prices: Map<String, Long> = emptyMap(),
+  @SerialName("gender_overrides") val genderOverrides: Map<String, Long> = emptyMap(),
+)
+
+@Serializable
+data class SkillPreparation(
+  @SerialName("parent_id") val parentId: String = "",
+  val species: String = "",
+  val move: String = "",
+  val method: String = "",
+)
+
+@Serializable
 data class PlanRequest(
   val species: String,
   @SerialName("nature_strategy") val natureStrategy: String = "late",
@@ -76,6 +95,8 @@ data class PlanRequest(
   @SerialName("target_alpha") val targetAlpha: Boolean = false,
   @SerialName("allow_ditto") val allowDitto: Boolean = true,
   val strategy: String = "inventory",
+  @SerialName("max_purchase_v") val maxPurchaseV: Int? = null,
+  @SerialName("cost_pricing") val costPricing: CostSettings = CostSettings(),
   @SerialName("allow_alpha_materials") val allowAlphaMaterials: Boolean = false,
   @SerialName("need_hidden_ability") val needHiddenAbility: Boolean = false,
   @SerialName("convert_maternal_with_ditto") val convertMaternalWithDitto: Boolean = false,
@@ -108,6 +129,7 @@ data class ExecutionStepRecord(
   @SerialName("in_progress") val inProgress: Boolean = false,
   @SerialName("nature_check_role") val natureCheckRole: String = "",
   @SerialName("gender_instruction") val genderInstruction: String = "",
+  val preparations: List<SkillPreparation> = emptyList(),
   @SerialName("requires_purchase") val requiresPurchase: Boolean = false,
   @SerialName("should_check_nature") val shouldCheckNature: Boolean = false,
   @SerialName("is_final") val isFinal: Boolean = false,
@@ -143,6 +165,8 @@ data class ExecutionPlanRecord(
   @SerialName("gender_strategy") val genderStrategy: String = "lock_all",
   @SerialName("nature_target_key") val natureTargetKey: String = "",
   @SerialName("nature_attempt_level") val natureAttemptLevel: Int = 0,
+  @SerialName("maternal_nature_min_ivs") val maternalNatureMinIvs: Int = 0,
+  @SerialName("cost_summary") val costSummary: String = "",
   @SerialName("candidate_snapshot") val candidateSnapshot: JsonObject = JsonObject(emptyMap()),
   val materials: JsonObject = JsonObject(emptyMap()),
   @SerialName("planning_options") val planningOptions: PlanRequest? = null,
@@ -190,6 +214,7 @@ data class StepOutcome(
   val number: Int,
   val gender: String = "",
   @SerialName("nature_hit") val natureHit: Boolean? = null,
+  @SerialName("preparations_confirmed") val preparationsConfirmed: Boolean = false,
 )
 
 @Serializable

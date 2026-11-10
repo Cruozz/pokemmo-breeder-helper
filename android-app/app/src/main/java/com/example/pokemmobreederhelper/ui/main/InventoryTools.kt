@@ -2,6 +2,8 @@ package com.example.pokemmobreederhelper.ui.main
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -41,7 +43,7 @@ internal fun PokemonPortrait(speciesId: Int?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel, onImport: () -> Unit) {
+internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel, onCapture: () -> Unit, onImport: () -> Unit) {
   var selected by remember { mutableStateOf(emptySet<String>()) }
   var status by rememberSaveable { mutableStateOf("全部状态") }
   var category by rememberSaveable { mutableStateOf("全部类别") }
@@ -72,6 +74,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
             }
             PokemonPortrait(state.inventory.firstOrNull()?.species?.let { state.speciesIcons[it] } ?: 133)
           }
+          OutlinedButton(onClick = onCapture, enabled = !state.isPlanning, modifier = Modifier.fillMaxWidth()) { Text("从截图 / 录屏采集库存") }
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { vm.editMaterial() }, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("新增素材") }
             OutlinedButton(onClick = onImport, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("导入 JSON") }
@@ -119,7 +122,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
       Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         PokemonPortrait(175)
         Text(if (state.inventory.isEmpty()) "从第一只素材开始" else "没有符合条件的素材", style = MaterialTheme.typography.titleMedium)
-        Text(if (state.inventory.isEmpty()) "手动新增，或导入电脑库存" else "调整搜索和筛选条件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (state.inventory.isEmpty()) "手动新增、采集截图 / 录屏，或导入电脑库存" else "调整搜索和筛选条件", color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
     items(filtered, key = { it.id }) { monster ->
@@ -177,7 +180,8 @@ private fun FilterStrip(options: List<String>, selected: String, choose: (String
 
 @Composable
 internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolean, onDismiss: () -> Unit, onSave: (MonsterRecord) -> Unit,
-  searchSpecies: suspend (String) -> List<SpeciesSuggestion>) {
+  searchSpecies: suspend (String) -> List<SpeciesSuggestion>, reviewMode: Boolean = false,
+  reviewContent: @Composable (() -> Unit)? = null) {
   var species by rememberSaveable(material.id) { mutableStateOf(material.species) }
   var gender by rememberSaveable(material.id) { mutableStateOf(material.gender) }
   var nature by rememberSaveable(material.id) { mutableStateOf(material.nature) }
@@ -207,13 +211,15 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
     Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), color = MaterialTheme.colorScheme.background) {
       Column {
         val largeText = LocalDensity.current.fontScale > 1.3f
-        if (largeText) Text(if (material.species.isBlank()) "新增素材" else "编辑素材", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
+        if (largeText) Text(if (reviewMode) "核对采集素材" else if (material.species.isBlank()) "新增素材" else "编辑素材", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleLarge)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
           TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
-          if (largeText) Spacer(Modifier.weight(1f)) else Text(if (material.species.isBlank()) "新增素材" else "编辑素材", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+          if (largeText) Spacer(Modifier.weight(1f)) else Text(if (reviewMode) "核对采集素材" else if (material.species.isBlank()) "新增素材" else "编辑素材", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
           Button(enabled = !busy, onClick = {
             val invalid = ivs.any { it.uppercase() != "X" && it.isNotBlank() && it.toIntOrNull()?.let { v -> v in 0..31 } != true }
             when {
+              reviewMode && !verified -> localError = "请对照原画面核对，并勾选“已核对，可参与规划”。"
+              reviewMode && gender.isBlank() -> localError = "请确认性别；无性别精灵请选择无性别。"
               invalid -> localError = "个体值请填写 0–31 或 X。"
               page.isNotBlank() && (page.toIntOrNull() ?: 0) < 1 -> localError = "页码必须为正整数。"
               slot.isNotBlank() && (slot.toIntOrNull() ?: 0) < 1 -> localError = "格号必须为正整数。"
@@ -222,10 +228,11 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
                 ability = ability.trim(), heldItem = heldItem.trim(), account = account.trim(), page = page, slot = slot, notes = notes,
                 isAlpha = alpha, hasHiddenAbility = hidden, verified = verified, updatedAt = java.time.Instant.now().toString())) }
             }
-          }) { Text(if (busy) "保存中" else "保存素材") }
+          }) { Text(if (busy) "保存中" else if (reviewMode) "确认入库" else "保存素材") }
         }
         if (localError.isNotBlank() || error.isNotBlank()) Text(localError.ifBlank { error }, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          reviewContent?.invoke()
           OutlinedTextField(species, { species = it }, label = { Text("精灵名称（中文、英文或编号）") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
           speciesMatches.forEach { match -> TextButton(onClick = {
             acceptedSpecies = match.displayName; species = match.displayName; speciesMatches = emptyList()
@@ -242,7 +249,11 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
           OutlinedTextField(ability, { ability = it }, label = { Text("特性") }, modifier = Modifier.fillMaxWidth())
           OutlinedTextField(heldItem, { heldItem = it }, label = { Text("携带道具") }, modifier = Modifier.fillMaxWidth())
           Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(alpha, { alpha = it; if (it) hidden = true }); Text("头目"); Checkbox(hidden, { hidden = it }); Text("梦特") }
-          Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(verified, { verified = it }); Text("已核对，可参与规划") }
+          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = verified, enabled = !busy,
+            role = Role.Checkbox, onValueChange = { verified = it }), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = verified, onCheckedChange = null)
+            Text("已核对，可参与规划")
+          }
           OutlinedTextField(account, { account = it }, label = { Text("账号 / 角色") }, modifier = Modifier.fillMaxWidth())
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(page, { page = it }, label = { Text("页码") }, modifier = Modifier.weight(1f))

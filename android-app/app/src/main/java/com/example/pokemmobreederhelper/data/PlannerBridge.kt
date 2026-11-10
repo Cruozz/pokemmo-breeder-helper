@@ -6,12 +6,15 @@ import com.chaquo.python.android.AndroidPlatform
 import kotlinx.serialization.encodeToString
 
 class PlannerBridge(context: Context) {
+  private companion object { val startupLock = Any() }
   private val python: Python
   private val module by lazy { python.getModule("mobile_bridge") }
 
   init {
-    if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
-    python = Python.getInstance()
+    python = synchronized(startupLock) {
+      if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
+      Python.getInstance()
+    }
   }
 
   fun searchSpecies(query: String, limit: Int = 12): List<SpeciesSuggestion> {
@@ -19,6 +22,9 @@ class PlannerBridge(context: Context) {
     val raw = module.callAttr("search_species", query, limit).toString()
     return AppJson.codec.decodeFromString<SpeciesSearchResponse>(raw).items
   }
+
+  fun parseCapture(linesJson: String): CaptureRecognition =
+    AppJson.codec.decodeFromString(python.getModule("mobile_capture").callAttr("parse_capture", linesJson).toString())
 
   fun duplicateGroups(inventoryJson: String): List<List<String>> =
     AppJson.codec.decodeFromString(module.callAttr("inventory_duplicates", inventoryJson).toString())

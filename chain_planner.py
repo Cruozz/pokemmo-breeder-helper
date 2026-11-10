@@ -2677,7 +2677,7 @@ def _virtual_materials(
                 source="需要补充",
                 verified=True,
             )
-            if book is not None and (is_alpha or inherited_moves):
+            if book is not None and (book.require_market_availability or is_alpha or inherited_moves):
                 row = material_record(monster, True)
                 book.materials[row["key"]] = row
                 if not book.purchase_available(row):
