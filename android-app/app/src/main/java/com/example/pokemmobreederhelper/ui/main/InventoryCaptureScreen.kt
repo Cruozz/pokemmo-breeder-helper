@@ -46,7 +46,7 @@ internal fun InventoryCaptureDialog(state: CaptureUiState, vm: InventoryCaptureV
           item { LiveCaptureControls(enabled = canEdit) }
           item {
             Text("也可以先用手机系统录屏，在游戏中逐只打开精灵详情与个体值页，每只停留至少 2 秒，再回到这里导入。")
-            Text("每批 20 张截图，或 2 分钟以内的录屏；每秒取一帧。采集结果先存为草稿，核对入库后参与规划。",
+            Text("每批 20 张截图，或 2 分钟以内的录屏；每秒取一帧。结果可直接入库为待确认，也可先核对再入库；确认后参与规划。",
               style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
           }
           item {
@@ -84,7 +84,8 @@ internal fun InventoryCaptureDialog(state: CaptureUiState, vm: InventoryCaptureV
                 Text(draft.sourceLabel, style = MaterialTheme.typography.bodySmall)
                 if (draft.frameCount > 1) Text("连续 ${draft.frameCount} 帧识别相同（${(draft.firstMs ?: 0) / 1000}–${(draft.lastMs ?: 0) / 1000} 秒）。如包含多只相同属性精灵，请按实际数量复制。", style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  Button(onClick = { onReview(draft) }, enabled = canEdit) { Text("核对入库") }
+                  Button(onClick = { vm.importDirect(draft.material.id) }, enabled = canEdit) { Text("直接入库") }
+                  OutlinedButton(onClick = { onReview(draft) }, enabled = canEdit) { Text("核对入库") }
                   TextButton(onClick = { vm.copyDraft(draft.material.id) }, enabled = canEdit) { Text("复制一只") }
                   TextButton(onClick = { vm.discard(draft.material.id) }, enabled = canEdit) { Text("忽略") }
                 }

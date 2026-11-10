@@ -118,6 +118,7 @@ class InventoryParityTest {
     lateinit var vm: MainScreenViewModel
     rule.runOnUiThread { vm = MainScreenViewModel(app) }
     rule.setContent { MainScreen(viewModel=vm) }
+    rule.onNodeWithText("导出 JSON · 手机 / 电脑通用").assertIsDisplayed()
     rule.onNodeWithText("新增素材").performClick()
     rule.onNodeWithText("保存素材").assertIsDisplayed()
     rule.onNodeWithText("取消").performClick()

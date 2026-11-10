@@ -36,11 +36,11 @@ internal fun LiveCaptureControls(enabled: Boolean) {
   OutlinedCard {
     Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
       Text("实时悬浮采集",style=MaterialTheme.typography.titleMedium)
-      Text("在浮窗填写用户名、仓库和格位。自动模式下逐只打开个体值页，每只停留约 2 秒；结果持续保存到待核对列表。")
-      Text("跳到其他格位时更新位置。两只画面完全相同时，手动点“下一只”区分。",style=MaterialTheme.typography.bodySmall)
+      Text("在浮窗选择用户名，填写仓库页和格位。逐只打开个体值页，看到“已入库”后切换下一只，位置会自动递增。")
+      Text("默认直接存入库存并标为待确认，可修改、批量确认或导出电脑通用 JSON。跳格请改位置；同种同 IV 精灵请点“下一只”。",style=MaterialTheme.typography.bodySmall)
       if(live.running) {
         Text("已保存 ${live.saved} 只 · ${live.message}")
-        Button(onClick={ context.stopService(Intent(context,InventoryCaptureService::class.java)) }) { Text("结束采集并核对") }
+        Button(onClick={ context.stopService(Intent(context,InventoryCaptureService::class.java)) }) { Text("结束采集") }
       } else {
         Button(enabled=enabled,onClick={
           if(Settings.canDrawOverlays(context)) authorize()

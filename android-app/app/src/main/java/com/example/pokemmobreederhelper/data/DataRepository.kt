@@ -31,44 +31,59 @@ object AppJson {
   }
 }
 
-class InventoryRepository(private val context: Context) {
-  private val inventoryFile = File(context.filesDir, "inventory.json")
-  private val planFile = File(context.filesDir, "plan-session.json")
-  private val workspaceFile = AtomicFile(File(context.filesDir, "workspace-v2.json"))
-  var loadError: String = ""
-    private set
-  private var workspace: MobileWorkspace = runCatching { loadWorkspace() }.getOrElse {
-    loadError = "存档无法读取，已阻止覆盖并保留原文件。请勿卸载或清除数据：${it.message}"
-    MobileWorkspace()
-  }
-  private val _inventory = MutableStateFlow(workspace.current.inventory)
-  val inventory: StateFlow<List<MonsterRecord>> = _inventory.asStateFlow()
+enum class CaptureInsertResult { ADDED, ALREADY_PRESENT, SLOT_OCCUPIED }
 
-  fun importInventory(raw: String): ImportSummary {
+/** Activities and the screen service share one atomic workspace per application directory. */
+class InventoryRepository(context: Context) {
+  private val directory = context.filesDir
+  private val inventoryFile = File(directory, "inventory.json")
+  private val planFile = File(directory, "plan-session.json")
+  private val workspaceFile = AtomicFile(File(directory, "workspace-v2.json"))
+  private class SharedState {
+    var workspace = MobileWorkspace()
+    var loadError = ""
+    val inventory = MutableStateFlow<List<MonsterRecord>>(emptyList())
+  }
+  private companion object {
+    val writeLock = Any()
+    val stores = mutableMapOf<String, SharedState>()
+  }
+  private val shared = synchronized(writeLock) {
+    stores.getOrPut(directory.canonicalPath) { SharedState() }.also { state ->
+      runCatching { loadWorkspace() }.onSuccess {
+        state.workspace = it; state.loadError = ""; state.inventory.value = it.current.inventory
+      }.onFailure {
+        state.loadError = "存档无法读取，已阻止覆盖并保留原文件。请勿卸载或清除数据：${it.message}"
+      }
+    }
+  }
+  val loadError: String get() = synchronized(writeLock) { shared.loadError }
+  private val workspace: MobileWorkspace get() = shared.workspace
+  val inventory: StateFlow<List<MonsterRecord>> = shared.inventory.asStateFlow()
+
+  fun importInventory(raw: String): ImportSummary = synchronized(writeLock) {
     val decoded = AppJson.decodeInventory(raw)
     val unique = LinkedHashMap<String, MonsterRecord>()
     decoded.forEach { unique[it.id] = it }
     val items = unique.values.toList()
     replace(WorkspaceSnapshot(items, null))
-    return ImportSummary(
-      count = items.size,
-      accountCount = items.map { it.account }.toSet().size,
-      verifiedCount = items.count { it.verified },
-    )
+    ImportSummary(items.size, items.map { it.account }.toSet().size, items.count { it.verified })
   }
 
-  fun inventoryJson(): String {
+  fun inventoryJson(): String = synchronized(writeLock) {
     check(loadError.isBlank()) { loadError }
-    return AppJson.codec.encodeToString(_inventory.value)
+    AppJson.codec.encodeToString(workspace.current.inventory)
   }
+  fun loadPlanSession(): SavedPlanSession? = synchronized(writeLock) { workspace.current.session }
+  fun loadTarget(): PlanRequest? = synchronized(writeLock) { workspace.current.session?.request ?: workspace.current.target }
+  val canUndo: Boolean get() = synchronized(writeLock) { workspace.undo != null }
 
-  fun loadPlanSession(): SavedPlanSession? = workspace.current.session
-  fun loadTarget(): PlanRequest? = workspace.current.session?.request ?: workspace.current.target
-  val canUndo: Boolean get() = workspace.undo != null
-
-  @Synchronized
-  fun replace(snapshot: WorkspaceSnapshot, checkpoint: Boolean = true, clearRoutes: Boolean = false) {
+  fun replace(snapshot: WorkspaceSnapshot, checkpoint: Boolean = true, clearRoutes: Boolean = false,
+    expectedInventory: List<MonsterRecord>? = null): Unit = synchronized(writeLock) {
     check(loadError.isBlank()) { loadError }
+    check(expectedInventory == null || expectedInventory == workspace.current.inventory) {
+      "库存刚刚发生变化，请重试；最新采集与原路线均已保留。"
+    }
     val next = MobileWorkspace(snapshot, if (clearRoutes) workspace.undo?.copy(session = null)
       else if (checkpoint) workspace.current else workspace.undo)
     val stream = workspaceFile.startWrite()
@@ -79,22 +94,43 @@ class InventoryRepository(private val context: Context) {
       workspaceFile.failWrite(stream)
       throw error
     }
-    workspace = next
-    _inventory.value = snapshot.inventory
+    shared.workspace = next
+    shared.inventory.value = snapshot.inventory
   }
 
-  @Synchronized
-  fun undo(): Boolean {
-    val saved = workspace.undo ?: return false
-    replace(saved) // One-level undo/redo keeps an escape path after restoration.
-    return true
+  fun undo(): Boolean = synchronized(writeLock) {
+    val saved = workspace.undo ?: return@synchronized false
+    replace(saved)
+    true
   }
-
-  fun savePlanSession(session: SavedPlanSession) {
+  fun savePlanSession(session: SavedPlanSession) = synchronized(writeLock) {
     replace(workspace.current.copy(session = session))
   }
 
-  fun editInventory(items: List<MonsterRecord>) {
+  /** Transform the latest inventory under the same lock as capture and disk writes. */
+  fun updateInventory(transform: (List<MonsterRecord>) -> List<MonsterRecord>) = synchronized(writeLock) {
+    editInventory(transform(workspace.current.inventory))
+  }
+  fun insertCapture(material: MonsterRecord): CaptureInsertResult = synchronized(writeLock) {
+    require(material.id.isNotBlank() && material.species.isNotBlank() && material.ivs.size == 6 &&
+      material.ivs.all { it != null && it in 0..31 }) { "资料不完整，请先核对。" }
+    require(material.account.isNotBlank() && (material.page.toIntOrNull() ?: 0) > 0 &&
+      (material.slot.toIntOrNull() ?: 0) > 0) { "请填写有效的账号和仓库位置。" }
+    val items = workspace.current.inventory
+    val occupied = items.firstOrNull { it.account.trim() == material.account.trim() &&
+      it.page.toIntOrNull() == material.page.toIntOrNull() && it.slot.toIntOrNull() == material.slot.toIntOrNull() }
+    if (occupied != null) {
+      return@synchronized if (occupied.species == material.species && occupied.ivs == material.ivs &&
+        occupied.gender == material.gender && occupied.nature == material.nature &&
+        occupied.isAlpha == material.isAlpha && occupied.hasHiddenAbility == material.hasHiddenAbility &&
+        occupied.ability == material.ability && occupied.moves == material.moves && occupied.heldItem == material.heldItem)
+        CaptureInsertResult.ALREADY_PRESENT else CaptureInsertResult.SLOT_OCCUPIED
+    }
+    require(items.none { it.id == material.id }) { "这条采集已保存。" }
+    editInventory(items + material.copy(verified = false))
+    CaptureInsertResult.ADDED
+  }
+  fun editInventory(items: List<MonsterRecord>): Unit = synchronized(writeLock) {
     require(items.map { it.id }.distinct().size == items.size) { "素材编号不能重复。" }
     val previous = workspace.current.inventory.associateBy { it.id }
     val next = items.associateBy { it.id }
@@ -108,17 +144,13 @@ class InventoryRepository(private val context: Context) {
         replanReason = "路线使用的素材已修改或删除，请按原目标重新规划。"))) else session
     replace(workspace.current.copy(inventory = items, session = updatedSession))
   }
-
-  fun clearPlanSession(target: PlanRequest? = loadTarget()) {
+  fun clearPlanSession(target: PlanRequest? = loadTarget()) = synchronized(writeLock) {
     replace(workspace.current.copy(session = null, target = target), checkpoint = false, clearRoutes = true)
   }
-
   private fun loadInventory(): List<MonsterRecord> =
     if (!inventoryFile.exists()) emptyList() else AppJson.decodeInventory(inventoryFile.readText())
-
   private fun loadWorkspace(): MobileWorkspace {
-    if (workspaceFile.baseFile.exists() || File(context.filesDir, "workspace-v2.json.bak").exists()) {
-      // Do not silently discard a corrupt active workspace as an empty box.
+    if (workspaceFile.baseFile.exists() || File(directory, "workspace-v2.json.bak").exists()) {
       return AppJson.codec.decodeFromString(workspaceFile.openRead().bufferedReader().use { it.readText() })
     }
     val legacy = if (planFile.exists()) AppJson.codec.decodeFromString<SavedPlanSession>(planFile.readText()) else null

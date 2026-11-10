@@ -33,13 +33,13 @@ class CaptureImportTest {
     rule.waitUntil(10000) { !mainVm.uiState.value.isPlanning && captureVm.state.value.drafts.isEmpty() }
   }
 
-  private fun screenshot(): Uri {
+  private fun screenshot(nameLine: String = "Lv.1 伊布"): Uri {
     val file = File(rule.activity.cacheDir, "synthetic-inventory.png")
     val bitmap = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.drawColor(Color.WHITE)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 42f }
-    listOf("Lv.1 伊布", "能力值：12/5/6/5/6/5", "个体值：31/2/19/0/16/6", "努力值：0/0/0/0/0/0", "性格：坦率 Docile")
+    listOf(nameLine, "能力值：12/5/6/5/6/5", "个体值：31/2/19/0/16/6", "努力值：0/0/0/0/0/0", "性格：坦率 Docile")
       .forEachIndexed { index, line -> canvas.drawText(line, 60f, 90f + index * 100, paint) }
     file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     bitmap.recycle()
@@ -73,6 +73,23 @@ class CaptureImportTest {
     assertEquals(draft.material.id, saved.id)
     assertEquals("F", saved.gender)
     assertEquals("伊布", saved.species)
+  }
+
+  @Test fun screenshotCanGoStraightToInventoryAndExportAsUnconfirmed() {
+    rule.runOnUiThread { captureVm.scan(listOf(screenshot("名字：皮卡丘")), false) }
+    rule.waitUntil(90000) { !captureVm.state.value.busy }
+    val draft=captureVm.state.value.drafts.single()
+    assertTrue(draft.rawText,draft.material.species.isNotBlank())
+    rule.runOnUiThread { captureVm.importDirect(draft.material.id) }
+    rule.waitUntil(15000) { !captureVm.state.value.busy && mainVm.uiState.value.inventory.size==1 }
+    assertTrue(captureVm.state.value.drafts.isEmpty())
+    val repository=InventoryRepository(rule.activity)
+    val saved=AppJson.decodeInventory(repository.inventoryJson()).single()
+    assertEquals(draft.material.id,saved.id)
+    assertFalse(saved.verified)
+    assertEquals(draft.material.ivs,saved.ivs)
+    rule.runOnUiThread { captureVm.importDirect(draft.material.id) }
+    assertEquals(1,repository.inventory.value.size)
   }
 
   @Test fun recordingSamplesAndGroupsOnlyAdjacentEqualFrames() {

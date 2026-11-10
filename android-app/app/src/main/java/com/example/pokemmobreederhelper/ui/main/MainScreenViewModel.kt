@@ -4,6 +4,8 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.pokemmobreederhelper.data.AppJson
+import kotlinx.serialization.encodeToString
 import com.example.pokemmobreederhelper.data.CostSettings
 import com.example.pokemmobreederhelper.data.ExecutionStepRecord
 import com.example.pokemmobreederhelper.BuildConfig
@@ -122,6 +124,11 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
 
   init {
     viewModelScope.launch {
+      repository.inventory.collect { items ->
+        _uiState.update { it.copy(inventory = items, canUndo = repository.canUndo) }
+      }
+    }
+    viewModelScope.launch {
       val icons = withContext(Dispatchers.Default) { runCatching { plannerBridge.speciesIcons() }.getOrDefault(emptyMap()) }
       _uiState.update { it.copy(speciesIcons = icons) }
     }
@@ -158,10 +165,12 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     viewModelScope.launch {
       runCatching {
         val validated = withContext(Dispatchers.Default) { plannerBridge.validateMaterial(material) }
-        val items = state.inventory.toMutableList()
-        val index = items.indexOfFirst { it.id == validated.id }
-        if (index < 0) items.add(validated) else items[index] = validated
-        withContext(Dispatchers.IO) { repository.editInventory(items) }
+        withContext(Dispatchers.IO) { repository.updateInventory { current ->
+          val items = current.toMutableList()
+          val index = items.indexOfFirst { it.id == validated.id }
+          if (index < 0) items.add(validated) else items[index] = validated
+          items
+        } }
         refreshInventoryState("素材已保存")
       }.onFailure { error -> _uiState.update { it.copy(isPlanning = false, materialError = error.message ?: "保存失败") } }
     }
@@ -177,7 +186,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     if (items == _uiState.value.inventory) return
     _uiState.update { it.copy(isPlanning = true) }
     viewModelScope.launch {
-      runCatching { withContext(Dispatchers.IO) { repository.editInventory(items) }; refreshInventoryState(message) }
+      runCatching { withContext(Dispatchers.IO) { repository.updateInventory(transform) }; refreshInventoryState(message) }
         .onFailure { fail(it) }
     }
   }
@@ -394,8 +403,8 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     startPlanning(request)
   }
 
-  private fun startPlanning(request: PlanRequest) {
-    if (_uiState.value.isPlanning) return
+  private fun startPlanning(request: PlanRequest, afterCompletion: Boolean = false) {
+    if (_uiState.value.isPlanning && !afterCompletion) return
     val generation = ++planningGeneration
     val inventoryJson = repository.inventoryJson()
     lastPlanningRequest = request
@@ -422,13 +431,15 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
+  private fun continuationRequest(saved: PlanRequest) = saved.copy(
+    maxPurchaseV = saved.maxPurchaseV ?: maxOf(if (saved.targetAlpha) 2 else 1, saved.ivs.count { it == "31" } - 2),
+    costPricing = saved.costPricing.copy(requireMarketAvailability = true),
+  )
+
   fun suggestNext() {
     if (_uiState.value.isPlanning) return
     val saved = _uiState.value.plannerResponse?.plan?.planningOptions
-    val request = saved?.copy(
-      maxPurchaseV = saved.maxPurchaseV ?: maxOf(if (saved.targetAlpha) 2 else 1, saved.ivs.count { it == "31" } - 2),
-      costPricing = saved.costPricing.copy(requireMarketAvailability = true),
-    )
+    val request = saved?.let(::continuationRequest)
     if (request != null) {
       _uiState.update { it.withRequest(request) }
       startPlanning(request)
@@ -436,7 +447,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun retryPlanning() {
-    lastPlanningRequest?.let(::startPlanning) ?: suggestNext()
+    lastPlanningRequest?.let { startPlanning(it) } ?: suggestNext()
   }
 
   fun showSuggestion(value: Boolean) = _uiState.update { it.copy(showingSuggestion = value, pendingStep = null) }
@@ -503,22 +514,27 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     _uiState.update { it.copy(isPlanning = true, pendingStep = null) }
     viewModelScope.launch {
       runCatching {
+        val sourceInventory = repository.inventory.value
         val result = withContext(Dispatchers.Default) {
-          plannerBridge.completeStep(repository.inventoryJson(), response, StepOutcome(step.number, gender, natureHit, preparationsConfirmed))
+          plannerBridge.completeStep(AppJson.codec.encodeToString(sourceInventory), response, StepOutcome(step.number, gender, natureHit, preparationsConfirmed))
         }
         check(result.ok) { result.error }
         val next = checkNotNull(result.response)
         val completed = next.plan?.steps.orEmpty().filter { it.completed }.map { it.child.id }.toSet()
         withContext(Dispatchers.IO) {
-          repository.replace(WorkspaceSnapshot(result.inventory, SavedPlanSession(next, completed, next.plan?.planningOptions)))
+          repository.replace(WorkspaceSnapshot(result.inventory, SavedPlanSession(next, completed, next.plan?.planningOptions)),
+            expectedInventory = sourceInventory)
         }
+        val continuation = next.plan?.takeIf { it.needsReplan }?.planningOptions?.let(::continuationRequest)
         _uiState.update { it.copy(inventory = result.inventory, plannerResponse = next,
           previewRequest = null, showingSuggestion = false,
-          completedChildIds = completed, pendingResponse = null, planningFailure = null, isPlanning = false,
+          completedChildIds = completed, pendingResponse = null, planningFailure = null, isPlanning = continuation != null,
           canUndo = repository.canUndo, message = result.message, error = "") }
         // Save the completed egg first. Suggestion generation must not replace
         // the active route or overwrite the completion's undo checkpoint.
-        if (next.plan?.needsReplan == true) suggestNext()
+        // Do not expose an idle state between egg completion and its automatic suggestion.
+        if (continuation != null) startPlanning(continuation, afterCompletion = true)
+        else if (next.plan?.needsReplan == true) suggestNext()
       }.onFailure { fail(it) }
     }
   }
@@ -533,7 +549,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     }))
     runCatching {
       repository.replace(WorkspaceSnapshot(state.inventory,
-        SavedPlanSession(updated, state.completedChildIds, plan.planningOptions)), checkpoint = false)
+        SavedPlanSession(updated, state.completedChildIds, plan.planningOptions)), checkpoint = false, expectedInventory = state.inventory)
       _uiState.update { it.copy(plannerResponse = updated, pendingStep = null,
         message = "孵化中标记仅作备忘，不核销、不解锁上层。") }
     }.onFailure { fail(it) }

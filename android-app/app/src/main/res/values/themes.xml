@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.PokeMMOBreederHelper" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="BaseTheme.PokeMMOBreederHelper" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F5F7FD</item>
+        <item name="android:navigationBarColor">#24324A</item>
+    </style>
+    <style name="Theme.PokeMMOBreederHelper" parent="BaseTheme.PokeMMOBreederHelper" />
+    <style name="BaseCaptureOverlayTheme" parent="android:Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#4F46E5</item>
+        <item name="android:colorControlActivated">#4F46E5</item>
+        <item name="android:textColorPrimary">#24324A</item>
+        <item name="android:textColorSecondary">#505E77</item>
+        <item name="android:colorBackground">#F8F9FF</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <style name="CaptureOverlayTheme" parent="BaseCaptureOverlayTheme" />
 </resources>

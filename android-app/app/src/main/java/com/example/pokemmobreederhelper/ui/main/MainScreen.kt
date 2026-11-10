@@ -150,7 +150,9 @@ fun MainScreen(
       tabStates.SaveableStateProvider(state.tab.name) {
         when (state.tab) {
           MainTab.Inventory ->
-            PokedexInventory(state, viewModel, onCapture = { captureVisible = true }) { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) }
+            PokedexInventory(state, viewModel, onCapture = { captureVisible = true },
+              onImport = { if (!state.isPlanning) importer.launch(arrayOf("application/json", "text/json", "text/plain")) },
+              onExport = { exporter.launch("pokemmo-inventory.json") })
           MainTab.Planner -> PlannerScreen(state, viewModel)
         }
       }

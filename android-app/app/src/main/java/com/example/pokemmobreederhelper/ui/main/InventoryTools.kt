@@ -43,7 +43,7 @@ internal fun PokemonPortrait(speciesId: Int?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel, onCapture: () -> Unit, onImport: () -> Unit) {
+internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel, onCapture: () -> Unit, onImport: () -> Unit, onExport: () -> Unit) {
   var selected by remember { mutableStateOf(emptySet<String>()) }
   var status by rememberSaveable { mutableStateOf("全部状态") }
   var category by rememberSaveable { mutableStateOf("全部类别") }
@@ -79,6 +79,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
             Button(onClick = { vm.editMaterial() }, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("新增素材") }
             OutlinedButton(onClick = onImport, enabled = !state.isPlanning, modifier = Modifier.weight(1f)) { Text("导入 JSON") }
           }
+          OutlinedButton(onClick = onExport, enabled = !state.isPlanning, modifier = Modifier.fillMaxWidth()) { Text("导出 JSON · 手机 / 电脑通用") }
         }
       }
     }

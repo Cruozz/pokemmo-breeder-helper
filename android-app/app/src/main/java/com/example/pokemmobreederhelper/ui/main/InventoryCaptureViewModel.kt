@@ -112,6 +112,31 @@ internal class InventoryCaptureViewModel(application: Application) : AndroidView
 
   fun cancel() { scanJob?.cancel() }
 
+  fun importDirect(id: String) {
+    if (_state.value.busy || _state.value.liveActive) return
+    val draft = _state.value.drafts.firstOrNull { it.material.id == id } ?: return
+    val material = draft.material
+    if (material.species.isBlank() || material.ivs.size != 6 || material.ivs.any { it == null || it !in 0..31 }) {
+      _state.update { it.copy(error = "名称或个体值不完整，请点核对入库补全。") }; return
+    }
+    _state.update { it.copy(busy = true, error = "") }
+    viewModelScope.launch {
+      try {
+        withContext(Dispatchers.IO + NonCancellable) {
+          val repository = InventoryRepository(getApplication<Application>())
+          if (material.page.toIntOrNull() != null && material.slot.toIntOrNull() != null) {
+            check(repository.insertCapture(material) != CaptureInsertResult.SLOT_OCCUPIED) { "此仓位已有其他素材，请核对位置。" }
+          } else repository.updateInventory { items ->
+            if (items.any { it.id == material.id }) items else items + material.copy(verified = false)
+          }
+        }
+        change { items -> items.filterNot { it.material.id == id } }
+        _state.update { it.copy(message = "已入库（待确认），可到库存修改并导出 JSON。") }
+      } catch (error: Exception) { _state.update { it.copy(error = error.message ?: "入库失败，草稿已保留。") } }
+      finally { _state.update { it.copy(busy = false) } }
+    }
+  }
+
   fun discard(id: String) = mutate { items -> items.filterNot { it.material.id == id } }
   fun clearDrafts() = mutate { emptyList() }
   fun copyDraft(id: String) = mutate { items ->

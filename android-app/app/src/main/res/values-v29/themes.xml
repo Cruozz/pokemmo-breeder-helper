@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PokeMMOBreederHelper" parent="BaseTheme.PokeMMOBreederHelper">
+        <item name="android:navigationBarColor">#F5F7FD</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+    <style name="CaptureOverlayTheme" parent="BaseCaptureOverlayTheme">
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>
