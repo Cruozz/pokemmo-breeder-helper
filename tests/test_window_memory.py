@@ -56,14 +56,15 @@ class WindowMemoryTests(unittest.TestCase):
     def test_move_resize_close_and_reopen_restore_last_geometry(self):
         root = self.root()
         memory = WindowMemory(root, self.path)
-        root.geometry("920x720+160+110")
+        # Keep the fixture inside a 1024x720 CI work area; clamping is tested separately.
+        root.geometry("760x620+80+50")
         root.update()
         memory.save()
         root.destroy()
         reopened = self.root()
         WindowMemory(reopened, self.path)
         reopened.update()
-        self.assertEqual(reopened.geometry(), "920x720+160+110")
+        self.assertEqual(reopened.geometry(), "760x620+80+50")
 
     def test_maximized_reopens_maximized_and_keeps_normal_restore_position(self):
         root = self.root()
@@ -121,7 +122,7 @@ class WindowMemoryTests(unittest.TestCase):
     def test_app_close_handler_saves_and_next_app_restores(self):
         root = self.root()
         app = App(root)
-        root.geometry("940x700+130+90")
+        root.geometry("780x620+100+50")
         root.update()
         handler = root.protocol("WM_DELETE_WINDOW")
         self.assertTrue(handler)
@@ -131,7 +132,7 @@ class WindowMemoryTests(unittest.TestCase):
         reopened = self.root()
         App(reopened)
         reopened.update()
-        self.assertEqual(reopened.geometry(), "940x700+130+90")
+        self.assertEqual(reopened.geometry(), "780x620+100+50")
 
 
 if __name__ == "__main__":
