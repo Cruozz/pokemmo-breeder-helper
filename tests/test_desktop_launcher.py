@@ -17,6 +17,7 @@ internal static class LauncherHarness {
     static object Invoke(string name, params object[] args) { return typeof(Program).GetMethod(name, Flags).Invoke(null, args); }
     static string Field(string name) { return (string)typeof(Program).GetField(name, Flags).GetValue(null); }
     static int Main(string[] args) {
+        Console.OutputEncoding = new System.Text.UTF8Encoding(false);
         Microsoft.Win32.SafeHandles.SafeFileHandle held = null;
         bool blocked = false;
         try {
@@ -93,7 +94,7 @@ class DesktopLauncherTests(unittest.TestCase):
                                  "/reference:System.dll", "/reference:System.Core.dll", "/reference:System.Windows.Forms.dll",
                                  "/reference:System.Drawing.dll", "/reference:System.IO.Compression.dll",
                                  "/reference:System.IO.Compression.FileSystem.dll", str(generated)],
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, encoding="utf-8", timeout=30)
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
 
@@ -103,7 +104,7 @@ class DesktopLauncherTests(unittest.TestCase):
 
     def run_launcher(self, mode, *roots, expected=0):
         result = subprocess.run([str(self.exe), mode, *(str(p) for p in roots)],
-                                capture_output=True, text=True, timeout=15)
+                                capture_output=True, text=True, encoding="utf-8", timeout=15)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return dict(line.split("|", 1) for line in result.stdout.splitlines() if "|" in line)
 

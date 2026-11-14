@@ -41,12 +41,18 @@ def run_checks() -> dict[str, object]:
         path = resource_path("data", item["icon"])
         if hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
             raise RuntimeError("Particle icon hash mismatch: " + item["id"])
-    particle_image = Image.new("RGB", (290,190), (75,84,92))
+    particle_image = Image.new("RGB", (400,380), (29,36,39))
+    particle_lines = [OCRItem("Lv.100 伊布",.99,[[90,300],[280,300],[280,320],[90,320]])]
     with Image.open(resource_path("data", "particles", "shiny_sarcophagus.png")) as icon:
-        particle_image.paste(icon, (220,88), icon)
-    if detect_particle(particle_image, [OCRItem("Lv.100 伊布",.99,[[25,120],[220,120],[220,140],[25,140]])]) != (True,["shiny_sarcophagus"]):
+        particle_image.paste(icon, (360,289), icon)
+    if detect_particle(particle_image, particle_lines) != (True,["shiny_sarcophagus"]):
         raise RuntimeError("Packaged particle matcher failed")
-    checks["particles"] = {"icons":42, "ordinary":40, "hashes":"ok", "recognition":"shiny_sarcophagus"}
+    outside_image = Image.new("RGB", (400,380), (29,36,39))
+    with Image.open(resource_path("data", "particles", "bats.png")) as icon:
+        outside_image.paste(icon, (275,240), icon)
+    if detect_particle(outside_image, particle_lines) != (False, []):
+        raise RuntimeError("Packaged particle matcher searched outside the badge slot")
+    checks["particles"] = {"icons":42, "ordinary":40, "hashes":"ok", "recognition":"shiny_sarcophagus", "sprite_excluded":True}
     _, cosmetic_candidates = make_report_with_candidates([
         Monster(id="self-costume",species="喵喵",gender="F",ivs=[31,None,None,None,None,None],is_costume=True,particles=["bats","ghosts"]),
         Monster(id="self-father",species="喵喵",gender="M",ivs=[None,31,None,None,None,None]),

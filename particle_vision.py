@@ -1,4 +1,4 @@
-"""Conservative, local matching of the selected summary-panel particle icon."""
+"""Match the particle badge in the bottom-right slot of a summary portrait."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -17,79 +17,100 @@ def _templates():
             for entry in particle_catalog()]
 
 
+def _icon_region(image, items):
+    """Use the name row, panel edge and text scale; never search the sprite."""
+    import numpy as np
+    from ocr_engine import OCRProcessor as OCR
+
+    name = next(iter(OCR._level_items(items)), None)
+    if name is None or name.box is None:
+        return None
+    h = max(8, round(OCR._height(name.box)))
+    name_right = math.ceil(OCR._right(name.box))
+    top = max(0, math.floor(OCR._top(name.box) - h * .6))
+    bottom = min(image.height, math.ceil(OCR._bottom(name.box) + h * .15))
+    # A separated gender glyph may be absent from the OCR name box.
+    left = max(0, math.ceil(name_right + h))
+    right = min(image.width, math.ceil(name_right + h * 12))
+    if right <= left or bottom <= top:
+        return None
+
+    # A full-screen capture can contain another UI column immediately to the
+    # right. Stop at the portrait's persistent vertical frame, not image.width.
+    y0 = max(0, math.floor(OCR._top(name.box) - h * 2))
+    y1 = min(image.height, math.ceil(OCR._bottom(name.box) + h * .3))
+    strip = np.asarray(image.convert("RGB").crop((left - 1, y0, right, y1)), dtype=np.int16)
+    edges = (np.max(np.abs(np.diff(strip, axis=1)), axis=2) >= 10).mean(axis=0)
+    candidates = np.flatnonzero(edges >= .85)
+    if len(candidates):
+        right = left + int(candidates[0])
+    elif right < image.width:
+        # The panel boundary was not visible in a larger frame. Do not search
+        # adjacent panels using an arbitrary distance from the name.
+        return None
+    left = max(left, math.floor(right - h * 2.8))
+    if right - left < h * .8:
+        return None
+    return (left, top, right, bottom), h
+
+
 def detect_particle(image, items) -> tuple[bool, list[str]]:
     if image is None:
         return False, []
     try:
-        from ocr_engine import OCRProcessor as OCR
-        name = next(iter(OCR._level_items(items)), None)
-        if name is None:
-            return False, []
-        h = max(8, round(OCR._height(name.box)))
-        left = max(0, int(OCR._right(name.box) - h))
-        top = max(0, int(OCR._top(name.box) - h * 4.5))
-        right = min(image.width, int(OCR._right(name.box) + h * 5))
-        bottom = min(image.height, int(OCR._bottom(name.box) + h * .5))
-        if left >= right or top >= bottom:
-            return False, []
         import cv2
         import numpy as np
-        rgb = np.asarray(image.convert("RGB").crop((left, top, right, bottom)))
-        if rgb.ndim != 3 or rgb.dtype != np.uint8 or not rgb.size:
+
+        region = _icon_region(image, items)
+        if region is None:
             return False, []
-        if np.ptp(rgb, axis=(0, 1)).max() < 12:
+        box, h = region
+        source = cv2.cvtColor(np.asarray(image.convert("RGB").crop(box)), cv2.COLOR_RGB2BGR)
+        if not source.size or np.ptp(source, axis=(0, 1)).max() < 20:
             return False, []
-        source = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        # Locate at half resolution, then verify only the best few identities
-        # in a small full-resolution patch. This avoids 42 full-size sweeps.
-        small = cv2.resize(source, None, fx=.5, fy=.5, interpolation=cv2.INTER_AREA)
-        sizes = sorted({12, *range(max(6, h // 2), min(56, h * 2) + 1, 2)})
-        located = []
-        for name, rgba in _templates():
-            best = (math.inf, name, 12, (0, 0), rgba)
-            for size in sizes:
-                if size > min(small.shape[:2]):
-                    continue
-                template = cv2.resize(rgba, (size, size), interpolation=cv2.INTER_LINEAR)
-                mask = (template[:, :, 3] > 245).astype(np.uint8) * 255
-                if np.count_nonzero(mask) < 3:
-                    continue
-                result = cv2.matchTemplate(small, template[:, :, :3], cv2.TM_SQDIFF, mask=mask)
-                value, _, position, _ = cv2.minMaxLoc(result)
-                error = math.sqrt(max(0, value) / max(1, int(np.count_nonzero(mask)) * 3))
-                if error < best[0]:
-                    best = (error, name, size, position, rgba)
-            located.append(best)
+        # The badge shares the name row's UI scale. Tiny sprite fragments and
+        # oversized animation graphics cannot be particle candidates.
+        sizes = range(max(8, math.floor(h * .8)), min(round(h * 1.6), *source.shape[:2]) + 1)
         scores = []
-        for _, name, coarse_size, (x, y), rgba in sorted(located, key=lambda row: row[0])[:6]:
+        for name, rgba in _templates():
             best = math.inf
-            for size in range(max(8, coarse_size * 2 - 5), coarse_size * 2 + 6):
-                x0, y0 = max(0, x * 2 - 6), max(0, y * 2 - 6)
-                patch = source[y0:min(source.shape[0], y * 2 + size + 7), x0:min(source.shape[1], x * 2 + size + 7)]
-                if size > min(patch.shape[:2]):
-                    continue
+            for size in sizes:
                 for interpolation in (cv2.INTER_NEAREST, cv2.INTER_LINEAR):
                     template = cv2.resize(rgba, (size, size), interpolation=interpolation)
                     mask = (template[:, :, 3] > 245).astype(np.uint8) * 255
-                    result = cv2.matchTemplate(patch, template[:, :, :3], cv2.TM_SQDIFF, mask=mask)
-                    value, _, position, _ = cv2.minMaxLoc(result)
-                    px, py = position
-                    actual = patch[py:py + size, px:px + size]
+                    count = int(np.count_nonzero(mask))
+                    if count < 6:
+                        continue
+                    result = cv2.matchTemplate(source, template[:, :, :3], cv2.TM_SQDIFF, mask=mask)
+                    value, _, (x, y), _ = cv2.minMaxLoc(result)
+                    if not math.isfinite(value):
+                        continue
+                    actual = source[y:y + size, x:x + size]
                     if np.ptp(actual, axis=(0, 1)).max() < 20:
                         continue
                     negative = template[:, :, 3] == 0
-                    edge = max(2, size // 12)
+                    edge = max(1, size // 12)
                     negative[:edge] = negative[-edge:] = False
                     negative[:, :edge] = negative[:, -edge:] = False
                     background = actual[negative].astype(np.float32)
-                    spread = float(np.mean((background - np.median(background, axis=0)) ** 2)) if len(background) > 5 else 0
-                    error = max(0, value) / max(1, int(np.count_nonzero(mask)) * 3)
-                    best = min(best, math.sqrt(error + 3 * spread))
+                    if len(background) < 6:
+                        continue
+                    background_color = np.median(background, axis=0)
+                    alpha = template[:, :, 3:4].astype(np.float32) / 255
+                    composite = template[:, :, :3] * alpha + background_color * (1 - alpha)
+                    # Confirm the whole silhouette, including its empty pixels.
+                    # Dark, sparse templates otherwise fit almost any dark UI.
+                    correlation = cv2.matchTemplate(actual.astype(np.float32), composite, cv2.TM_CCOEFF_NORMED)[0, 0]
+                    if correlation < .85:
+                        continue
+                    spread = float(np.mean((background - background_color) ** 2))
+                    error = math.sqrt(max(0, value) / (count * 3) + 3 * spread)
+                    best = min(best, error)
             scores.append((best, name))
         scores.sort()
-        if scores[0][0] <= 34 and scores[1][0] - scores[0][0] >= 4:
+        if len(scores) >= 2 and scores[0][0] <= 38 and scores[1][0] - scores[0][0] >= 5:
             return True, [scores[0][1]]
-        # Recognized as a particle-sized graphic but not a reliable identity.
-        return scores[0][0] < 43, []
+        # A weak resemblance is not evidence that a particle exists.
+        return False, []
     except (ImportError, AttributeError, TypeError, ValueError):
         return False, []
