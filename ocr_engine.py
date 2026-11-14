@@ -49,6 +49,11 @@ class OCRProcessor:
 
         array = np.asarray(image.convert("RGB"))
         result, _elapsed = self.engine(array)
+        items = self._result_items(result)
+        return self._retry_name_row(image, items)
+
+    @staticmethod
+    def _result_items(result) -> list[OCRItem]:
         items: list[OCRItem] = []
         for item in result or []:
             if len(item) < 3:
@@ -58,6 +63,44 @@ class OCRProcessor:
             except (TypeError, ValueError):
                 continue
         return items
+
+    def _retry_name_row(self, image, items: list[OCRItem]) -> list[OCRItem]:
+        """Retry an unresolved summary name twice; require agreement of full names."""
+        anchors = self._level_items(items)
+        if len(anchors) != 1:
+            return items
+        from species_data import get_species_database
+        database = get_species_database()
+        raw, name = self._species_from_level_item(items)
+        if database.resolve_ocr_name(raw)[1] or name is None:
+            return items
+        import numpy as np
+        from PIL import Image
+
+        h = max(8, self._height(name.box))
+        bounds = (max(0, int(self._left(name.box) - h)), max(0, int(self._top(name.box) - h * .5)),
+                  min(image.width, int(self._right(name.box) + h)), min(image.height, int(self._bottom(name.box) + h * .5)))
+        if bounds[0] >= bounds[2] or bounds[1] >= bounds[3]:
+            return items
+        crop = image.convert("RGB").crop(bounds)
+        original_level = re.search(r"\d+", anchors[0].text)
+        readings = []
+        for scale in (2, 3):
+            enlarged = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
+            result, _elapsed = self.engine(np.asarray(enlarged))
+            retry = self._result_items(result)
+            candidate, line = self._species_from_level_item(retry)
+            record, confident, _score = database.resolve_ocr_name(candidate)
+            level = re.search(r"\d+", line.text) if line else None
+            if not confident or record is None or level is None or original_level is None or level[0] != original_level[0]:
+                return items
+            mapped = [[bounds[0] + float(x) / scale, bounds[1] + float(y) / scale] for x, y in line.box]
+            readings.append((record.id, OCRItem(line.text, line.score, mapped)))
+        if readings[0][0] != readings[1][0]:
+            return items
+        group = self._name_row_items(items, anchors[0])
+        replaced = {id(item) for item in group}
+        return [readings[-1][1] if item is anchors[0] else item for item in items if item is anchors[0] or id(item) not in replaced]
 
     @staticmethod
     def _line_text(items: list[OCRItem]) -> str:
@@ -477,8 +520,35 @@ class OCRProcessor:
         return [item for item in items if re.search(r"\bL(?:[vw][.,，·]?|[.,，·])\s*\d+", item.text, flags=re.IGNORECASE)]
 
     @classmethod
+    def _name_row_items(cls, items: list[OCRItem], anchor: OCRItem) -> list[OCRItem]:
+        """Join adjacent OCR fragments, never a different row or distant panel."""
+        h = max(8, cls._height(anchor.box))
+        row = [anchor]
+        right = cls._right(anchor.box)
+        for item in sorted(items, key=lambda item: cls._left(item.box)):
+            if item is anchor or cls._left(item.box) < right - h * .25:
+                continue
+            if (cls._left(item.box) - right <= h * 1.3
+                    and abs(cls._center_y(item.box) - cls._center_y(anchor.box)) <= h * .45
+                    and h * .5 <= cls._height(item.box) <= h * 1.7
+                    and not cls._level_items([item])):
+                row.append(item)
+                right = cls._right(item.box)
+        return row
+
+    @classmethod
     def _species_from_level_item(cls, items: list[OCRItem]) -> tuple[str, OCRItem | None]:
-        for item in cls._level_items(items):
+        for anchor in cls._level_items(items):
+            row = cls._name_row_items(items, anchor)
+            if len(row) > 1:
+                left = min(cls._left(item.box) for item in row)
+                right = max(cls._right(item.box) for item in row)
+                top = min(cls._top(item.box) for item in row)
+                bottom = max(cls._bottom(item.box) for item in row)
+                item = OCRItem(" ".join(item.text for item in row), min(item.score for item in row),
+                               [[left, top], [right, top], [right, bottom], [left, bottom]])
+            else:
+                item = anchor
             species = re.sub(r"^.*?\bL(?:[vw][.,，·]?|[.,，·])\s*\d+", "", item.text, flags=re.IGNORECASE).strip(" ：:")
             species = species.replace("♀", "").replace("♂", "").strip()
             # RapidOCR commonly reads the small pink female glyph as 早.
@@ -606,7 +676,7 @@ class OCRProcessor:
         moves, move_items = cls._find_moves(items)
 
         level_items = cls._level_items(items)
-        gender = cls._gender_from_image(image, level_items)
+        gender = cls._gender_from_image(image, [species_item] if species_item is not None else level_items)
         is_alpha, alpha_confidence = cls._alpha_from_image(image, level_items)
         has_hidden_ability, hidden_ability_confidence = cls._hidden_ability_from_image(image, ability_items)
         from particle_vision import detect_particle
@@ -619,9 +689,9 @@ class OCRProcessor:
                 gender = "M"
 
         from species_data import get_species_database
-        resolved, confident, _score = get_species_database().resolve_ocr_name(species, gender)
-        if resolved and confident:
-            species = resolved.display_name
+        species_raw = species
+        resolved, confident, species_score = get_species_database().resolve_ocr_name(species, gender)
+        species = resolved.display_name if resolved and confident else ""
 
         relevant: list[OCRItem] = []
         for item in ([species_item] if species_item else []) + iv_items:
@@ -644,6 +714,8 @@ class OCRProcessor:
         )
         return {
             "species": species,
+            "species_raw": species_raw,
+            "species_confidence": species_score,
             "gender": gender,
             "ivs": ivs or [None] * 6,
             "nature": nature,

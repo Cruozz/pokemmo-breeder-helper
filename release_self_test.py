@@ -34,6 +34,13 @@ def run_checks() -> dict[str, object]:
     from ocr_engine import OCRItem
     from particle_vision import detect_particle
     import hashlib
+    name_box = [[30, 120], [270, 120], [270, 140], [30, 140]]
+    if OCRProcessor.parse([OCRItem("Lv.50 安飘虫'虫飞", .99, name_box)])["species"] != "安瓢虫":
+        raise RuntimeError("Packaged reviewed species-name correction failed")
+    partial_name = OCRProcessor.parse([OCRItem("Lv.40 拉'恶冰", .99, name_box)])
+    if partial_name["species"] or partial_name["species_raw"] != "拉'恶冰":
+        raise RuntimeError("Packaged name parser accepted an incomplete species")
+    checks["species_ocr"] = {"reviewed_name": "安瓢虫", "incomplete_name": "rejected-with-original-preserved"}
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")

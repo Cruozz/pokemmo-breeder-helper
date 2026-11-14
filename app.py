@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.44"
+APP_VERSION = "0.2.45"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -4001,11 +4001,11 @@ class App(CosmeticControls):
                 best = resolved
             if resolved[1] and resolved[2] >= 1.0:
                 break
-        return best[0], best[1]
+        return (best[0], True) if best[1] else (None, False)
 
     def _apply_parsed_result(self, parsed: dict) -> tuple[SpeciesRecord | None, bool]:
         record, exact_species = self._resolve_ocr_species(parsed)
-        species = record.display_name if record else str(parsed.get("species", "")).strip()
+        species = record.display_name if record else ""
         gender = normalize_gender(str(parsed.get("gender", "")))
         confidence = float(parsed.get("confidence", 0.0) or 0.0)
         if record and record.allowed_genders == ("N",):
@@ -4047,7 +4047,7 @@ class App(CosmeticControls):
         )
         summary = "\n".join(
             (
-                f"名字：{species or '未识别'}",
+                f"名字：{species or '未识别'}" + (f"（原文：{parsed.get('species_raw', parsed.get('species', ''))}）" if not record else ""),
                 f"性别：{gender_text}",
                 f"个体值：{self.iv_var.get()}",
                 f"性格：{nature or '未识别'}",
@@ -4161,12 +4161,14 @@ class App(CosmeticControls):
         if not species or species == "待识别":
             messagebox.showwarning("名字未确认", "请先在右侧修正精灵名字，再按回车保存。")
             return False
-        record = self.species_db.get(species, fuzzy=True)
-        if record:
-            self.species_var.set(record.display_name)
-            self.groups_var.set(", ".join(record.egg_groups))
-            if record.allowed_genders == ("N",):
-                self.gender_var.set("N")
+        record = self.species_db.get(species)
+        if record is None:
+            messagebox.showwarning("名字未确认", "名字未匹配到图鉴。请先补全或选择完整精灵名字，再确认入库。")
+            return False
+        self.species_var.set(record.display_name)
+        self.groups_var.set(", ".join(record.egg_groups))
+        if record.allowed_genders == ("N",):
+            self.gender_var.set("N")
         gender = normalize_gender(self.gender_var.get())
         if not gender:
             messagebox.showwarning("性别未确认", "请先选择性别：F=母，M=公，N=无性别。")
