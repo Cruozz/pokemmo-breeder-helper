@@ -82,9 +82,13 @@ internal fun InventoryCaptureDialog(state: CaptureUiState, vm: InventoryCaptureV
                 Text(draft.material.species.ifBlank { "名称待确认" } + " · " + genderLabel(draft.material.gender), style = MaterialTheme.typography.titleMedium)
                 Text(draft.material.ivText + " · " + draft.material.nature.ifBlank { "性格未知" })
                 Text(draft.sourceLabel, style = MaterialTheme.typography.bodySmall)
+                val missing=listOfNotNull(if(draft.material.species.isBlank()) "名称待补" else null,
+                  draft.material.ivs.count { it==null }.takeIf { it>0 }?.let { "个体值待补 $it 项" })
+                if(missing.isNotEmpty())Text(missing.joinToString(" · "),color=MaterialTheme.colorScheme.error)
+                if(draft.material.cosmeticText.isNotBlank())Text(draft.material.cosmeticText)
                 if (draft.frameCount > 1) Text("连续 ${draft.frameCount} 帧识别相同（${(draft.firstMs ?: 0) / 1000}–${(draft.lastMs ?: 0) / 1000} 秒）。如包含多只相同属性精灵，请按实际数量复制。", style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  Button(onClick = { vm.importDirect(draft.material.id) }, enabled = canEdit) { Text("直接入库") }
+                  Button(onClick = { vm.importDirect(draft.material.id) }, enabled = canEdit && draft.material.species.isNotBlank() && draft.material.ivs.all { it!=null }) { Text("直接入库") }
                   OutlinedButton(onClick = { onReview(draft) }, enabled = canEdit) { Text("核对入库") }
                   TextButton(onClick = { vm.copyDraft(draft.material.id) }, enabled = canEdit) { Text("复制一只") }
                   TextButton(onClick = { vm.discard(draft.material.id) }, enabled = canEdit) { Text("忽略") }

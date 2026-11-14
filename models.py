@@ -49,6 +49,11 @@ class Monster:
     egg_groups: list[str] = field(default_factory=list)
     is_alpha: bool = False
     has_hidden_ability: bool = False
+    has_particles: bool = False
+    particles: list[str] = field(default_factory=list)
+    is_costume: bool = False
+    costume_id: str = ""
+    costume_lineage: str = ""
     account: str = "主账号"
     page: str = ""
     slot: str = ""
@@ -73,6 +78,10 @@ class Monster:
     updated_at: str = ""
 
     def __post_init__(self) -> None:
+        from cosmetics import normalize_particles
+        self.particles = normalize_particles(self.particles)
+        self.has_particles = bool(self.has_particles or self.particles)
+        self.is_costume = bool(self.is_costume or self.costume_id)
         self.gender = normalize_gender(self.gender)
         self.ivs = list(self.ivs[:6]) + [None] * max(0, 6 - len(self.ivs))
         self.ivs = [self._coerce_iv(v) for v in self.ivs[:6]]
@@ -99,6 +108,9 @@ class Monster:
 
     def has_unrequested_perfect_iv(self, target_ivs: list[int | None]) -> bool:
         """Protect whole materials with a 31 on a target X stat."""
+        from cosmetics import ACTIVE_COSMETICS
+        if ACTIVE_COSMETICS.get().target_costume:
+            return False
         return any(value == 31 and required is None
                    for value, required in zip(self.ivs, target_ivs))
 
@@ -130,6 +142,11 @@ class Monster:
             # Treat legacy Alpha captures as HA-unlocked by default, while
             # allowing users to explicitly clear the flag after migration.
             has_hidden_ability=bool(value.get("has_hidden_ability", value.get("is_alpha", False))),
+            has_particles=bool(value.get("has_particles", False)),
+            particles=value.get("particles", []),
+            is_costume=bool(value.get("is_costume", False)),
+            costume_id=str(value.get("costume_id", "")),
+            costume_lineage=str(value.get("costume_lineage", "")),
             account=str(value.get("account", "主账号")),
             page=str(value.get("page", "")),
             slot=str(value.get("slot", "")),

@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Iterable
 
 from models import Monster, normalize_gender
+from cosmetics import ACTIVE_COSMETICS, cosmetic_signature, inherit_costume, monster_costume
 from reference_data import get_reference_database
 from species_data import get_species_database
 from breeding_cost import ACTIVE_BOOK, PriceBook, cost_search, cost_state_rank, material_record
@@ -65,6 +66,10 @@ class ChainState:
     action: ChainAction | None = None
     has_hidden_ability: bool = False
     inherited_moves: frozenset[str] = field(default_factory=frozenset)
+    particles: frozenset[str] = field(default_factory=frozenset)
+    costume_id: str = ""
+    costume_lineage: str = ""
+    has_unknown_particles: bool = False
     # A recorded nature hit must remain guaranteed along its entire lineage.
     preserve_nature: bool = False
     # Selected egg moves that enter the target maternal line at this breed.
@@ -133,6 +138,10 @@ class ChainState:
             "preserve_nature": self.preserve_nature,
             "has_hidden_ability": self.has_hidden_ability,
             "inherited_moves": sorted(self.inherited_moves),
+            "particles": sorted(self.particles),
+            "costume_id": self.costume_id,
+            "costume_lineage": self.costume_lineage,
+            "has_unknown_particles": self.has_unknown_particles,
             "introduced_moves": sorted(self.introduced_moves),
             "force_gender_lock": self.force_gender_lock,
             "maternal_conversion": self.maternal_conversion,
@@ -165,6 +174,10 @@ class ChainState:
             preserve_nature=bool(value.get("preserve_nature", False)),
             has_hidden_ability=bool(value.get("has_hidden_ability", False)),
             inherited_moves=frozenset(str(item) for item in value.get("inherited_moves", []) or []),
+            particles=frozenset(str(item) for item in value.get("particles", []) or []),
+            has_unknown_particles=bool(value.get("has_unknown_particles", False)),
+            costume_id=str(value.get("costume_id", "")),
+            costume_lineage=str(value.get("costume_lineage", "")),
             introduced_moves=frozenset(str(item) for item in value.get("introduced_moves", []) or []),
             force_gender_lock=bool(value.get("force_gender_lock", False)),
             maternal_conversion=bool(value.get("maternal_conversion", False)),
@@ -233,6 +246,8 @@ def child_gender_policy(
     if sibling is not None and is_ditto(sibling.species):
         return "irrelevant"
     if state.force_gender_lock:
+        return "locked"
+    if state.costume_id and state is not root and state.gender == "F":
         return "locked"
     if state is root:
         return "locked" if normalize_gender(target_gender) in {"F", "M"} else "random"
@@ -331,6 +346,7 @@ class ChainCandidate:
     retained_upper_id: str | None = None
     cost_pricing: dict = field(default_factory=dict)
     cost_materials: list[dict] = field(default_factory=list, repr=False)
+    cosmetic_options: dict = field(default_factory=dict)
 
     def cost_report(self):
         return PriceBook(self.cost_pricing).report(
@@ -378,6 +394,7 @@ class ChainCandidate:
             "retained_body_id": self.retained_body_id,
             "retained_upper_id": self.retained_upper_id,
             "cost_pricing": self.cost_pricing,
+            "cosmetic_options": self.cosmetic_options,
         }
 
     @classmethod
@@ -412,6 +429,7 @@ class ChainCandidate:
             retained_body_id=value.get("retained_body_id"),
             retained_upper_id=value.get("retained_upper_id"),
             cost_pricing=dict(value.get("cost_pricing") or {}),
+            cosmetic_options=dict(value.get("cosmetic_options") or {}),
         )
 
     def inventory_audit_text(self) -> str:
@@ -832,6 +850,8 @@ def _is_goal(
     need_hidden_ability: bool = False,
     target_moves: frozenset[str] = frozenset(),
 ) -> bool:
+    if not ACTIVE_COSMETICS.get().accepts_goal(state):
+        return False
     if normalize_text(state.species) != species_key:
         return False
     if state.mask & target_mask != target_mask:
@@ -859,6 +879,11 @@ def _forced_child(
 ) -> ChainState | None:
     if parent_a.used_ids & parent_b.used_ids:
         return None
+    if ACTIVE_COSMETICS.get().unique and parent_a.particles & parent_b.particles:
+        return None
+    costume = inherit_costume(parent_a, parent_b, profile.species_for_gender(output_gender))
+    if costume is None:
+        return None
     if (parent_a.preserve_nature or parent_b.preserve_nature) and not (
         (parent_a.preserve_nature and everstone_a)
         or (parent_b.preserve_nature and everstone_b)
@@ -879,6 +904,8 @@ def _forced_child(
     # Plain gender conversion uses equal-tier materials. A higher-tier Ditto
     # is reserved for an upgrade which also guarantees the requested nature
     # with an Everstone. This is a material-use policy, not mating legality.
+    # A selected costume may combine conversion with a guaranteed IV upgrade;
+    # it must still preserve the source mask and both material tiers.
     # Enforce it here so direct, maternal and nature searches agree.
     if is_ditto(parent_a.species) != is_ditto(parent_b.species):
         source, ditto = (parent_b, parent_a) if is_ditto(parent_a.species) else (parent_a, parent_b)
@@ -887,9 +914,10 @@ def _forced_child(
                 (everstone_a and parent_a.has_nature)
                 or (everstone_b and parent_b.has_nature)
             )
+            costume_upgrade = bool(source.costume_id and ACTIVE_COSMETICS.get().target_costume)
             if (
                 ditto.effective_material_v < source.effective_material_v
-                or (ditto.effective_material_v > source.effective_material_v and not preserves_target_nature)
+                or (ditto.effective_material_v > source.effective_material_v and not preserves_target_nature and not costume_upgrade)
                 or mask & source.mask != source.mask
                 or mask.bit_count() < max(source.effective_material_v, ditto.effective_material_v)
             ):
@@ -959,6 +987,10 @@ def _forced_child(
             or (parent_b.has_hidden_ability and normalize_text(parent_b.species) == profile.species_key)
         ),
         inherited_moves=inherited_moves,
+        particles=parent_a.particles | parent_b.particles,
+        has_unknown_particles=parent_a.has_unknown_particles or parent_b.has_unknown_particles,
+        costume_id=costume[0],
+        costume_lineage=costume[1],
         introduced_moves=inherited_moves - target_line_moves,
         maternal_conversion=parent_a.maternal_conversion or parent_b.maternal_conversion,
         gender_species=profile.gender_species,
@@ -977,7 +1009,7 @@ def _maternal_conversion_candidates(
         result = []
         for state in sorted(states, key=lambda s: _search_rank(s, strategy, target_mask, preserve_nature)):
             key = (state.mask, state.effective_material_v, state.has_nature,
-                   state.has_hidden_ability, state.inherited_moves)
+                   state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
             if counts[key] < 3:
                 result.append(state)
                 counts[key] += 1
@@ -1009,7 +1041,7 @@ def _maternal_conversion_candidates(
     seen = set()
     counts = Counter()
     for state in candidates:
-        shape = (state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves)
+        shape = (state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
         signature = (state.used_ids, *shape)
         if signature in seen or counts[shape] >= 4:
             continue
@@ -1044,7 +1076,7 @@ def _egg_move_seed_states(
         return (
             state.species, state.gender, state.egg_groups, state.mask,
             state.has_nature, state.is_alpha, state.has_hidden_ability,
-            state.inherited_moves, state.effective_material_v, state.gender_species,
+            state.inherited_moves, cosmetic_signature(state), state.effective_material_v, state.gender_species,
         )
 
     def retain(states: list[ChainState]) -> list[ChainState]:
@@ -1154,13 +1186,87 @@ def _egg_move_seed_states(
     return added
 
 
+def _particle_seed_states(leaves: list[ChainState], strategy: str) -> list[ChainState]:
+    """Attach useful low-IV particles before raising IVs, with real parents/items.
+
+    These are ordinary proof trees, exactly like egg-move preparation trees;
+    neither particles nor IVs are magically attached to an existing specimen.
+    """
+    policy = ACTIVE_COSMETICS.get()
+    required = policy.target_particles
+    zero_costume = policy.target_costume and any(state.costume_id and not state.mask for state in leaves)
+    if not (required or zero_costume) or not required.issubset(set().union(*(state.particles for state in leaves)) if leaves else set()):
+        return []
+    base = [state for state in leaves if state.mask.bit_count() <= 2 or state.particles or state.costume_id]
+    buckets = {}
+    for state in sorted(base, key=lambda s: (s.is_virtual, s.purchases, s.breeds, -s.mask.bit_count())):
+        key = (state.species, state.gender, state.mask, state.has_nature, state.is_alpha,
+               state.inherited_moves, cosmetic_signature(state))
+        bucket = buckets.setdefault(key, [])
+        if len(bucket) < 2:
+            bucket.append(state)
+    known = [state for bucket in buckets.values() for state in bucket]
+    added = []
+    seen = set()
+    for _ in range(max(1, min(len(required), 6))):
+        pending = {}
+        for mother in known:
+            if is_ditto(mother.species):
+                continue
+            profile = _profile_for_hand_state(mother)
+            for father in known:
+                if (not ((mother.particles | father.particles) & required) and not (mother.costume_id and not mother.mask)) or mother.used_ids & father.used_ids:
+                    continue
+                ditto = is_ditto(father.species)
+                if not ditto and not (mother.gender == "F" and father.gender == "M"
+                                      and set(_group_key(mother.egg_groups)) & set(_group_key(father.egg_groups))):
+                    continue
+                common = mother.mask & father.mask
+                def items(state):
+                    result = [(None, False)]
+                    result.extend((stat, False) for stat in range(6) if (state.mask & ~common) & (1 << stat))
+                    if state.has_nature:
+                        result.append((None, True))
+                    return result
+                for (brace_a, stone_a), (brace_b, stone_b) in product(items(mother), items(father)):
+                    if stone_a and stone_b:
+                        continue
+                    mask = common | (0 if brace_a is None else 1 << brace_a) | (0 if brace_b is None else 1 << brace_b)
+                    if mask & mother.mask != mother.mask or mask.bit_count() < max(mother.effective_material_v, father.effective_material_v):
+                        continue
+                    if not ((father.particles - mother.particles) & required) and mask == mother.mask:
+                        continue
+                    for gender in profile.allowed_genders:
+                        child = _forced_child(mother, father, profile, gender, brace_a, brace_b, stone_a, stone_b)
+                        if child is None:
+                            continue
+                        key = (child.used_ids, child.species, child.gender, child.mask, child.has_nature,
+                               child.inherited_moves, cosmetic_signature(child))
+                        if key in seen:
+                            continue
+                        old = pending.get(key)
+                        if old is None or _state_rank(child, strategy) < _state_rank(old, strategy):
+                            pending[key] = child
+        if not pending:
+            break
+        ranked = sorted(pending.values(), key=lambda s: (-len(s.particles & required), *_state_rank(s, strategy)))
+        fresh = _feature_diverse_beam(ranked, 128)
+        added.extend(fresh)
+        seen.update((s.used_ids, s.species, s.gender, s.mask, s.has_nature,
+                     s.inherited_moves, cosmetic_signature(s)) for s in fresh)
+        known = [state for bucket in buckets.values() for state in bucket] + fresh
+        if len(added) >= 512:
+            break
+    return added
+
+
 def _feature_diverse_beam(states: list[ChainState], limit: int) -> list[ChainState]:
     """Do not let cheaper skill-less copies evict every required-move variant."""
-    if len(states) <= limit or not any(state.inherited_moves for state in states):
+    if len(states) <= limit or not any(state.inherited_moves or state.particles or state.costume_id for state in states):
         return states[:limit]
     buckets: dict[tuple[object, ...], list[ChainState]] = {}
     for state in states:
-        key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves)
+        key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
         buckets.setdefault(key, []).append(state)
     selected: list[ChainState] = []
     for depth in range(limit):
@@ -1265,7 +1371,7 @@ def _structured_search(
                 state.has_nature,
                 state.is_alpha,
                 state.has_hidden_ability,
-                state.inherited_moves,
+                state.inherited_moves, cosmetic_signature(state),
             )
             state_rank = rank(state, required_mask, require_nature)
             if key not in unique or state_rank < ranks[key]:
@@ -1663,7 +1769,7 @@ def _same_species_pyramid(
                 state.has_nature,
                 state.is_alpha,
                 state.has_hidden_ability,
-                state.inherited_moves,
+                state.inherited_moves, cosmetic_signature(state),
             )
             current = unique.get(key)
             if current is None or rank(state, required_mask, require_nature) < rank(
@@ -1948,6 +2054,7 @@ def _maternal_spine_pyramid(
     preferred_ditto_ids: frozenset[str] = frozenset(),
     need_hidden_ability: bool = False,
     target_moves: frozenset[str] = frozenset(),
+    require_cosmetics: bool = False,
 ) -> list[ChainState]:
     """Deterministically build one target-female spine and donor pyramids.
 
@@ -1956,8 +2063,12 @@ def _maternal_spine_pyramid(
     shared egg group, so arbitrary compatible inventory species can be used
     without pretending that their offspring are already the target species.
     """
-    if "F" not in target_profile.allowed_genders or not (target_moves or any(state.is_virtual for state in leaves)):
+    if "F" not in target_profile.allowed_genders or not (require_cosmetics or target_moves or any(state.is_virtual for state in leaves)):
         return []
+    cosmetic_policy = ACTIVE_COSMETICS.get()
+
+    def cosmetic_rank(state: ChainState, role: str) -> tuple:
+        return (-len(state.particles & cosmetic_policy.target_particles),) if require_cosmetics and role == "line" else ()
     target_key = target_profile.species_key
     stat_bits = tuple(index for index in range(6) if target_mask & (1 << index))
     if not stat_bits:
@@ -2082,13 +2193,17 @@ def _maternal_spine_pyramid(
                     continue
                 if role == "line" and need_hidden_ability and not state.has_hidden_ability:
                     continue
+                if role == "line" and require_cosmetics and cosmetic_policy.target_costume and not state.costume_id:
+                    continue
+                if role != "line" and require_cosmetics and state.costume_id:
+                    continue
                 prepared = (state if needed_moves.issubset(state.inherited_moves) else None) if role == "line" else _with_prepared_moves(state, needed_moves)
                 if prepared is None:
                     continue
                 result.append(prepared)
             return sorted(
                 result,
-                key=lambda state: state_rank(state, required_mask, require_nature),
+                key=lambda state: (*cosmetic_rank(state, role), *state_rank(state, required_mask, require_nature)),
             )
 
         def direct_dittos(
@@ -2178,11 +2293,13 @@ def _maternal_spine_pyramid(
                 and _fits_exact_subproblem(state, required_mask)
                 and (not require_nature or state.has_nature)
                 and (role != "line" or not need_hidden_ability or state.has_hidden_ability)
+                and (role != "line" or not require_cosmetics or not cosmetic_policy.target_costume or state.costume_id)
+                and (role != "line" or not require_cosmetics or required_mask != target_mask or cosmetic_policy.accepts_goal(state))
                 and needed_moves.issubset(state.inherited_moves)
             ]
             return min(
                 valid,
-                key=lambda state: state_rank(state, required_mask, require_nature),
+                key=lambda state: (*cosmetic_rank(state, role), *state_rank(state, required_mask, require_nature)),
                 default=None,
             )
 
@@ -2343,7 +2460,7 @@ def _maternal_spine_pyramid(
             goal.is_alpha,
             goal.has_nature,
             goal.has_hidden_ability,
-            goal.inherited_moves,
+            goal.inherited_moves, cosmetic_signature(goal),
         )
         if signature in seen:
             continue
@@ -2440,7 +2557,7 @@ def _canonical_six_iv_pyramid(
                 continue
             if require_nature and not state.has_nature:
                 continue
-            variant_key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves)
+            variant_key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
             current = result.get(variant_key)
             if current is None or state_rank(state, required_mask, require_nature) < state_rank(
                 current, required_mask, require_nature
@@ -2456,7 +2573,7 @@ def _canonical_six_iv_pyramid(
     ) -> None:
         if state is None:
             return
-        variant_key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves)
+        variant_key = (state.is_alpha, state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
         current = result.get(variant_key)
         if current is None or state_rank(state, required_mask, require_nature) < state_rank(
             current, required_mask, require_nature
@@ -2589,7 +2706,7 @@ def _canonical_six_iv_pyramid(
             goal.is_alpha,
             goal.has_nature,
             goal.has_hidden_ability,
-            goal.inherited_moves,
+            goal.inherited_moves, cosmetic_signature(goal),
         )
         if signature in seen:
             continue
@@ -3227,7 +3344,7 @@ def _one_breed_market_goals(
         # Keep real identities. Only identical market copies can collapse:
         # the two parent masks differ in every supported one-egg shortcut.
         key = (_material_usage_signature(state.used_ids), state.species, state.gender,
-               state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves)
+               state.mask, state.has_nature, state.has_hidden_ability, state.inherited_moves, cosmetic_signature(state))
         if key not in seen and _fits_exact_subproblem(state, state.mask):
             seen.add(key)
             indexed.setdefault(state.mask, []).append(state)
@@ -3635,6 +3752,7 @@ def find_chain_candidates(
     confirmed_inventory = [
         monster for monster in inventory
         if monster.verified
+        and ACTIVE_COSMETICS.get().allowed(monster)
         and not monster.gender_unconfirmed
         and not monster.has_unrequested_perfect_iv(target_ivs)
         and (
@@ -3704,7 +3822,7 @@ def find_chain_candidates(
         is_goal_form = monster_key in goal_keys
         if not is_target_family and not is_goal_form and not reusable_outside_target_line(monster):
             continue
-        if not (mask or has_nature or carries_required_move or can_receive_move or is_target_family or is_goal_form or is_ditto(monster.species)):
+        if not (mask or has_nature or carries_required_move or can_receive_move or monster.particles or is_target_family or is_goal_form or is_ditto(monster.species)):
             continue
         state_species = planning_species if is_target_family else monster.species
         state_breeding_species = (
@@ -3756,13 +3874,17 @@ def find_chain_candidates(
             material_v=max(
                 2 if monster.is_alpha else 0,
                 mask.bit_count(),
-                sum(value == 31 for value in monster.ivs if value is not None),
+                0 if ACTIVE_COSMETICS.get().target_costume else sum(value == 31 for value in monster.ivs if value is not None),
             ),
             breeding_species=state_breeding_species,
             is_virtual=False,
             leaf=monster,
             has_hidden_ability=monster.has_hidden_ability,
             inherited_moves=monster_moves & required_moves,
+            particles=frozenset(monster.particles),
+            has_unknown_particles=monster.has_particles and not monster.particles,
+            costume_id=monster_costume(monster),
+            costume_lineage=(monster.costume_lineage or leaf_id) if monster.is_costume else "",
             gender_species=gender_species if is_target_family else (),
         )
         all_leaf_states.append(state)
@@ -3965,6 +4087,7 @@ def find_chain_candidates(
             )
 
     all_leaf_states.extend(_egg_move_seed_states(all_leaf_states, required_moves, strategy))
+    all_leaf_states.extend(_particle_seed_states(all_leaf_states, strategy))
 
     available_preferred_material_ids = frozenset(
         preferred_material_ids
@@ -4001,6 +4124,7 @@ def find_chain_candidates(
         for state in all_leaf_states
         if (
         state.leaf is not None and not state.is_virtual
+        and ACTIVE_COSMETICS.get().accepts_goal(state)
         and normalize_text(state.species) == species_key
         and state.mask & target_mask == target_mask
         and state.is_alpha == target_alpha
@@ -4084,6 +4208,7 @@ def find_chain_candidates(
     def hand_can_merge_body(hand: ChainState, body: ChainState) -> bool:
         return bool(
             hand.gender == "M" and body.gender == "F"
+            and (not ACTIVE_COSMETICS.get().unique or not hand.particles & body.particles)
             and not hand.used_ids & body.used_ids
             and not hand.mask & ~target_mask
             and (target_mask & ~hand.mask).bit_count() == 1
@@ -4093,6 +4218,7 @@ def find_chain_candidates(
     def lower_can_merge_upper(lower: ChainState, upper: ChainState) -> bool:
         return bool(
             lower.gender == "F" and upper.gender == "M"
+            and (not ACTIVE_COSMETICS.get().unique or not lower.particles & upper.particles)
             and not lower.used_ids & upper.used_ids
             and not lower.mask & ~upper.mask
             and (upper.mask & ~lower.mask).bit_count() == 1
@@ -4184,10 +4310,15 @@ def find_chain_candidates(
     parked_context: dict[int, tuple[ChainState, ChainState | None]] = {}
     parked_body_ids = frozenset(identifier for body in female_full_bodies for identifier in body.used_ids)
     hand_leaves = [state for state in all_leaf_states if not state.used_ids & parked_body_ids]
+    if ACTIVE_COSMETICS.get().unique and female_full_bodies:
+        common_body_particles = frozenset.intersection(*(body.particles for body in female_full_bodies))
+        hand_leaves = [state for state in hand_leaves if not state.particles & common_body_particles]
 
     def remember_context(goal: ChainState, upper: ChainState | None = None) -> bool:
         hand = upper or goal
         for body in female_full_bodies:
+            if ACTIVE_COSMETICS.get().unique and body.particles & (goal.particles | (upper.particles if upper else frozenset())):
+                continue
             if hand_can_merge_body(hand, body) and not goal.used_ids & (body.used_ids | (upper.used_ids if upper else frozenset())):
                 parked_context[id(goal)] = (body, upper)
                 return True
@@ -4494,6 +4625,7 @@ def find_chain_candidates(
     existing_goals = [
         state for state in all_leaf_states
         if (state.leaf is not None or state.action is not None)
+        and ACTIVE_COSMETICS.get().accepts_goal(state)
         and (
             normalize_text(state.leaf.species) in goal_keys
             if state.leaf is not None
@@ -4523,22 +4655,26 @@ def find_chain_candidates(
                 not stage_requires_final_features
                 or (
                     (not need_hidden_ability or state.has_hidden_ability)
+                    and ACTIVE_COSMETICS.get().accepts_goal(state)
                     and required_moves.issubset(state.inherited_moves)
                 )
             )
         ]
     skill_goals = []
-    if required_moves and custom_goals is None and not existing_goals and "F" in allowed_genders:
+    cosmetic_goal = bool(ACTIVE_COSMETICS.get().target_particles or ACTIVE_COSMETICS.get().target_costume)
+    if (required_moves or cosmetic_goal) and custom_goals is None and not existing_goals and "F" in allowed_genders:
         skill_goals = _maternal_spine_pyramid(
             all_leaf_states, target_profile, target_mask, need_nature, search_target_gender,
             max_results, strategy, preferred_inventory_ditto_ids, need_hidden_ability, required_moves,
+            require_cosmetics=cosmetic_goal,
         )
         skill_goals = feature_goals([goal for goal in skill_goals if goal.is_alpha == target_alpha])
     def six_iv_goals(pool):
-        if required_moves and any(normalize_text(state.species) == species_key and state.existing_leaves > 0 for state in pool):
+        if (required_moves or cosmetic_goal) and any(normalize_text(state.species) == species_key and state.existing_leaves > 0 for state in pool):
             return _maternal_spine_pyramid(
                 pool, target_profile, target_mask, need_nature, search_target_gender,
                 max_results, strategy, preferred_inventory_ditto_ids, need_hidden_ability, required_moves,
+                require_cosmetics=cosmetic_goal,
             )
         return _canonical_six_iv_pyramid(
             pool, target_profile, target_mask, need_nature, search_target_gender,
@@ -4567,7 +4703,9 @@ def find_chain_candidates(
                 required_moves,
                 egg_move_donors,
             )
-            goals = six_iv_goals(all_leaf_states + purchase_leaves)
+            six_pool = all_leaf_states + purchase_leaves
+            six_pool.extend(_particle_seed_states(six_pool, strategy))
+            goals = six_iv_goals(six_pool)
             goals = feature_goals(goals)
     else:
         goals = (
@@ -4619,6 +4757,7 @@ def find_chain_candidates(
             )
             leaves_with_purchases = all_leaf_states + purchase_leaves
             leaves_with_purchases.extend(_egg_move_seed_states(leaves_with_purchases, required_moves, strategy))
+            leaves_with_purchases.extend(_particle_seed_states(leaves_with_purchases, strategy))
             goals = _direct_market_complements(
                 all_leaf_states,
                 purchase_leaves,
@@ -4652,6 +4791,7 @@ def find_chain_candidates(
                         preferred_inventory_ditto_ids,
                         need_hidden_ability,
                         required_moves,
+                        require_cosmetics=cosmetic_goal,
                     )
                 )
                 goals = feature_goals([goal for goal in goals if goal.is_alpha == target_alpha])
@@ -4810,7 +4950,7 @@ def find_chain_candidates(
             goal.is_alpha,
             goal.gender,
             goal.has_hidden_ability,
-            goal.inherited_moves,
+            goal.inherited_moves, cosmetic_signature(goal),
         )
         if signature in seen_signatures:
             continue

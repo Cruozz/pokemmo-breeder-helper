@@ -13,7 +13,7 @@ from species_data import get_species_database
 from reference_data import get_reference_database, normalize_move
 
 
-def parse_capture(lines_json: str, visual_gender: str = "") -> str:
+def parse_capture(lines_json: str, visual_gender: str = "", visual_particle: str = "") -> str:
     lines = json.loads(lines_json)
     if not isinstance(lines, list) or len(lines) > 1000:
         raise ValueError("识别文本过多，请选择精灵详情截图。")
@@ -112,6 +112,8 @@ def parse_capture(lines_json: str, visual_gender: str = "") -> str:
         ability=parsed["ability"], moves=parsed["moves"][:4],
         egg_groups=list(record.egg_groups) if record else [],
         source="mobile-ocr", verified=False, confidence=None,
+        has_particles=bool(visual_particle),
+        particles=[visual_particle] if visual_particle and visual_particle != "unknown" else [],
     )
     # A grouping key is not an inventory identity: identical creatures can be separate specimens.
     fingerprint = hashlib.sha256(re.sub(r"\s+", "", parsed["raw_text"]).encode()).hexdigest()

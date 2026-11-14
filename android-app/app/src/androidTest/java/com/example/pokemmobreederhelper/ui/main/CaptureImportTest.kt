@@ -27,6 +27,9 @@ class CaptureImportTest {
       check(rule.activity.packageName.endsWith(".devtest")) { "Only run these fixtures in the isolated test app." }
       captureVm = ViewModelProvider(rule.activity)[InventoryCaptureViewModel::class.java]
       mainVm = ViewModelProvider(rule.activity)[MainScreenViewModel::class.java]
+    }
+    rule.waitUntil(10000) { !captureVm.state.value.busy }
+    rule.runOnUiThread {
       captureVm.clearDrafts()
       mainVm.clearInventory()
     }
@@ -67,7 +70,8 @@ class CaptureImportTest {
     // Model output is a draft; the review must also support correcting an unreadable name.
     rule.onNodeWithText("精灵名称（中文、英文或编号）").performScrollTo().performTextReplacement("伊布")
     rule.onNodeWithText("母", useUnmergedTree = true).performScrollTo().performClick()
-    rule.onNodeWithText("已核对，可参与规划").performScrollTo().performClick()
+    rule.onNodeWithTag("material-editor-fields").performScrollToNode(hasText("已核对，可参与规划"))
+    rule.onNodeWithText("已核对，可参与规划").performClick()
     rule.onNodeWithText("确认入库").performClick()
     rule.waitUntil(15000) { mainVm.uiState.value.inventory.size == 1 && captureVm.state.value.drafts.isEmpty() }
     val saved = InventoryRepository(rule.activity).inventory.value.single()

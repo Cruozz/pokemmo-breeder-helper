@@ -6,6 +6,30 @@ from typing import Any
 
 from chain_planner import ChainCandidate, ChainState, child_gender_policy, gender_name, normalize_text
 from models import Monster
+from cosmetics import monster_costume, particle_names
+
+
+def cosmetic_text(monster: Monster) -> str:
+    return " · ".join(part for part in (
+        "时装" if monster.is_costume else "",
+        particle_names(monster.particles) if monster.particles else "带粒子" if monster.has_particles else "",
+    ) if part)
+
+
+def validate_cosmetic_inputs(plan, step, parents) -> None:
+    """Refuse to consume a donor whose rare attributes changed after planning."""
+    def identity(monster):
+        return (monster.has_particles or bool(monster.particles), frozenset(monster.particles),
+                monster.is_costume, monster_costume(monster),
+                (monster.costume_lineage or monster.id) if monster.is_costume else "")
+    expected = dict(plan.materials)
+    expected.update({item.child.id: item.child.to_dict() for item in plan.steps})
+    for parent in parents:
+        if parent.id.startswith("buy:"):
+            continue
+        snapshot = expected.get(parent.id)
+        if snapshot is not None and identity(parent) != identity(Monster.from_dict(snapshot)):
+            raise ValueError("父母的粒子或时装登记已改变，请按最新库存重新规划后再核销。")
 
 
 @dataclass
@@ -116,6 +140,14 @@ class ExecutionPlan:
     planning_options: dict[str, Any] = field(default_factory=dict)
     # Zero retains legacy N-1 prompts. New plans wait for the completed mother.
     maternal_nature_min_ivs: int = 0
+
+    def meets_cosmetic_target(self, child: Monster) -> bool:
+        options = self.planning_options
+        required = set(options.get("target_particles") or ()) if options.get("particle_mode") == "target" else set()
+        return required.issubset(child.particles) and (
+            not options.get("target_costume") or (child.is_costume and
+                (not options.get("costume_lineage") or child.costume_lineage == options["costume_lineage"]))
+        )
 
     @property
     def required_iv_count(self) -> int:
@@ -368,6 +400,7 @@ def _leaf_label(state: ChainState) -> str:
     return (
         f"{prefix} {'头目' if monster.is_alpha else '普通'} {monster.species} "
         f"{monster.gender or '性别未知'} {monster.iv_string}{suffix}"
+        + (f" · {cosmetic_text(monster)}" if cosmetic_text(monster) else "")
     )
 
 
@@ -442,6 +475,10 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
             ):
                 nature_check_role = "nature_hand"
         notes = [f"由方案步骤 {number} 生成"]
+        if state.costume_id:
+            notes.append("保留时装母系")
+        if state.particles:
+            notes.append("粒子：" + particle_names(sorted(state.particles)))
         if state.action is not None and any(
             normalize_text(parent.species) in {"百变怪", "ditto"}
             for parent in (state.action.parent_a, state.action.parent_b)
@@ -470,6 +507,11 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
             egg_groups=list(state.egg_groups),
             is_alpha=state.is_alpha,
             has_hidden_ability=state.has_hidden_ability,
+            has_particles=bool(state.particles) or state.has_unknown_particles,
+            particles=sorted(state.particles),
+            is_costume=bool(state.costume_id),
+            costume_id=state.costume_id,
+            costume_lineage=state.costume_lineage,
             moves=sorted(state.inherited_moves - {move for _species, move, _method in state.move_preparations}),
             account=child_account,
             source=f"孵化方案 {plan_id} 步骤 {number}",
@@ -528,6 +570,7 @@ def build_execution_plan(candidate: ChainCandidate) -> ExecutionPlan:
         nature_target_key=candidate.nature_target_key,
         nature_attempt_level=candidate.nature_attempt_level,
         candidate_snapshot=candidate.to_dict(),
+        planning_options=dict(candidate.cosmetic_options),
         materials=materials,
         maternal_nature_min_ivs=sum(value is not None for value in candidate.target_ivs),
     )

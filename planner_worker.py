@@ -55,7 +55,7 @@ def calculate(payload, *, refresh_market=False):
     from breeding_cost import PriceBook
     from market_data import parse_snapshot
     from planner import make_report_with_candidates
-    if payload.get("schema") != 1 or len(payload.get("args", [])) not in {18, 19}:
+    if payload.get("schema") != 1 or len(payload.get("args", [])) not in {18, 19, 20}:
         raise ValueError("规划输入格式无效。")
     values = list(payload["args"])
     values[0] = [Monster.from_dict(row) for row in values[0]]

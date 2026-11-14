@@ -26,6 +26,7 @@ object AppJson {
         id = item.id.ifBlank { UUID.randomUUID().toString() },
         account = item.account.ifBlank { "主账号" },
         ivs = normalizedIvs,
+        hasParticles = item.hasParticles || item.particles.isNotEmpty(), isCostume = item.isCostume || item.costumeId.isNotBlank(),
       )
     }
   }
@@ -123,6 +124,8 @@ class InventoryRepository(context: Context) {
       return@synchronized if (occupied.species == material.species && occupied.ivs == material.ivs &&
         occupied.gender == material.gender && occupied.nature == material.nature &&
         occupied.isAlpha == material.isAlpha && occupied.hasHiddenAbility == material.hasHiddenAbility &&
+        occupied.hasParticles == material.hasParticles && occupied.particles.toSet() == material.particles.toSet() &&
+        occupied.isCostume == material.isCostume && occupied.costumeId == material.costumeId &&
         occupied.ability == material.ability && occupied.moves == material.moves && occupied.heldItem == material.heldItem)
         CaptureInsertResult.ALREADY_PRESENT else CaptureInsertResult.SLOT_OCCUPIED
     }

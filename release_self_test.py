@@ -30,6 +30,31 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Bundled egg-move database is incomplete")
     checks["data"] = {"species": len(species.records), "egg_move_routes": route_count}
 
+    from cosmetics import particle_catalog
+    from ocr_engine import OCRItem
+    from particle_vision import detect_particle
+    import hashlib
+    catalog = particle_catalog()
+    if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
+        raise RuntimeError("Bundled particle catalogue is incomplete")
+    for item in catalog:
+        path = resource_path("data", item["icon"])
+        if hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
+            raise RuntimeError("Particle icon hash mismatch: " + item["id"])
+    particle_image = Image.new("RGB", (290,190), (75,84,92))
+    with Image.open(resource_path("data", "particles", "shiny_sarcophagus.png")) as icon:
+        particle_image.paste(icon, (220,88), icon)
+    if detect_particle(particle_image, [OCRItem("Lv.100 伊布",.99,[[25,120],[220,120],[220,140],[25,140]])]) != (True,["shiny_sarcophagus"]):
+        raise RuntimeError("Packaged particle matcher failed")
+    checks["particles"] = {"icons":42, "ordinary":40, "hashes":"ok", "recognition":"shiny_sarcophagus"}
+    _, cosmetic_candidates = make_report_with_candidates([
+        Monster(id="self-costume",species="喵喵",gender="F",ivs=[31,None,None,None,None,None],is_costume=True,particles=["bats","ghosts"]),
+        Monster(id="self-father",species="喵喵",gender="M",ivs=[None,31,None,None,None,None]),
+    ], "猫老大", "F", "", "31/31/x/x/x/x", ["陆上"], cosmetic_options={"particle_mode":"target","target_particles":["bats"],"target_costume":True})
+    if not cosmetic_candidates or cosmetic_candidates[0].root.costume_lineage != "self-costume" or cosmetic_candidates[0].root.particles != frozenset({"bats","ghosts"}):
+        raise RuntimeError("Packaged costume / particle planner failed")
+    checks["cosmetic_breeding"] = "costume-lineage-and-incidental-particles-preserved"
+
     for name in ("app-icon.png", "pokemon_atlas.png", "pokemon_shiny_atlas.png", "item_atlas.png"):
         with Image.open(resource_path("assets", name)) as image:
             image.verify()

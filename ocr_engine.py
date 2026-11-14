@@ -10,7 +10,7 @@ from nature_data import NATURES
 IV_PATTERN = re.compile(
     r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{1,2})/(\d{1,2})/(\d{1,2})/(\d{1,2})(?!\d)"
 )
-IV_LABELS = ("个体值", "個體值", "个休值", "個休值", "个体直", "個體直", "ivs", "iv")
+IV_LABELS = ("个体值", "個體值", "个休值", "個休值", "个体直", "個體直", "个体慎", "個體慎", "ivs", "iv")
 MARK_LABELS = ("标记", "標記", "mark")
 
 
@@ -609,6 +609,8 @@ class OCRProcessor:
         gender = cls._gender_from_image(image, level_items)
         is_alpha, alpha_confidence = cls._alpha_from_image(image, level_items)
         has_hidden_ability, hidden_ability_confidence = cls._hidden_ability_from_image(image, ability_items)
+        from particle_vision import detect_particle
+        has_particles, particles = detect_particle(image, items)
         level_text = " ".join(item.text for item in level_items)
         if not gender:
             if "♀" in level_text or "雌性" in level_text or re.search(r"早\s*$", level_text):
@@ -650,6 +652,8 @@ class OCRProcessor:
             "moves": moves,
             "is_alpha": is_alpha,
             "has_hidden_ability": has_hidden_ability,
+            "has_particles": has_particles,
+            "particles": particles,
             "raw_text": lines_text,
             "recognized_text": compact_result,
             "items": items,

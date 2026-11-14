@@ -516,7 +516,7 @@ internal fun buildRouteRoot(
   if (plan.steps.isNotEmpty() && plan.steps.all { it.child.id in completed } && !plan.needsReplan) return current
   fun retained(index: Int): RouteNode? = plan.retainedMaterials.getOrNull(index)?.let { material ->
     RouteNode("retained:${material.id}", "已保留 · ${material.species}", material.ivText,
-      "${material.perfectIvCount}V · ${com.example.pokemmobreederhelper.data.genderLabel(material.gender)} · ${material.nature.ifBlank { "未命中目标性格" }}",
+      "${material.perfectIvCount}V · ${com.example.pokemmobreederhelper.data.genderLabel(material.gender)} · ${material.nature.ifBlank { "未命中目标性格" }}\n${material.cosmeticText}",
       null, null, routeRole = if (index == 0) "maternal" else "nature",
       gender = material.gender, routeMoves = material.moves.intersect(target.moves.toSet()).toList())
   }
@@ -525,7 +525,7 @@ internal fun buildRouteRoot(
       plan.targetNature, null, null, routeRole = "nature", children = listOfNotNull(retained(1), current))
   } else current
   return RouteNode("final-target", "最终目标 · ${target.species}", target.ivText,
-    "${target.perfectIvCount}V · ${target.nature} · 待合成", plan.finalTargetSpeciesId, null,
+    "${target.perfectIvCount}V · ${target.nature} · 待合成\n${target.cosmeticText}", plan.finalTargetSpeciesId, null,
     routeRole = "maternal", routeMoves = target.moves, gender = target.gender,
     children = listOfNotNull(retained(0), hand))
 }
@@ -554,7 +554,7 @@ private fun buildStepNode(
         key = "leaf:${step.child.id}:$side:$id",
         title = species.ifBlank { compactParentLabel(label) },
         ivText = record?.ivText ?: extractIvText(label),
-        detail = record?.let { "${it.account} · ${it.positionLabel.ifBlank { "未定位" }}\n${com.example.pokemmobreederhelper.data.genderLabel(it.gender)} · ${it.nature.ifBlank { "性格未知" }}" } ?: label,
+        detail = record?.let { "${it.account} · ${it.positionLabel.ifBlank { "未定位" }}\n${com.example.pokemmobreederhelper.data.genderLabel(it.gender)} · ${it.nature.ifBlank { "性格未知" }}\n${it.cosmeticText}" } ?: label,
         routeRole = role, routeMoves = moves, gender = record?.gender.orEmpty(),
         historical = step.child.id in completed,
         speciesId = speciesId,
@@ -571,7 +571,7 @@ private fun buildStepNode(
     key = "step:${step.child.id}",
     title = "步骤 ${step.number} · ${step.child.species}",
     ivText = step.child.ivText,
-    detail = step.genderInstruction,
+    detail = listOf(step.genderInstruction, step.child.cosmeticText).filter { it.isNotBlank() }.joinToString("\n"),
     routeRole = step.routeRole, routeMoves = step.routeMoves, gender = step.displayGender,
     speciesId = step.childSpeciesId,
     itemKey = itemKey,

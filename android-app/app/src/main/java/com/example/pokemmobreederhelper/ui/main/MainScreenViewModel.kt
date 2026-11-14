@@ -43,6 +43,9 @@ data class MainScreenUiState(
   val natureStrategy: String = "late",
   val intermediateGenderStrategy: String = "lock_all",
   val targetMoves: List<String> = emptyList(),
+  val particleMode: String = "protect",
+  val targetParticles: List<String> = emptyList(),
+  val targetCostume: Boolean = false,
   val availableMoves: List<String> = emptyList(),
   val ivs: List<String> = List(6) { "X" },
   val strategy: String = "inventory",
@@ -85,6 +88,7 @@ private fun MainScreenUiState.withRequest(request: PlanRequest): MainScreenUiSta
   allowAlphaMaterials = request.allowAlphaMaterials, needHiddenAbility = request.needHiddenAbility,
   convertMaternalWithDitto = request.convertMaternalWithDitto, lockGender = request.lockGender,
   targetGender = request.targetGender, targetMoves = request.targetMoves,
+  particleMode = request.particleMode, targetParticles = request.targetParticles, targetCostume = request.targetCostume,
   natureStrategy = request.natureStrategy, intermediateGenderStrategy = request.intermediateGenderStrategy,
 )
 
@@ -129,7 +133,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
       }
     }
     viewModelScope.launch {
-      val icons = withContext(Dispatchers.Default) { runCatching { plannerBridge.speciesIcons() }.getOrDefault(emptyMap()) }
+      val icons = withContext(Dispatchers.Default) { runCatching { com.example.pokemmobreederhelper.data.ParticleCatalog.entries(getApplication<Application>()); plannerBridge.speciesIcons() }.getOrDefault(emptyMap()) }
       _uiState.update { it.copy(speciesIcons = icons) }
     }
     val species = _uiState.value.speciesQuery
@@ -144,6 +148,9 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
   }
 
   fun selectTab(tab: MainTab) = _uiState.update { it.copy(tab = tab) }
+  fun setParticleMode(value: String) = _uiState.update { it.copy(particleMode = value) }
+  fun setTargetParticles(value: List<String>) = _uiState.update { it.copy(targetParticles = value) }
+  fun setTargetCostume(value: Boolean) = _uiState.update { it.copy(targetCostume = value) }
 
   fun editMaterial(material: MonsterRecord? = null) {
     if (_uiState.value.isPlanning) return
@@ -306,7 +313,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
     if (_uiState.value.isPlanning && planningJob == null) return
     val state = _uiState.value
     val pricing = runCatching { state.costSettings() }.getOrElse { fail(it); return }
-    val target = PlanRequest(maxPurchaseV = state.maxPurchaseV, costPricing = pricing, species = state.speciesQuery, nature = state.nature, ivs = state.ivs,
+    val target = PlanRequest(particleMode = state.particleMode, targetParticles = state.targetParticles, targetCostume = state.targetCostume, maxPurchaseV = state.maxPurchaseV, costPricing = pricing, species = state.speciesQuery, nature = state.nature, ivs = state.ivs,
       strategy = state.strategy, targetAlpha = state.targetAlpha, allowDitto = state.allowDitto,
       allowAlphaMaterials = state.allowAlphaMaterials, needHiddenAbility = state.needHiddenAbility,
       convertMaternalWithDitto = state.convertMaternalWithDitto, lockGender = state.lockGender,
@@ -383,6 +390,7 @@ class MainScreenViewModel(application: Application) : AndroidViewModel(applicati
         maxPurchaseV = state.maxPurchaseV ?: state.defaultPurchaseLimit(),
         costPricing = pricing,
         species = species,
+        particleMode = state.particleMode, targetParticles = state.targetParticles, targetCostume = state.targetCostume,
         natureStrategy = state.natureStrategy,
         intermediateGenderStrategy = state.intermediateGenderStrategy,
         nature = state.nature.trim(),

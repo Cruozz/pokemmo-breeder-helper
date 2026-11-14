@@ -24,8 +24,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal data class LiveCaptureStatus(val running: Boolean = false, val paused: Boolean = false,
-  val saved: Int = 0, val message: String = "", val minimized: Boolean = false, val hasPreview: Boolean = false)
+  val saved: Int = 0, val message: String = "", val minimized: Boolean = false, val hasPreview: Boolean = false,
+  val reviewRevision: Int = 0)
 internal object LiveCaptureState {
+  val editing = AtomicBoolean(false)
   val mutable = MutableStateFlow(LiveCaptureStatus())
   val state = mutable.asStateFlow()
 }
@@ -45,6 +47,7 @@ class InventoryCaptureService : Service() {
   private var reader: ImageReader? = null
   private var overlay: CaptureOverlay? = null
   private var preview: Bitmap? = null
+  private val previewLock = Any()
   private var cachedFrame: Bitmap? = null
   private var cachedRecognition: CaptureRecognition? = null
   private var region: RectF? = null
@@ -63,6 +66,13 @@ class InventoryCaptureService : Service() {
   private var saved = 0
   private val batch = UUID.randomUUID().toString()
   private val gate = LiveCaptureGate()
+  private val partialGate = PartialCaptureGate()
+  private var reviewRevision = 0
+  private var reviewFrame: Bitmap? = null
+  private var reviewId: String? = null
+  private var reviewPosition: CapturePosition? = null
+  private var pendingReviewId: String? = null
+  private var pendingPosition: CapturePosition? = null
   private var position = CapturePosition("主账号", 1, 1)
   // Virtual displays may stop producing frames on a static detail page. Sample the
   // newest buffer periodically and recheck the retained frame to establish stability.
@@ -149,65 +159,86 @@ class InventoryCaptureService : Service() {
     display?.resize(w, h, resources.displayMetrics.densityDpi)
     display?.surface = replacement.surface
     reader = replacement; old?.close()
-    preview?.recycle(); preview = null
+    synchronized(previewLock) { preview?.recycle(); preview = null }
     message("画面尺寸已调整，识别框按比例保留")
   }
 
   private fun frame(source: ImageReader) {
-    if (closed || !visible || paused || interacting || saving || (!automatic && pending != null) || !processing.compareAndSet(false, true)) return
+    if (closed || !visible || paused || interacting || saving || LiveCaptureState.editing.get() ||
+      (!automatic && pending != null) || !processing.compareAndSet(false, true)) return
     val image = runCatching { source.acquireLatestImage() }.getOrNull()
-    val now = SystemClock.elapsedRealtime()
-    val epoch = generation
-    val bitmap = try {
-      if (image == null) preview?.copy(Bitmap.Config.ARGB_8888, true)
-      else {
-        val plane = image.planes[0]
-        val paddedWidth = plane.rowStride / plane.pixelStride
-        val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
-        padded.copyPixelsFromBuffer(plane.buffer)
-        val actual = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-        if (actual !== padded) padded.recycle()
-        // Mask our floating controls only when sharing the entire display.
-        val bounds = overlay?.bounds()
-        if (bounds != null && actual.width == overlay?.screenWidth() && actual.height == overlay?.screenHeight()) {
-          OverlayFrameMask.apply(actual, bounds)
-        }
-        preview?.recycle(); preview = actual.copy(Bitmap.Config.ARGB_8888, false)
-        actual
-      }
-    } catch (error: Exception) { message("画面读取失败：${error.message}"); null }
-    finally { image?.close() }
-    if (bitmap == null) { processing.set(false); return }
-    val crop = region ?: RectF(0f, 0f, 1f, 1f)
-    val left = (crop.left * bitmap.width).toInt().coerceIn(0, bitmap.width-1)
-    val top = (crop.top * bitmap.height).toInt().coerceIn(0, bitmap.height-1)
-    val right = (crop.right * bitmap.width).toInt().coerceIn(left+1, bitmap.width)
-    val bottom = (crop.bottom * bitmap.height).toInt().coerceIn(top+1, bitmap.height)
-    val cropped = Bitmap.createBitmap(bitmap, left, top, right-left, bottom-top)
-    if (cropped !== bitmap) bitmap.recycle()
+    val now = SystemClock.elapsedRealtime(); val epoch = generation
+    val bounds = overlay?.bounds()
+    val fullDisplay = overlay?.screenWidth() == width && overlay?.screenHeight() == height
+    val crop = region?.let { RectF(it) } ?: RectF(0f,0f,1f,1f)
     scope.launch {
+      var cropped: Bitmap? = null
+      var heldImage = image
       try {
-        // Exact pixel comparison avoids repeated OCR on static screens, without a lossy hash
-        // which could miss a single changed IV. Re-observation still passes the stability gate.
-        val result = if (cachedRecognition != null && cachedFrame?.sameAs(cropped) == true) cachedRecognition!! else {
-          val recognized = ocr.recognize(cropped)
-          cachedFrame?.recycle(); cachedFrame = cropped.copy(Bitmap.Config.ARGB_8888, false)
-          cachedRecognition = recognized
-          recognized
+        val bitmap = if(image==null) synchronized(previewLock) { preview?.copy(Bitmap.Config.ARGB_8888,true) }
+        else {
+          val frameWidth=image.width; val frameHeight=image.height
+          val plane=image.planes[0]; val paddedWidth=plane.rowStride/plane.pixelStride
+          val padded=Bitmap.createBitmap(paddedWidth,frameHeight,Bitmap.Config.ARGB_8888)
+          padded.copyPixelsFromBuffer(plane.buffer)
+          image.close(); heldImage = null
+          val actual=Bitmap.createBitmap(padded,0,0,frameWidth,frameHeight)
+          if(actual!==padded)padded.recycle()
+          if(bounds!=null && fullDisplay) OverlayFrameMask.apply(actual,bounds)
+          synchronized(previewLock) { preview?.recycle(); preview=actual.copy(Bitmap.Config.ARGB_8888,false) }
+          actual
+        }
+        if(bitmap==null) return@launch
+        val left=(crop.left*bitmap.width).toInt().coerceIn(0,bitmap.width-1)
+        val top=(crop.top*bitmap.height).toInt().coerceIn(0,bitmap.height-1)
+        val right=(crop.right*bitmap.width).toInt().coerceIn(left+1,bitmap.width)
+        val bottom=(crop.bottom*bitmap.height).toInt().coerceIn(top+1,bitmap.height)
+        val current=Bitmap.createBitmap(bitmap,left,top,right-left,bottom-top)
+        cropped=current; if(current!==bitmap)bitmap.recycle()
+        val result = if(cachedRecognition!=null && cachedFrame?.sameAs(current)==true) cachedRecognition!! else {
+          val recognized=ocr.recognize(current)
+          cachedFrame?.recycle(); cachedFrame=current.copy(Bitmap.Config.ARGB_8888,false)
+          cachedRecognition=recognized; recognized
         }
         withContext(Dispatchers.Main) {
-          if (!closed && epoch == generation && visible && !paused && !interacting && !saving && pending == null) accept(result, cropped, now)
+          if(!closed && epoch==generation && visible && !paused && !interacting && !saving &&
+            !LiveCaptureState.editing.get() && pending==null) accept(result,current,now)
         }
       } catch (_: CancellationException) { }
-      catch (error: Exception) { withContext(Dispatchers.Main) { if (!closed) { gate.failed(); message("识别失败：${error.message}") } } }
-      finally { cropped.recycle(); processing.set(false) }
+      catch(error: Exception) {
+        withContext(Dispatchers.Main) { if(!closed) { gate.failed();message("识别失败：${error.message}") } }
+      } finally { heldImage?.close();cropped?.recycle();processing.set(false) }
     }
+  }
+
+  private suspend fun queueIncomplete(result: CaptureRecognition, bitmap: Bitmap) {
+    val material=result.material ?: return
+    val destination=position
+    val child=material.copy(id=UUID.randomUUID().toString(),account=destination.account,
+      page=destination.box.toString(),slot=destination.slot.toString(),source="mobile-live-review",verified=false)
+    val draft=CaptureDraft(child,result.warnings,result.rawText,result.fingerprint,child.id+".jpg",
+      "实时采集 · "+destination.account+" · 仓"+destination.box+" 第"+destination.slot+"个 · 待补资料",batch)
+    saving=true
+    try {
+      withContext(Dispatchers.IO+NonCancellable) { store.append(draft,bitmap) }
+      reviewFrame?.recycle();reviewFrame=bitmap.copy(Bitmap.Config.ARGB_8888,false)
+      reviewId=child.id;reviewPosition=destination;reviewRevision++
+      partialGate.committed(result.fingerprint)
+      position=destination.next();persist(position)
+      message("反复识别未完整，已转待审核；可继续切换下一只")
+    } catch(error:Exception) { paused=true;message("待审核保存失败，已暂停：${error.message}") }
+    finally { saving=false }
   }
 
   private suspend fun accept(result: CaptureRecognition, bitmap: Bitmap, now: Long) {
     val material = result.material
     if (LiveCaptureGate.key(material) == null) {
       gate.observe(null, now)
+      if (material == null) partialGate.observe("", now)
+      if (material != null && partialGate.observe(result.fingerprint, now)) {
+        queueIncomplete(result, bitmap)
+        return
+      }
       message(if (material != null) "未完整："+material.species.ifBlank { "名称待确认" }+" · "+material.ivText+"；请保持详情页可见" else "等待精灵详情，请打开个体值页或重新定位")
       return
     }
@@ -218,6 +249,9 @@ class InventoryCaptureService : Service() {
     }
     if (!gate.observe(material, now)) return
     pending = result
+    if (reviewId != null && reviewFrame?.sameAs(bitmap) == true) {
+      pendingReviewId = reviewId; pendingPosition = reviewPosition
+    } else { pendingReviewId = null; pendingPosition = null }
     pendingImage?.recycle(); pendingImage = bitmap.copy(Bitmap.Config.ARGB_8888, false)
     if (automatic) savePending(false)
     else {
@@ -231,9 +265,9 @@ class InventoryCaptureService : Service() {
     val result = pending ?: return
     val material = result.material ?: return
     val bitmap = pendingImage ?: return
-    val destination = position
+    val destination = pendingPosition ?: position
     val key = LiveCaptureGate.key(material) ?: return
-    val child = material.copy(id = UUID.randomUUID().toString(), account = destination.account,
+    val child = material.copy(id = pendingReviewId ?: UUID.randomUUID().toString(), account = destination.account,
       page = destination.box.toString(), slot = destination.slot.toString(), source = "mobile-live", verified = false,
       notes = "屏幕实时采集，尚未标记为已核对；请核对性别、性格、头目、梦特、技能与实际仓位。")
     val draft = CaptureDraft(child, result.warnings, result.rawText, key, child.id + ".jpg",
@@ -253,8 +287,11 @@ class InventoryCaptureService : Service() {
           return@withContext
         }
         saved++
+        pendingReviewId?.let { id -> withContext(Dispatchers.IO) { store.remove(id) }; reviewRevision++ }
         gate.committed(material)
-        position = destination.next(); persist(position)
+        if (pendingPosition == null) { position = destination.next(); persist(position) }
+        pendingReviewId = null; pendingPosition = null
+        reviewFrame?.recycle(); reviewFrame = null; reviewId = null; reviewPosition = null
         pending = null; pendingImage = null; bitmap.recycle()
         overlay?.preview(null)
         if (automatic) overlay?.showSaved(child)
@@ -308,7 +345,7 @@ class InventoryCaptureService : Service() {
   }
   private fun calibrate() {
     if (saving) { message("正在保存，请稍候"); return }
-    val frame = preview?.copy(Bitmap.Config.ARGB_8888, false)
+    val frame = synchronized(previewLock) { preview?.copy(Bitmap.Config.ARGB_8888, false) }
     if (frame == null) { message("还没有画面，请先返回游戏"); return }
     interacting = true; generation++
     overlay?.calibrate(frame, region, onDone = { selected ->
@@ -325,7 +362,7 @@ class InventoryCaptureService : Service() {
   }
   private fun message(text: String) {
     if (closed) return
-    LiveCaptureState.mutable.value = LiveCaptureStatus(true, paused, saved, text, automatic, pending != null && !saving)
+    LiveCaptureState.mutable.value = LiveCaptureStatus(true, paused, saved, text, automatic, pending != null && !saving, reviewRevision)
     overlay?.render(position, saved, text, paused, pending != null && !saving)
   }
   override fun onDestroy() {
@@ -336,10 +373,11 @@ class InventoryCaptureService : Service() {
     display?.release(); display = null
     reader?.close(); reader = null
     old?.stop()
-    preview?.recycle(); preview = null
+    synchronized(previewLock) { preview?.recycle(); preview = null }
     val job = scope.coroutineContext[Job]!!
     job.invokeOnCompletion {
       if (ocrProvider.isInitialized()) runCatching { ocr.close() }
+      reviewFrame?.recycle();reviewFrame=null
       cachedFrame?.recycle(); cachedFrame = null; cachedRecognition = null
       pendingImage?.recycle(); pendingImage = null; pending = null
       LiveCaptureState.mutable.value = LiveCaptureStatus(saved = saved, message = finalMessage)

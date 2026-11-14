@@ -23,7 +23,7 @@ class ScreenCaptureFixtureActivity : Activity() {
         canvas.drawColor(Color.WHITE)
         val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.BLACK;textSize=width/38f }
         val gender=if(specimen==1) "雄性" else "雌性"
-        val iv=when(specimen) { 0->"31/2/19/0/16/6";4->"31/31/20/0/15/31";else->"31/31/20/0/15/6" }
+        val iv=when(specimen) { 0->"31/2/19/0/16/6";4->"31/31/20/0/15/31";5->"X/X/X/X/X/X";else->"31/31/20/0/15/6" }
         val nature=if(specimen>=3) "固执 Adamant" else "坦率 Docile"
         val lines=listOf("名字：皮卡丘", "Lv.50 "+gender, "个体值："+iv, "性格："+nature)
         lines.forEachIndexed { i,text -> canvas.drawText(text,width*0.43f,height*(0.16f+i*0.19f),paint) }
@@ -34,7 +34,7 @@ class ScreenCaptureFixtureActivity : Activity() {
     row.addView(Button(this).apply { text="Start capture fixture";setOnClickListener {
       startActivityForResult(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent(),7)
     } },LinearLayout.LayoutParams(0,80,1f))
-    val labels=listOf("Show first specimen","Show second specimen","Show third specimen","Show fourth specimen","Show fifth specimen")
+    val labels=listOf("Show first specimen","Show second specimen","Show third specimen","Show fourth specimen","Show fifth specimen","Show incomplete specimen")
     labels.forEachIndexed { index,label ->
       row.addView(Button(this).apply { text=label;textSize=10f;setOnClickListener { specimen=index;page.invalidate() } },LinearLayout.LayoutParams(0,80,1f))
     }

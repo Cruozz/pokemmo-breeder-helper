@@ -178,6 +178,10 @@ fun MainScreen(
     onDismiss = { captureVisible = false }, onReview = { viewModel.editMaterial(it.material) })
   state.editingMaterial?.let { material ->
     val draft = captureState.drafts.firstOrNull { it.material.id == material.id }
+    androidx.compose.runtime.DisposableEffect(material.id) {
+      com.example.pokemmobreederhelper.capture.LiveCaptureState.editing.set(true)
+      onDispose { com.example.pokemmobreederhelper.capture.LiveCaptureState.editing.set(false) }
+    }
     MaterialEditor(material, state.materialError, state.isPlanning, viewModel::dismissMaterialEditor,
       viewModel::saveMaterial, viewModel::searchMaterialSpecies, reviewMode = draft != null,
       reviewContent = if (draft != null) { { CaptureReviewPreview(draft, captureViewModel.imagePath(draft)) } } else null)
@@ -286,6 +290,7 @@ private fun MonsterCard(monster: MonsterRecord) {
         }
       }
       Text("${monster.account} · ${monster.positionLabel.ifBlank { "未记录位置" }} · ${monster.nature.ifBlank { "性格未知" }}")
+      if (monster.cosmeticText.isNotBlank()) Text(monster.cosmeticText, color = MaterialTheme.colorScheme.tertiary)
       if (monster.eggGroups.isNotEmpty()) {
         Text("蛋组：${monster.eggGroups.joinToString(" / ")}", style = MaterialTheme.typography.bodySmall)
       }
@@ -621,6 +626,7 @@ private fun PlannerForm(state: MainScreenUiState, viewModel: MainScreenViewModel
         FilterChip(selected = state.strategy == "cost", onClick = { viewModel.setStrategy("cost") },
           enabled = !state.isPlanning, label = { Text("省钱规划") }, modifier = Modifier.heightIn(min = 48.dp))
       }
+      CosmeticPlanningOptions(state, viewModel)
       PlanningCosts(state, viewModel)
       Text("百变怪用途", fontWeight = FontWeight.SemiBold)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -862,6 +868,7 @@ private fun PlanStepCard(step: ExecutionStepRecord, complete: Boolean, ready: Bo
       StepParentCard("父母 B", step.parentBLabel, step.parentBRecord, step.parentBSpeciesId, step.itemB)
       HorizontalDivider()
       Text("子代：${step.child.species} · ${step.child.perfectIvCount}V · ${step.child.ivText}", fontWeight = FontWeight.SemiBold)
+      if (step.child.cosmeticText.isNotBlank()) Text(step.child.cosmeticText, color = MaterialTheme.colorScheme.tertiary)
       Text(step.genderInstruction)
       val lockedNature = (step.itemA == "不变之石" || step.itemB == "不变之石") && step.child.nature.isNotBlank()
       Text(if (lockedNature) "性格保证：${step.child.nature}（不变石）"
@@ -899,6 +906,7 @@ private fun StepParentCard(title: String, label: String, record: MonsterRecord?,
         Text(label, style = MaterialTheme.typography.bodyMedium)
         if (record != null) Text("${record.perfectIvCount}V · ${genderLabel(record.gender)} · ${record.nature.ifBlank { "性格未知" }}",
           style = MaterialTheme.typography.bodySmall)
+        if (record?.cosmeticText?.isNotBlank() == true) Text(record.cosmeticText, style = MaterialTheme.typography.bodySmall)
         Text("携带：${item.ifBlank { "无需道具" }}", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
       }
     }

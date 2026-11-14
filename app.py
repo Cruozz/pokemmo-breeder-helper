@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.42"
+APP_VERSION = "0.2.43"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -83,6 +83,8 @@ from mind_map import MindMapNode
 from route_view import BreedingRouteView
 from route_roles import candidate_route_roles
 from models import STATS, Monster, format_box_position, normalize_gender
+from cosmetics import costume_family, particle_names
+from cosmetic_views import CosmeticControls
 from inventory_order import inventory_in_display_order, sorted_inventory_ids
 from account_order_dialog import AccountOrderDialog
 from guide_views import GuideWorkspace, PAGE_TITLES
@@ -128,7 +130,7 @@ from storage import (
 )
 
 
-class App:
+class App(CosmeticControls):
     def __init__(self, root: ttk.Frame | object) -> None:
         self.root = root
         self.root.title(APP_TITLE)
@@ -257,6 +259,7 @@ class App:
         self.moves_var = StringVar()
         self.alpha_var = StringVar(value="普通")
         self.hidden_ability_var = BooleanVar(value=False)
+        self._init_cosmetics()
         self.groups_var = StringVar()
         self.source_var = StringVar()
         self.source_summary_var = StringVar(value="未连接 · 请选择 PokeMMO 窗口或载入截图")
@@ -1707,6 +1710,7 @@ class App:
         )
         self.batch_skip_button.pack(anchor="w", fill=X, pady=(5, 0))
         self.batch_skip_button.bind("<space>", self._handle_batch_space)
+        self._build_cosmetic_editor(form)
 
     def _install_inventory_autocomplete(self) -> None:
         def species_provider(query: str) -> list[str]:
@@ -1863,7 +1867,7 @@ class App:
         self.inventory_action_bar.bind("<Configure>", self._resize_inventory_action_bar, add="+")
         actions.columnconfigure(1, weight=1)
 
-        columns = ("account", "position", "status", "species", "gender", "alpha", "hidden", "nature", "ivs", "groups", "moves", "confidence")
+        columns = ("account", "position", "status", "species", "gender", "alpha", "hidden", "nature", "ivs", "groups", "moves", "confidence", "cosmetics")
         tree_frame = ttk.Frame(parent)
         tree_frame.pack(fill=BOTH, expand=True)
         self.inventory_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="extended", height=7)
@@ -1880,10 +1884,11 @@ class App:
             "groups": "蛋组",
             "moves": "技能",
             "confidence": "OCR",
+            "cosmetics": "粒子 / 时装",
         }
         widths = {
             "account": 82, "position": 108, "status": 56, "species": 95, "gender": 45,
-            "alpha": 50, "hidden": 52, "nature": 58, "ivs": 115, "groups": 100, "moves": 150, "confidence": 48,
+            "alpha": 50, "hidden": 52, "nature": 58, "ivs": 115, "groups": 100, "moves": 150, "confidence": 48, "cosmetics": 180,
         }
         for column in columns:
             self.inventory_tree.heading(column, text=headings[column])
@@ -2315,6 +2320,7 @@ class App:
         )
         self.plan_map.pack(fill=BOTH, expand=True)
         self._update_plan_action_states()
+        self._build_cosmetic_planning(form)
 
     def _set_planner_details_collapsed(self, collapsed: bool) -> None:
         if not hasattr(self, "planner_form"):
@@ -2558,6 +2564,7 @@ class App:
                 if name == "target_strategy_var" and value == "最省钱":
                     value = "省钱规划"
                 getattr(self, name).set(value)
+        self._restore_cosmetic_options(plan.planning_options)
 
     def _select_plan_step_number(self, step_number: int) -> None:
         self.selected_plan_step_number = step_number
@@ -4018,6 +4025,11 @@ class App:
         self.hidden_ability_var.set(
             bool(parsed.get("has_hidden_ability", False) or is_alpha)
         )
+        self.current_particles = list(parsed.get("particles") or ())
+        if hasattr(self, "has_particles_var"):
+            self.has_particles_var.set(bool(parsed.get("has_particles") or self.current_particles))
+            self.costume_var.set(False)
+            self.current_particle_label_var.set(particle_names(self.current_particles))
         self.iv_var.set("/".join("x" if value is None else str(value) for value in parsed.get("ivs", [None] * 6)))
         self.moves_var.set(", ".join(moves))
         if hasattr(self, "ocr_confidence_var"):
@@ -4631,6 +4643,8 @@ class App:
             variable.set("")
         self.alpha_var.set("普通")
         self.hidden_ability_var.set(False)
+        self.has_particles_var.set(False); self.costume_var.set(False)
+        self.current_particles = []; self.current_particle_label_var.set("")
         self.recent_scan_var.set("最近识别：—")
         self.ocr_confidence_var.set("OCR 置信度：—")
         self.raw_text_box.delete("1.0", END)
@@ -4667,6 +4681,10 @@ class App:
             egg_groups=[x.strip() for x in self.groups_var.get().replace("，", ",").split(",") if x.strip()],
             is_alpha=self.alpha_var.get() == "头目",
             has_hidden_ability=bool(self.hidden_ability_var.get()),
+            has_particles=self.has_particles_var.get(), particles=list(self.current_particles),
+            is_costume=self.costume_var.get(),
+            costume_id=costume_family(self.species_var.get().strip()) if self.costume_var.get() else "",
+            costume_lineage=(existing.costume_lineage or existing.id) if existing and self.costume_var.get() else "",
             account=self.account_var.get().strip() or "主账号",
             page=self.page_var.get().strip(),
             slot=self.slot_var.get().strip(),
@@ -4699,6 +4717,9 @@ class App:
                     and located.nature == monster.nature
                     and located.is_alpha == monster.is_alpha
                     and located.has_hidden_ability == monster.has_hidden_ability
+                    and located.has_particles == monster.has_particles
+                    and set(located.particles) == set(monster.particles)
+                    and located.is_costume == monster.is_costume
                     and tuple(located.moves) == tuple(monster.moves)
                 )
                 if same_visible_material:
@@ -4869,6 +4890,8 @@ class App:
                     monster.iv_string,
                     monster.group_string,
                     monster.notes,
+                    particle_names(monster.particles),
+                    "时装" if monster.is_costume else "",
                 )
             ).lower()
             if query and query not in haystack:
@@ -4905,6 +4928,7 @@ class App:
                     monster.group_string,
                     "、".join(monster.moves),
                     confidence,
+                    " · ".join(part for part in ("时装" if monster.is_costume else "", particle_names(monster.particles) if monster.particles else "带粒子" if monster.has_particles else "") if part),
                 ),
                 tags=("verified" if monster.verified else "pending",),
             )
@@ -5134,6 +5158,8 @@ class App:
             self.nature_var.set(monster.nature)
             self.alpha_var.set("头目" if monster.is_alpha else "普通")
             self.hidden_ability_var.set(monster.has_hidden_ability)
+            self.has_particles_var.set(monster.has_particles); self.costume_var.set(monster.is_costume)
+            self.current_particles = list(monster.particles); self.current_particle_label_var.set(particle_names(monster.particles))
             self.iv_var.set(monster.iv_string)
             self.ability_var.set(monster.ability)
             self.item_var.set(monster.held_item)
@@ -5282,6 +5308,7 @@ class App:
         self._clear_plan_state(reset_targets=True)
 
     def _reset_target_constraints(self) -> None:
+        self._restore_cosmetic_options({})
         defaults = {
             "target_species_var": "", "target_gender_var": "任意", "target_alpha_var": "普通",
             "target_hidden_ability_var": False, "target_nature_var": "", "target_lock_nature_var": False,
@@ -5482,10 +5509,12 @@ class App:
             frozenset(self.auto_replan_preferred_material_ids),
             self._current_cost_book(),
             self._purchase_v_limit(),
+            self._cosmetic_options(),
         )
         self._set_planner_busy(True)
         self.pending_plan_options = {name: getattr(self, name).get() for name in (
             "target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var", "target_purchase_max_v_var")}
+        self.pending_plan_options.update(self._cosmetic_options())
         self.plan_status_var.set(
             f"正在从 {sum(item.verified and item.id not in excluded_snapshot for item in snapshot)} 条可用已确认库存中"
             f"按{self.target_strategy_var.get()}搜索最佳路线"
@@ -5541,7 +5570,7 @@ class App:
         self.current_candidates = candidates
         self.proposed_plan = build_execution_plan(candidates[0]) if candidates else None
         if self.proposed_plan is not None:
-            self.proposed_plan.planning_options = dict(getattr(self, "pending_plan_options", {}))
+            self.proposed_plan.planning_options = {**dict(getattr(self, "pending_plan_options", {})), **candidates[0].cosmetic_options}
         if self.proposed_plan is not None and candidates:
             self.plan_candidate_cache[self.proposed_plan.id] = candidates[0]
         auto_activate = self.auto_activate_replan_pending
@@ -6015,6 +6044,10 @@ class App:
                 hatched_result = monster.source.startswith("孵化方案")
                 leaf_values = tuple("X" if value is None else str(value) for value in monster.ivs[:6])
                 feature_bits = []
+                if monster.is_costume:
+                    feature_bits.append("时装")
+                if monster.has_particles:
+                    feature_bits.append(particle_names(monster.particles) or "带粒子")
                 if monster.has_hidden_ability:
                     feature_bits.append("梦特已解锁")
                 inherited = [move for move in candidate.target_moves if move in state.inherited_moves]
@@ -6108,6 +6141,10 @@ class App:
                 evolution = f" → 下步前进化为 {state.breeding_species}"
             gender_detail = step.gender_instruction if step else gender_name(state.gender)
             feature_bits = []
+            if state.costume_id:
+                feature_bits.append("时装主线")
+            if state.particles or state.has_unknown_particles:
+                feature_bits.append(particle_names(sorted(state.particles)) or "带粒子")
             if state.has_hidden_ability:
                 feature_bits.append("梦特保留")
             inherited = [move for move in candidate.target_moves if move in state.inherited_moves]
@@ -6449,6 +6486,8 @@ class App:
             or (nature_hit and nature_hand_step)
             or nature_miss_requires_finish
         )
+        if final_step and plan_will_complete and not plan.meets_cosmetic_target(child_to_save):
+            should_auto_replan = True
         finished_product = bool(final_step and plan_will_complete and not should_auto_replan)
         try:
             consume_parents_and_add_child(

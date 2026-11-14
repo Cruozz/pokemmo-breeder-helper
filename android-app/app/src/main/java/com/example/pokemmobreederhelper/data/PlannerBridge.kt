@@ -6,6 +6,7 @@ import com.chaquo.python.android.AndroidPlatform
 import kotlinx.serialization.encodeToString
 
 class PlannerBridge(context: Context) {
+  internal val applicationContext: Context = context.applicationContext
   private companion object { val startupLock = Any() }
   private val python: Python
   private val module by lazy { python.getModule("mobile_bridge") }
@@ -23,8 +24,8 @@ class PlannerBridge(context: Context) {
     return AppJson.codec.decodeFromString<SpeciesSearchResponse>(raw).items
   }
 
-  fun parseCapture(linesJson: String, visualGender: String = ""): CaptureRecognition =
-    AppJson.codec.decodeFromString(python.getModule("mobile_capture").callAttr("parse_capture", linesJson, visualGender).toString())
+  fun parseCapture(linesJson: String, visualGender: String = "", visualParticle: String = ""): CaptureRecognition =
+    AppJson.codec.decodeFromString(python.getModule("mobile_capture").callAttr("parse_capture", linesJson, visualGender, visualParticle).toString())
 
   fun duplicateGroups(inventoryJson: String): List<List<String>> =
     AppJson.codec.decodeFromString(module.callAttr("inventory_duplicates", inventoryJson).toString())

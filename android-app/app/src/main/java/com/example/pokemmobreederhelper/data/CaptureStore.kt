@@ -49,6 +49,8 @@ class CaptureStore(context: Context) {
 
   companion object { private val writeLock = Any() }
 
+  fun remove(id: String) = synchronized(writeLock) { save(load().filterNot { it.material.id == id }) }
+
   fun save(drafts: List<CaptureDraft>) = synchronized(writeLock) {
     check(loadError.isBlank()) { loadError }
     val stream = index.startWrite()

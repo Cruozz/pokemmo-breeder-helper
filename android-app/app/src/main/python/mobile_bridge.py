@@ -12,7 +12,7 @@ import traceback
 import time
 from typing import Any
 
-from execution import ExecutionPlan, build_execution_plan
+from execution import ExecutionPlan, build_execution_plan, validate_cosmetic_inputs
 from models import Monster, normalize_gender
 from planner import make_report_with_candidates, nature_matches, normalize_nature, parse_iv_requirements
 from species_data import get_species_database
@@ -21,7 +21,7 @@ from route_roles import RouteSource, classify_routes
 from chain_planner import ChainCandidate, is_ditto
 from breeding_cost import PriceBook
 
-RULES_VERSION = "0.2.39"
+RULES_VERSION = "0.2.43"
 _market_cache = None
 _market_cache_time = 0.0
 
@@ -84,6 +84,14 @@ def validate_material(material_json: str) -> str:
     if monster.gender and monster.gender not in record.allowed_genders:
         raise ValueError("该精灵不支持所选性别。")
     monster.species = record.display_name
+    if monster.is_costume:
+        from cosmetics import costume_family
+        monster.costume_id = costume_family(monster.species)
+        if not monster.costume_id:
+            raise ValueError("当前时装登记支持小火龙、狃拉、圆陆鲨、利欧路、喵喵五个进化家族。")
+        monster.costume_lineage = monster.costume_lineage or monster.id
+    else:
+        monster.costume_id = monster.costume_lineage = ""
     monster.egg_groups = list(record.egg_groups)
     monster.account = monster.account.strip() or "主账号"
     return json.dumps(monster.to_dict(), ensure_ascii=False)
@@ -98,6 +106,10 @@ def _final_target(plan: ExecutionPlan) -> Monster:
         is_alpha=bool(snapshot.get("target_alpha", options.get("target_alpha", False))),
         has_hidden_ability=bool(snapshot.get("target_hidden_ability", options.get("need_hidden_ability", False))),
         moves=list(snapshot.get("target_moves") or options.get("target_moves") or ()),
+        has_particles=bool(options.get("target_particles")) and options.get("particle_mode") == "target",
+        particles=list(options.get("target_particles") or ()) if options.get("particle_mode") == "target" else [],
+        is_costume=bool(options.get("target_costume")),
+        costume_lineage=str(options.get("costume_lineage") or ""),
     )
 
 
@@ -119,6 +131,9 @@ def _meets_final_target(plan: ExecutionPlan, child: Monster) -> bool:
         and child.is_alpha == target.is_alpha
         and (not target.has_hidden_ability or child.has_hidden_ability)
         and set(target.moves).issubset(child.moves)
+        and set(target.particles).issubset(child.particles)
+        and (not target.is_costume or (child.is_costume and
+             (not target.costume_lineage or child.costume_lineage == target.costume_lineage)))
         and plan.nature_phase not in {"gamble_upper", "gamble_lower"}
     )
 
@@ -296,6 +311,7 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
             frozenset(request.get("preferred_material_ids") or ()),
             cost_pricing=pricing,
             max_purchase_v=purchase_limit,
+            cosmetic_options={key: request.get(key) for key in ("particle_mode", "target_particles", "target_costume", "costume_lineage") if key in request},
         )
         if not candidates:
             return _response(
@@ -312,6 +328,7 @@ def generate_plan(inventory_json: str, request_json: str) -> str:
 
         candidate = candidates[0]
         plan = build_execution_plan(candidate)
+        request.update(candidates[0].cosmetic_options)
         plan.planning_options = request
         if not plan.steps and (candidate.root.leaf is None or not _meets_final_target(plan, candidate.root.leaf)):
             return _response({"ok": False, "error": "当前阶段没有可执行步骤，且现有素材尚未满足最终目标。",
@@ -367,6 +384,7 @@ def complete_step(inventory_json: str, response_json: str, outcome_json: str) ->
             raise ValueError("父母素材已不在库存，请核对或重新规划。")
         if any(item.id == step.child.id for item in inventory):
             raise ValueError("该子代已经入库，不能重复核销。")
+        validate_cosmetic_inputs(plan, step, [item for item in inventory if item.id in actual_ids])
         child = Monster.from_dict(step.child.to_dict())
         if step.effective_gender_policy == "random":
             gender = normalize_gender(str(outcome.get("gender", "")))

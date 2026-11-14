@@ -1,5 +1,7 @@
 # Shared Python modules bundled into the APK. Data is copied separately.
 models.py
+cosmetics.py
+particle_vision.py
 storage.py
 nature_data.py
 species_data.py

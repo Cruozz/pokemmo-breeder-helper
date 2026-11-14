@@ -32,7 +32,8 @@ internal class LiveCaptureGate(private val settleMs: Long = 500L) {
       it.species.isNotBlank() && it.ivs.size == 6 && it.ivs.all { value -> value != null && value in 0..31 }
     }?.let {
       listOf(it.species, it.gender, it.nature, it.ivs.joinToString(","), it.ability,
-        it.isAlpha, it.hasHiddenAbility, it.heldItem, it.moves.joinToString(",")).joinToString("|")
+        it.isAlpha, it.hasHiddenAbility, it.heldItem, it.moves.joinToString(","),
+        it.particles.sorted().joinToString(","), it.hasParticles, it.isCostume).joinToString("|")
     }
     // Missing optional OCR fields must not turn a late recognition into a second inventory entry.
     fun sameSpecimen(a: MonsterRecord?, b: MonsterRecord?): Boolean {
@@ -41,9 +42,26 @@ internal class LiveCaptureGate(private val settleMs: Long = 500L) {
       return compatible(a.gender, b.gender) && compatible(a.nature, b.nature) &&
         compatible(a.ability, b.ability) && compatible(a.heldItem, b.heldItem) &&
         a.isAlpha == b.isAlpha && a.hasHiddenAbility == b.hasHiddenAbility &&
+        a.hasParticles == b.hasParticles && a.particles.toSet() == b.particles.toSet() && a.isCostume == b.isCostume &&
         (a.moves.isEmpty() || b.moves.isEmpty() || a.moves == b.moves)
     }
   }
+}
+
+/** Incomplete but stable detail pages become one review draft, never inventory. */
+internal class PartialCaptureGate(private val settleMs: Long = 1800L) {
+  private var candidate = ""
+  private var since = 0L
+  private var count = 0
+  private var lastSaved = ""
+  fun observe(key: String, now: Long): Boolean {
+    if (key.isBlank()) { candidate = ""; count = 0; return false }
+    if (key == lastSaved) return false
+    if (key != candidate) { candidate = key; since = now; count = 1; return false }
+    count++
+    return count >= 3 && now-since >= settleMs
+  }
+  fun committed(key: String) { lastSaved = key; candidate = ""; count = 0 }
 }
 
 internal data class CapturePosition(val account: String, val box: Int, val slot: Int, val slotsPerBox: Int = 60) {

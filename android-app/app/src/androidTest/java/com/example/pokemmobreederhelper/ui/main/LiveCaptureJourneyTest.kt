@@ -79,6 +79,32 @@ class LiveCaptureJourneyTest {
       assertTrue(automation.injectInputEvent(event,true));event.recycle()
     }
   }
+  @Test fun repeatedIncompletePageKeepsScreenshotAndPositionInReviewThenContinues() {
+    check(context.packageName.endsWith(".devtest"))
+    automation.serviceInfo=automation.serviceInfo.apply { flags=flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+    automation.executeShellCommand("appops set "+context.packageName+" SYSTEM_ALERT_WINDOW allow").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+    val store=CaptureStore(context);store.save(emptyList())
+    val repository=InventoryRepository(context);repository.replace(WorkspaceSnapshot(emptyList()))
+    context.getSharedPreferences("live-capture",0).edit().clear().putString("account","待审核测试").putInt("box",1).putInt("slot",1).apply()
+    val intent=Intent().setClassName(context.packageName,"com.example.pokemmobreederhelper.ScreenCaptureFixtureActivity")
+    val scenario=ActivityScenario.launch<android.app.Activity>(intent)
+    try {
+      click("Show incomplete specimen")
+      click("Start capture fixture");click("Start now","立即开始","开始录制","开始共享")
+      awaitCondition(90000) { store.load().size==1 }
+      val draft=store.load().single()
+      assertFalse(draft.material.verified)
+      assertEquals("1",draft.material.page);assertEquals("1",draft.material.slot)
+      assertTrue(draft.material.ivs.any { it==null })
+      assertTrue(store.imageFile(draft.imageName).length()>0)
+      assertTrue(repository.inventory.value.isEmpty())
+      Thread.sleep(2200);assertEquals(1,store.load().size)
+      click("Show second specimen");awaitCondition(90000) { LiveCaptureState.state.value.hasPreview }
+      click("下一只");awaitCondition { repository.inventory.value.size==1 }
+      assertEquals("2",repository.inventory.value.single().slot)
+      assertEquals(1,store.load().size)
+    } finally { context.stopService(Intent(context,InventoryCaptureService::class.java));scenario.close() }
+  }
   @Test fun manualConfirmationBothNextOrdersAndMinimizedAutomaticResults() {
     check(context.packageName.endsWith(".devtest"))
     automation.serviceInfo=automation.serviceInfo.apply { flags=flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }

@@ -134,7 +134,8 @@ def _high_confidence_duplicate_parts(monster: Monster) -> tuple | None:
         or not moves
     ):
         return None
-    return (species, gender, nature, ivs), moves
+    return (species, gender, nature, ivs, monster.has_particles, tuple(sorted(monster.particles)),
+            monster.is_costume, monster.costume_id), moves
 
 
 def high_confidence_duplicate_key(monster: Monster) -> tuple | None:
@@ -498,6 +499,12 @@ def consume_parents_and_add_child(
             )
             for index, identifier in enumerate(parent_ids)
         )
+        if plan_snapshot and plan_snapshot.get("materials"):
+            from execution import ExecutionPlan, validate_cosmetic_inputs
+            snapshot_plan = ExecutionPlan.from_dict(plan_snapshot)
+            snapshot_step = next((step for step in snapshot_plan.steps if step.number == step_number), None)
+            if snapshot_step is not None:
+                validate_cosmetic_inputs(snapshot_plan, snapshot_step, parents)
         if actual_ids:
             placeholders = ",".join("?" for _identifier in actual_ids)
             connection.execute(f"DELETE FROM inventory WHERE id IN ({placeholders})", actual_ids)

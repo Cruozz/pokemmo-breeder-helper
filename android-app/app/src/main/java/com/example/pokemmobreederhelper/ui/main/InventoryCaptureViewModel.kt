@@ -31,8 +31,7 @@ internal data class CaptureUiState(
 
 internal class InventoryCaptureViewModel(application: Application) : AndroidViewModel(application) {
   private val store = CaptureStore(application)
-  private val initial = store.load()
-  private val _state = MutableStateFlow(CaptureUiState(drafts = initial, error = store.loadError))
+  private val _state = MutableStateFlow(CaptureUiState(busy = true))
   val state = _state.asStateFlow()
   private val lock = Mutex()
   private var scanJob: Job? = null
@@ -40,12 +39,20 @@ internal class InventoryCaptureViewModel(application: Application) : AndroidView
 
   init {
     viewModelScope.launch {
+      val initial = withContext(Dispatchers.IO) { store.load() }
+      _state.update { it.copy(drafts=initial,busy=false,error=store.loadError) }
+      var lastRevision = -1
+      var lastRunning = false
       LiveCaptureState.state.collect { live ->
         lock.withLock {
-          if (!_state.value.busy) {
+          val reload = live.reviewRevision != lastRevision || lastRunning && !live.running
+          if (!_state.value.busy && reload) {
             val drafts = withContext(Dispatchers.IO) { store.load() }
-            _state.update { it.copy(liveActive = live.running, drafts = drafts, error = store.loadError) }
+            _state.update { it.copy(drafts=drafts,error=store.loadError) }
+            lastRevision=live.reviewRevision
           }
+          _state.update { it.copy(liveActive=live.running) }
+          lastRunning=live.running
         }
       }
     }

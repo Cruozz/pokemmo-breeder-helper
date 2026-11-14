@@ -17,6 +17,11 @@ data class MonsterRecord(
   @SerialName("egg_groups") val eggGroups: List<String> = emptyList(),
   @SerialName("is_alpha") val isAlpha: Boolean = false,
   @SerialName("has_hidden_ability") val hasHiddenAbility: Boolean = false,
+  @SerialName("has_particles") val hasParticles: Boolean = false,
+  val particles: List<String> = emptyList(),
+  @SerialName("is_costume") val isCostume: Boolean = false,
+  @SerialName("costume_id") val costumeId: String = "",
+  @SerialName("costume_lineage") val costumeLineage: String = "",
   val account: String = "主账号",
   val page: String = "",
   val slot: String = "",
@@ -35,6 +40,10 @@ data class MonsterRecord(
 ) {
   val ivText: String
     get() = ivs.take(6).joinToString("/") { it?.toString() ?: "X" }
+
+  val cosmeticText: String
+    get() = listOfNotNull(if (isCostume) "时装" else null,
+      if (particles.isNotEmpty()) ParticleCatalog.names(particles) else if (hasParticles) "带粒子" else null).joinToString(" · ")
 
   val perfectIvCount: Int
     get() = ivs.count { it == 31 }
@@ -105,6 +114,10 @@ data class PlanRequest(
   @SerialName("excluded_ids") val excludedIds: Set<String> = emptySet(),
   @SerialName("preferred_material_ids") val preferredMaterialIds: Set<String> = emptySet(),
   @SerialName("target_moves") val targetMoves: List<String> = emptyList(),
+  @SerialName("particle_mode") val particleMode: String = "protect",
+  @SerialName("target_particles") val targetParticles: List<String> = emptyList(),
+  @SerialName("target_costume") val targetCostume: Boolean = false,
+  @SerialName("costume_lineage") val costumeLineage: String = "",
 )
 
 @Serializable

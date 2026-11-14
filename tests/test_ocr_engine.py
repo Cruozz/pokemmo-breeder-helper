@@ -37,6 +37,12 @@ class FakeImage:
 
 
 class OCRParserTests(unittest.TestCase):
+    def test_observed_mobile_iv_label_misread_is_still_distinct_from_stats_and_evs(self):
+        items=[OCRItem("能力值:121/97/66/71/83/99",.99,box(20,70,260,90)),
+               OCRItem("个体慎:31/2/19/0/16/6",.99,box(20,100,260,120)),
+               OCRItem("努力值:0/0/0/0/0/0",.99,box(20,130,260,150))]
+        self.assertEqual(OCRProcessor.parse(items)["ivs"],[31,2,19,0,16,6])
+
     def test_uses_labeled_individual_values_instead_of_stats_or_evs(self) -> None:
         # Mirrors the three numeric rows visible in the user's PokeMMO panel.
         items = [

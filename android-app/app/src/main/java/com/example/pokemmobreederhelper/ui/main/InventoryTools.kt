@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -155,6 +156,7 @@ internal fun PokedexInventory(state: MainScreenUiState, vm: MainScreenViewModel,
             Text("${monster.perfectIvCount}V", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
             if (monster.isAlpha) Text("头目", color = MaterialTheme.colorScheme.tertiary)
             if (monster.hasHiddenAbility) Text("梦特", color = MaterialTheme.colorScheme.primary)
+            if (monster.cosmeticText.isNotBlank()) Text(monster.cosmeticText, color = MaterialTheme.colorScheme.tertiary)
             if (!monster.verified) Text("待核对", color = MaterialTheme.colorScheme.error)
             Text(monster.moves.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
           }
@@ -186,7 +188,7 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
   var species by rememberSaveable(material.id) { mutableStateOf(material.species) }
   var gender by rememberSaveable(material.id) { mutableStateOf(material.gender) }
   var nature by rememberSaveable(material.id) { mutableStateOf(material.nature) }
-  var ivs by rememberSaveable(material.id) { mutableStateOf(material.ivs.map { it?.toString() ?: "X" }) }
+  var ivs by rememberSaveable(material.id) { mutableStateOf(material.ivs.map { it?.toString() ?: "" }) }
   var moves by rememberSaveable(material.id) { mutableStateOf(material.moves.joinToString("、")) }
   var ability by rememberSaveable(material.id) { mutableStateOf(material.ability) }
   var heldItem by rememberSaveable(material.id) { mutableStateOf(material.heldItem) }
@@ -196,6 +198,10 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
   var notes by rememberSaveable(material.id) { mutableStateOf(material.notes) }
   var alpha by rememberSaveable(material.id) { mutableStateOf(material.isAlpha) }
   var hidden by rememberSaveable(material.id) { mutableStateOf(material.hasHiddenAbility) }
+  var hasParticles by rememberSaveable(material.id) { mutableStateOf(material.hasParticles || material.particles.isNotEmpty()) }
+  var particles by rememberSaveable(material.id) { mutableStateOf(material.particles) }
+  var costume by rememberSaveable(material.id) { mutableStateOf(material.isCostume) }
+  var particlePicker by remember { mutableStateOf(false) }
   var verified by rememberSaveable(material.id) { mutableStateOf(material.verified) }
   var localError by remember { mutableStateOf("") }
   var chooseNature by remember { mutableStateOf(false) }
@@ -227,45 +233,65 @@ internal fun MaterialEditor(material: MonsterRecord, error: String, busy: Boolea
               else -> { localError = ""; onSave(material.copy(species = species.trim(), gender = gender, nature = nature,
                 ivs = ivs.map { it.toIntOrNull() }, moves = moves.split(Regex("[、,，;；\\n]+")).map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
                 ability = ability.trim(), heldItem = heldItem.trim(), account = account.trim(), page = page, slot = slot, notes = notes,
-                isAlpha = alpha, hasHiddenAbility = hidden, verified = verified, updatedAt = java.time.Instant.now().toString())) }
+                isAlpha = alpha, hasHiddenAbility = hidden, hasParticles = hasParticles, particles = particles,
+                isCostume = costume, costumeId = if (costume) material.costumeId else "", costumeLineage = if (costume) material.costumeLineage else "", verified = verified, updatedAt = java.time.Instant.now().toString())) }
             }
           }) { Text(if (busy) "保存中" else if (reviewMode) "确认入库" else "保存素材") }
         }
         if (localError.isNotBlank() || error.isNotBlank()) Text(localError.ifBlank { error }, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          reviewContent?.invoke()
-          OutlinedTextField(species, { species = it }, label = { Text("精灵名称（中文、英文或编号）") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-          speciesMatches.forEach { match -> TextButton(onClick = {
-            acceptedSpecies = match.displayName; species = match.displayName; speciesMatches = emptyList()
-            if (match.allowedGenders.size == 1) gender = match.allowedGenders.first()
-          }) { Text("#${match.id} ${match.displayName} · ${match.eggGroups.joinToString(" / ")}") } }
-          FilterStrip(listOf("性别未知","母","公","无性别"), genderLabel(gender)) { gender = when(it) { "母" -> "F"; "公" -> "M"; "无性别" -> "N"; else -> "" } }
-          OutlinedButton(onClick = { chooseNature = true }, modifier = Modifier.fillMaxWidth()) { Text("性格：${nature.ifBlank { "未知" }}") }
-          Text("个体值", style = MaterialTheme.typography.titleMedium)
-          for (row in 0..1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (index in row * 3 until row * 3 + 3) OutlinedTextField(ivs[index], { value -> ivs = ivs.toMutableList().also { it[index] = value.take(2).uppercase() } },
-              label = { Text(listOf("HP","攻击","防御","特攻","特防","速度")[index]) }, modifier = Modifier.weight(1f), singleLine = true)
+        LazyColumn(Modifier.weight(1f).padding(horizontal=16.dp).testTag("material-editor-fields"), contentPadding=PaddingValues(vertical=12.dp),
+          verticalArrangement=Arrangement.spacedBy(12.dp)) {
+          item(key="review") { reviewContent?.invoke() }
+          item(key="species") {
+            OutlinedTextField(species, { species=it }, label={ Text("精灵名称（中文、英文或编号）") }, modifier=Modifier.fillMaxWidth(),singleLine=true)
+            speciesMatches.forEach { match -> TextButton(onClick={
+              acceptedSpecies=match.displayName;species=match.displayName;speciesMatches=emptyList()
+              if(match.allowedGenders.size==1)gender=match.allowedGenders.first()
+            }) { Text("#${match.id} ${match.displayName} · ${match.eggGroups.joinToString(" / ")}") } }
           }
-          OutlinedTextField(moves, { moves = it }, label = { Text("技能（最多 4 个，用顿号分隔）") }, modifier = Modifier.fillMaxWidth())
-          OutlinedTextField(ability, { ability = it }, label = { Text("特性") }, modifier = Modifier.fillMaxWidth())
-          OutlinedTextField(heldItem, { heldItem = it }, label = { Text("携带道具") }, modifier = Modifier.fillMaxWidth())
-          Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(alpha, { alpha = it; if (it) hidden = true }); Text("头目"); Checkbox(hidden, { hidden = it }); Text("梦特") }
-          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = verified, enabled = !busy,
-            role = Role.Checkbox, onValueChange = { verified = it }), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = verified, onCheckedChange = null)
-            Text("已核对，可参与规划")
+          item(key="gender") { FilterStrip(listOf("性别未知","母","公","无性别"),genderLabel(gender)) {
+            gender=when(it) { "母"->"F";"公"->"M";"无性别"->"N";else->"" }
+          } }
+          item(key="nature") { OutlinedButton(onClick={ chooseNature=true },modifier=Modifier.fillMaxWidth()) { Text("性格：${nature.ifBlank { "未知" }}") } }
+          item(key="iv-title") { Text("个体值",style=MaterialTheme.typography.titleMedium) }
+          items(2,key={ "iv-row-$it" }) { row -> Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            for(index in row*3 until row*3+3) OutlinedTextField(ivs[index],{ value ->
+              ivs=ivs.toMutableList().also { it[index]=value.filter(Char::isDigit).take(2) }
+            },label={ Text(listOf("HP","攻击","防御","特攻","特防","速度")[index]) },modifier=Modifier.weight(1f),singleLine=true,
+              keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Number))
+          } }
+          item(key="moves") { OutlinedTextField(moves,{ moves=it },label={ Text("技能（最多 4 个，用顿号分隔）") },modifier=Modifier.fillMaxWidth()) }
+          item(key="ability") { OutlinedTextField(ability,{ ability=it },label={ Text("特性") },modifier=Modifier.fillMaxWidth()) }
+          item(key="held-item") { OutlinedTextField(heldItem,{ heldItem=it },label={ Text("携带道具") },modifier=Modifier.fillMaxWidth()) }
+          item(key="flags") {
+            Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(alpha,{ alpha=it;if(it)hidden=true });Text("头目");Checkbox(hidden,{ hidden=it });Text("梦特") }
+            Row(verticalAlignment=Alignment.CenterVertically) {
+              Checkbox(hasParticles,{ hasParticles=it;if(!it)particles=emptyList() });Text("带粒子")
+              TextButton(onClick={ particlePicker=true }) { Text(if(particles.size>1)"多粒子 · ${particles.size} 种" else "多粒子 / 选择粒子") }
+            }
+            if(particles.isNotEmpty())Text(ParticleCatalog.names(particles),style=MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(costume,role=Role.Checkbox,onValueChange={ costume=it }),verticalAlignment=Alignment.CenterVertically) {
+              Checkbox(costume,onCheckedChange=null);Text("时装精灵")
+            }
           }
-          OutlinedTextField(account, { account = it }, label = { Text("账号 / 角色") }, modifier = Modifier.fillMaxWidth())
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(page, { page = it }, label = { Text("页码") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(slot, { slot = it }, label = { Text("格号") }, modifier = Modifier.weight(1f))
-          }
-          OutlinedTextField(notes, { notes = it }, label = { Text("备注") }, modifier = Modifier.fillMaxWidth())
+          item(key="verified") { Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(verified,enabled=!busy,
+            role=Role.Checkbox,onValueChange={ verified=it }),verticalAlignment=Alignment.CenterVertically) {
+            Checkbox(verified,onCheckedChange=null);Text("已核对，可参与规划")
+          } }
+          item(key="account") { OutlinedTextField(account,{ account=it },label={ Text("账号 / 角色") },modifier=Modifier.fillMaxWidth()) }
+          item(key="position") { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(page,{ page=it.filter(Char::isDigit) },label={ Text("页码") },modifier=Modifier.weight(1f),
+              keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Number))
+            OutlinedTextField(slot,{ slot=it.filter(Char::isDigit) },label={ Text("格号") },modifier=Modifier.weight(1f),
+              keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Number))
+          } }
+          item(key="notes") { OutlinedTextField(notes,{ notes=it },label={ Text("备注") },modifier=Modifier.fillMaxWidth()) }
         }
       }
     }
   }
   if (chooseNature) NatureSelectionDialog(nature, { chooseNature = false }) { nature = it; chooseNature = false }
+  if (particlePicker) ParticlePicker(particles, { particlePicker = false }) { particles = it; hasParticles = it.isNotEmpty() }
 }
 
 @Composable

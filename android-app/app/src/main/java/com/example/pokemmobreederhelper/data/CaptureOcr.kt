@@ -15,6 +15,7 @@ import kotlin.math.roundToInt
 
 /** One recognizer per scanner; a task retains its bitmap until ML Kit has actually finished. */
 class CaptureOcr(private val bridge: PlannerBridge) : AutoCloseable {
+  private val particleMatcher = ParticleIconMatcher(bridge.applicationContext)
   private val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
   private suspend fun read(bitmap: Bitmap): Text {
     val text = suspendCoroutine { continuation ->
@@ -34,6 +35,7 @@ class CaptureOcr(private val bridge: PlannerBridge) : AutoCloseable {
     val elements=text.textBlocks.flatMap { it.lines }.flatMap { it.elements }
       .mapNotNull { it.boundingBox?.let { b -> line(it.text,b) } }
     val gender=CapturePanelGeometry.gender(bitmap,lines)
+    val particle=particleMatcher.recognize(bitmap,lines)
     val region=CapturePanelGeometry.movesRegion(lines,elements,bitmap.width,bitmap.height)
     if(region!=null) {
       // Read only the move names, excluding the colorful type badges to their left.
@@ -57,7 +59,30 @@ class CaptureOcr(private val bridge: PlannerBridge) : AutoCloseable {
         }+moves
       } finally { if(enlarged!==crop)enlarged.recycle();if(crop!==bitmap)crop.recycle() }
     }
-    val result=bridge.parseCapture(AppJson.codec.encodeToString(lines),gender)
+    var result=bridge.parseCapture(AppJson.codec.encodeToString(lines),gender,particle)
+    if(result.material?.ivs?.any { it==null }==true) {
+      val label=lines.firstOrNull { Regex("个[体休][值直慎]|個[體休][值直慎]|(?i)\\bivs?\\b").containsMatchIn(it.text.filterNot(Char::isWhitespace)) }
+      if(label!=null) {
+        val b=CapturePanelGeometry.box(label); val h=b.height().coerceAtLeast(8)
+        val region=android.graphics.Rect(b.left-h/3,b.top-h/2,
+          minOf(bitmap.width,b.right+h*20),b.bottom+h/2)
+        if(region.intersect(0,0,bitmap.width,bitmap.height)) {
+          val crop=Bitmap.createBitmap(bitmap,region.left,region.top,region.width(),region.height())
+          val enlarged=Bitmap.createScaledBitmap(crop,crop.width*3,crop.height*3,true)
+          try {
+            val retry=read(enlarged).textBlocks.flatMap { it.lines }.mapNotNull { row -> row.boundingBox?.let { box ->
+              line(row.text,android.graphics.Rect(region.left+box.left/3,region.top+box.top/3,
+                region.left+box.right/3,region.top+box.bottom/3))
+            } }
+            val revised=lines.filterNot { CapturePanelGeometry.box(it).centerY() in region.top..region.bottom }+retry
+            val improved=bridge.parseCapture(AppJson.codec.encodeToString(revised),gender,particle)
+            if((improved.material?.ivs?.count { it!=null } ?: 0) > (result.material?.ivs?.count { it!=null } ?: 0)) {
+              lines=revised; result=improved
+            }
+          } finally { enlarged.recycle(); if(crop!==bitmap)crop.recycle() }
+        }
+      }
+    }
     if(result.material?.species?.isBlank()==true) {
       // Retry just the small name row once. Exact-frame caching must not freeze
       // a missed glyph forever, and a full-screen upscale would waste work.
@@ -75,7 +100,7 @@ class CaptureOcr(private val bridge: PlannerBridge) : AutoCloseable {
             val replacement=retry.firstOrNull { CapturePanelGeometry.levelLine(listOf(it))!=null }
             if(replacement!=null) {
               val revised=lines.map { if(it===anchor) replacement else it }
-              val improved=bridge.parseCapture(AppJson.codec.encodeToString(revised),gender)
+              val improved=bridge.parseCapture(AppJson.codec.encodeToString(revised),gender,particle)
               if(improved.material?.species?.isNotBlank()==true)return improved
             }
           } finally { enlarged.recycle();if(crop!==bitmap)crop.recycle() }

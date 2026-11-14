@@ -1,6 +1,6 @@
 # Android 开发与验证
 
-原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.9.1（versionCode 17），共享规则 0.2.39；applicationId 保持 com.example.pokemmobreederhelper。
+原生 Kotlin / Jetpack Compose + Chaquopy Python 3.12。应用 0.10.0（versionCode 18），共享规则 0.2.43；applicationId 保持 com.example.pokemmobreederhelper。
 
 ## 环境
 
@@ -57,7 +57,7 @@ python ../scripts/generate-capture-fixture.py --font 'C:\Windows\Fonts\msyh.ttc'
 
 ## 实时屏幕采集
 
-Android 0.9.1 使用 MediaProjection 前台服务与可最小化浮窗，每次开始请求新的系统授权。展开时冻结稳定识别预览，点“下一只”原子保存并推进仓位，再等待新精灵；“保存并结束”保存最后一只。最小化时自动入库，结果提示 5 秒或窗外触摸关闭。
+Android 0.10.0 使用 MediaProjection 前台服务与可最小化浮窗，每次开始请求新的系统授权。展开时冻结稳定识别预览，点“下一只”原子保存并推进仓位，再等待新精灵；“保存并结束”保存最后一只。最小化时自动入库，结果提示 5 秒或窗外触摸关闭。
 
 LiveCaptureGate 比较名字、性别、性格、六项 IV 等资料，连续稳定后才接收；下一只、空白过渡、暂停和旋转都不清除上一只记录。已知字段只在缺失／出现之间变化不算新精灵；完全一致的精灵无法仅凭画面区分，会继续等待。
 

@@ -202,6 +202,62 @@ def find_candidates(
 
 
 def make_report_with_candidates(
+    inventory: list[Monster], species: str, target_gender: str, nature: str,
+    iv_string: str, egg_groups: list[str], target_alpha: bool = False,
+    allow_ditto: bool = True, strategy: str = "inventory", nature_strategy: str = "late",
+    allow_alpha_materials: bool = False, excluded_ids=None,
+    intermediate_gender_strategy: str = "lock_all", need_hidden_ability: bool = False,
+    target_moves=None, convert_maternal_with_ditto: bool = False,
+    preferred_material_ids=None, cost_pricing=None, max_purchase_v=None,
+    cosmetic_options: dict | None = None,
+) -> tuple[str, list]:
+    from cosmetics import ACTIVE_COSMETICS, CosmeticPolicy, monster_costume, particle_names
+    policy = CosmeticPolicy.from_options(cosmetic_options, species)
+    filtered = [monster for monster in inventory if policy.allowed(monster)]
+    token = ACTIVE_COSMETICS.set(policy)
+    try:
+        report, candidates = _make_report_with_candidates(
+            filtered, species, target_gender, nature, iv_string, egg_groups,
+            target_alpha, allow_ditto, strategy, nature_strategy, allow_alpha_materials,
+            excluded_ids, intermediate_gender_strategy, need_hidden_ability, target_moves,
+            convert_maternal_with_ditto or bool(policy.target_costume),
+            preferred_material_ids, cost_pricing, max_purchase_v,
+        )
+        accepted = []
+        for candidate in candidates:
+            root = candidate.root
+            lineage = root.costume_lineage
+            if candidate.nature_phase in {"gamble_upper", "gamble_lower"} and (policy.target_costume or policy.target_particles):
+                body = next((m for m in filtered if m.id == candidate.retained_body_id), None)
+                if body is None or (policy.target_costume and monster_costume(body) != policy.target_costume):
+                    continue
+                if not policy.target_particles.issubset(body.particles):
+                    continue
+                if policy.unique and root.particles.intersection(body.particles):
+                    continue
+                lineage = (body.costume_lineage or body.id) if body.is_costume else ""
+            elif not policy.accepts_goal(root):
+                continue
+            candidate.cosmetic_options = policy.to_options(lineage)
+            accepted.append(candidate)
+        if cosmetic_options and (policy.target_particles or policy.target_costume or policy.particle_mode != "protect"):
+            summary = []
+            if policy.target_particles:
+                summary.append("目标粒子：" + particle_names(policy.target_particles))
+            if policy.target_costume:
+                summary.append("时装后代全程作为主线；本次规划关闭 X 位 31 素材保护")
+                summary.append("时装公体转母可同时升 V；必须用实际护腕／不变石保证保留原目标 IV，且子代不低于双方素材档位")
+            if policy.unique:
+                summary.append("双亲实际携带的全部粒子不得重复，未选作目标的粒子也参与检查")
+            report = "\n".join(summary) + "\n\n" + report
+        if not accepted and (policy.target_particles or policy.target_costume):
+            report += "\n未找到同时满足粒子、时装主线和个体／性格要求的路线；请核对素材粒子种类及母系。"
+        return report, accepted
+    finally:
+        ACTIVE_COSMETICS.reset(token)
+
+
+def _make_report_with_candidates(
     inventory: list[Monster],
     species: str,
     target_gender: str,
