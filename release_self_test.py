@@ -40,7 +40,14 @@ def run_checks() -> dict[str, object]:
     partial_name = OCRProcessor.parse([OCRItem("Lv.40 拉'恶冰", .99, name_box)])
     if partial_name["species"] or partial_name["species_raw"] != "拉'恶冰":
         raise RuntimeError("Packaged name parser accepted an incomplete species")
-    checks["species_ocr"] = {"reviewed_name": "安瓢虫", "incomplete_name": "rejected-with-original-preserved"}
+    if set(partial_name["species_candidates"]) != {"狃拉", "玛狃拉"} or len(species._ocr_types) != 649:
+        raise RuntimeError("Packaged candidate name dictionary is incomplete")
+    before = species.resolve_ocr_name.cache_info()
+    species.resolve_ocr_name("拉'恶冰", "")
+    if species.resolve_ocr_name.cache_info().hits <= before.hits:
+        raise RuntimeError("Packaged name resolution cache is not active")
+    checks["species_ocr"] = {"reviewed_name": "安瓢虫", "incomplete_name": "rejected-with-original-preserved",
+                             "candidates": partial_name["species_candidates"], "type_context_species": 649, "cache": "ok"}
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")

@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.45"
+APP_VERSION = "0.2.46"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -251,6 +251,9 @@ class App(CosmeticControls):
         self.slot_var = StringVar()
         self.account_var = StringVar(value=self.accounts[0] if self.accounts else "")
         self.species_var = StringVar()
+        self.ocr_species_choice_var = StringVar()
+        self.ocr_species_candidates: tuple[str, ...] = ()
+        self._ocr_species_raw = ""
         self.gender_var = StringVar()
         self.nature_var = StringVar()
         self.iv_var = StringVar()
@@ -1649,7 +1652,18 @@ class App(CosmeticControls):
 
         self.raw_text = ttk.LabelFrame(parent, text="识别摘要", padding=6)
         self.raw_text.pack(fill=X)
+        self.ocr_species_panel = ttk.Frame(self.raw_text)
+        ttk.Label(self.ocr_species_panel, text="名字待核对", style="Field.TLabel").pack(side=LEFT, padx=(0, 8))
+        self.ocr_species_combo = ttk.Combobox(
+            self.ocr_species_panel, textvariable=self.ocr_species_choice_var,
+            state="readonly", width=18,
+        )
+        self.ocr_species_combo.pack(side=LEFT, fill=X, expand=True)
+        self.ocr_species_combo.bind("<<ComboboxSelected>>", self._select_ocr_species_candidate)
+        ttk.Button(self.ocr_species_panel, text="手动填写", style="Compact.TButton",
+                   command=self._edit_ocr_species).pack(side=LEFT, padx=(8, 0))
         summary_body = ttk.Frame(self.raw_text)
+        self.current_summary_body = summary_body
         summary_body.pack(fill=X)
         summary_body.columnconfigure(0, weight=3)
         summary_body.columnconfigure(1, weight=2, minsize=220)
@@ -1765,6 +1779,50 @@ class App(CosmeticControls):
         self.groups_var.set(", ".join(record.egg_groups))
         if record.allowed_genders == ("N",):
             self.gender_var.set("N")
+        if getattr(self, "ocr_species_candidates", ()):
+            raw = getattr(self, "_ocr_species_raw", "")
+            self.raw_text_box.delete("1.0", "1.end")
+            self.raw_text_box.insert("1.0", f"名字：{record.display_name}（已选择；原文：{raw}）")
+            if record.allowed_genders == ("N",):
+                self.raw_text_box.delete("2.0", "2.end")
+                self.raw_text_box.insert("2.0", "性别：无性别")
+            recent = self.recent_scan_var.get().split("｜")
+            if len(recent) >= 3:
+                recent[1] = record.display_name
+                if record.allowed_genders == ("N",):
+                    recent[2] = "无性别"
+                self.recent_scan_var.set("｜".join(recent))
+            self.status_var.set(f"已选择 {record.display_name}，请继续核对其他资料后保存。")
+        self._set_ocr_species_candidates(())
+
+    def _set_ocr_species_candidates(self, names) -> None:
+        """A shortlist is advisory; opening it never fills or saves the form."""
+        database = getattr(self, "species_db", None)
+        records = (database.get(str(name)) for name in names) if database is not None else ()
+        self.ocr_species_candidates = tuple(dict.fromkeys(
+            record.display_name for record in records if record is not None
+        ))[:5]
+        choice = getattr(self, "ocr_species_choice_var", None)
+        if choice is not None:
+            choice.set("请选择候选精灵" if self.ocr_species_candidates else "")
+        panel = getattr(self, "ocr_species_panel", None)
+        if panel is not None:
+            self.ocr_species_combo.configure(values=self.ocr_species_candidates)
+            if self.ocr_species_candidates:
+                panel.pack(fill=X, pady=(0, 6), before=self.current_summary_body)
+            else:
+                panel.pack_forget()
+
+    def _select_ocr_species_candidate(self, _event=None) -> None:
+        name = self.ocr_species_choice_var.get()
+        if name in self.ocr_species_candidates:
+            self._on_current_species_autocomplete(name)
+
+    def _edit_ocr_species(self) -> None:
+        self.current_form_expanded = True
+        compact = self.layout_orientation == "compact"
+        self._apply_current_result_density(compact, compact and self.root.winfo_height() < 780)
+        self.current_species_entry.focus_set()
 
     def _on_material_alpha_changed(self, _event=None) -> None:
         if self.alpha_var.get() == "头目":
@@ -3991,6 +4049,7 @@ class App(CosmeticControls):
         raw_lines = [line.strip() for line in str(parsed.get("raw_text", "")).splitlines() if line.strip()]
         primary_lines = [
             str(parsed.get("species", "")),
+            str(parsed.get("species_raw", "")),
             *(line for line in raw_lines if "lv" in line.lower()),
         ]
         gender = str(parsed.get("gender", ""))
@@ -4005,6 +4064,13 @@ class App(CosmeticControls):
 
     def _apply_parsed_result(self, parsed: dict) -> tuple[SpeciesRecord | None, bool]:
         record, exact_species = self._resolve_ocr_species(parsed)
+        self._ocr_species_raw = str(parsed.get("species_raw", parsed.get("species", "")))
+        candidates = parsed.get("species_candidates") or ()
+        if not record and not candidates and getattr(self, "species_db", None) is not None:
+            candidates = [item.display_name for item in self.species_db.ocr_name_candidates(
+                self._ocr_species_raw, str(parsed.get("gender", ""))
+            )]
+        self._set_ocr_species_candidates(candidates if not record else ())
         species = record.display_name if record else ""
         gender = normalize_gender(str(parsed.get("gender", "")))
         confidence = float(parsed.get("confidence", 0.0) or 0.0)
@@ -4113,6 +4179,13 @@ class App(CosmeticControls):
         self._focus_helper_for_batch_action()
 
     def _handle_batch_enter(self, _event=None) -> str | None:
+        combo = getattr(self, "ocr_species_combo", None)
+        widget = getattr(_event, "widget", None)
+        if combo is not None and widget is not None and (
+            widget == combo or str(widget).startswith(str(combo) + ".")
+        ):
+            # Enter may close the dropdown, but must not confirm inventory too.
+            return "break"
         if self.workspace_mode_var.get() in {*PAGE_TITLES.values(), GUIDE_TITLE}:
             return None
         if not self.batch_running:
@@ -4193,6 +4266,7 @@ class App(CosmeticControls):
         # review is an explicit inventory action because two legitimate Pokemon
         # can have identical visible data, and box positions are only temporary.
         self._upsert_inventory(monster, match_location=False)
+        self._set_ocr_species_candidates(())
         self.batch_saved_count += 1
         self.batch_waiting_confirmation = False
         self.batch_last_confirmed_fingerprint = fingerprint
@@ -4391,6 +4465,7 @@ class App(CosmeticControls):
         self.set_image(image.convert("RGB"), "剪贴板")
 
     def set_image(self, image: Image.Image, source: str) -> None:
+        self._set_ocr_species_candidates(())
         self.preview_fit_mode = True
         if hasattr(self, "canvas"):
             self.canvas.xview_moveto(0)
@@ -4641,6 +4716,8 @@ class App(CosmeticControls):
         )
 
     def clear_current(self) -> None:
+        self._set_ocr_species_candidates(())
+        self._ocr_species_raw = ""
         for variable in (self.species_var, self.gender_var, self.nature_var, self.iv_var, self.ability_var, self.item_var, self.moves_var, self.groups_var, self.source_var):
             variable.set("")
         self.alpha_var.set("普通")
@@ -4754,7 +4831,11 @@ class App(CosmeticControls):
         if not species or species == "待识别":
             messagebox.showwarning("信息不完整", "至少需要填写精灵种类。")
             return
-        record = self.species_db.get(species, fuzzy=True)
+        pending_name = bool(getattr(self, "ocr_species_candidates", ()))
+        record = self.species_db.get(species, fuzzy=not pending_name)
+        if pending_name and record is None:
+            messagebox.showwarning("名字未确认", "请先选择候选精灵，或手动填写图鉴中的完整名字，再确认入库。")
+            return
         if record:
             self.species_var.set(record.display_name)
             self.groups_var.set(", ".join(record.egg_groups))
@@ -4775,6 +4856,7 @@ class App(CosmeticControls):
         # an existing inventory row for editing. Duplicate review is performed
         # later from the inventory tab instead of blocking capture.
         self._upsert_inventory(monster, match_location=False)
+        self._set_ocr_species_candidates(())
         self.status_var.set(f"已保存并确认 {monster.species}，库存共 {len(self.inventory)} 只。")
 
     def open_account_order_dialog(self) -> None:
@@ -5149,6 +5231,7 @@ class App(CosmeticControls):
             return
         monster = next((item for item in self.inventory if item.id == selected[0]), None)
         if monster:
+            self._set_ocr_species_candidates(())
             self.editing_monster_id = monster.id
             self.save_monster_button.configure(text="更新选中素材并标记已核对")
             self.current_source = monster.source

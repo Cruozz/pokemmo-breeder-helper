@@ -64,6 +64,14 @@ REVIEWED_OCR_NAMES = {
 }
 OCR_TYPE_WORDS = ("超能力", "超能", "格斗", "飞行", "地面", "岩石", "幽灵", "妖精", "一般", "普通", "超", "冰", "恶", "虫", "毒", "钢", "火", "水", "草", "电", "龙", "飞", "岩", "地", "幽", "普", "斗")
 CONTEXTUAL_OCR_NAMES = {"又字蝠": (169, ("飞", "毒")), "娱王": (545, ("毒", "虫")), "玛拉": (461, ("冰", "恶"))}
+OCR_TYPE_ALIASES = {
+    "一般": "NORMAL", "普通": "NORMAL", "普": "NORMAL", "火": "FIRE", "水": "WATER",
+    "电": "ELECTRIC", "草": "GRASS", "冰": "ICE", "格斗": "FIGHTING", "斗": "FIGHTING",
+    "毒": "POISON", "地面": "GROUND", "地": "GROUND", "飞行": "FLYING", "飞": "FLYING",
+    "超能力": "PSYCHIC", "超能": "PSYCHIC", "超": "PSYCHIC", "虫": "BUG", "岩石": "ROCK",
+    "岩": "ROCK", "幽灵": "GHOST", "幽": "GHOST", "龙": "DRAGON", "恶": "DARK",
+    "钢": "STEEL", "妖精": "FAIRY",
+}
 
 # These babies require an incense to hatch in PokeMMO.  Without the incense,
 # breeding their evolution line yields the immediate evolved form instead.
@@ -148,6 +156,9 @@ class SpeciesDatabase:
         self.aliases: dict[str, SpeciesRecord] = {}
         self.by_id: dict[int, SpeciesRecord] = {}
         self.children_by_parent: dict[int, list[SpeciesRecord]] = {}
+        self._ocr_aliases: tuple = ()
+        self._ocr_embedded_aliases: tuple = ()
+        self._ocr_types: dict[int, frozenset[str]] = {}
         self._load()
 
     def _load(self) -> None:
@@ -190,6 +201,21 @@ class SpeciesDatabase:
                 self.children_by_parent.setdefault(record.evolves_from_species_id, []).append(record)
         for children in self.children_by_parent.values():
             children.sort(key=lambda item: item.id)
+        # Immutable indices are built once, rather than normalizing 649 records
+        # again on every uncertain frame. Resolution caches retain misses too.
+        self._ocr_aliases = tuple((record, tuple(dict.fromkeys(
+            normalize_name(alias) for alias in record.names if re.search(r"[\u3400-\u9fff]", alias)
+        ))) for record in self.records)
+        self._ocr_embedded_aliases = tuple((alias, record) for alias, record in self.aliases.items()
+                                           if len(alias) >= 2 and re.search(r"[\u3400-\u9fff]", alias))
+        self._ocr_types: dict[int, frozenset[str]] = {}
+        try:
+            payload = json.loads(self.path.with_name("species_ocr_types.json").read_text(encoding="utf-8"))
+            if payload.get("schema_version") == 1:
+                self._ocr_types = {int(identifier): frozenset(values) for identifier, values in payload["types"].items()
+                                   if int(identifier) in self.by_id and isinstance(values, list)}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # Optional context narrows suggestions; it never authorizes a correction.
 
     def get_by_id(self, species_id: int | str) -> SpeciesRecord | None:
         try:
@@ -369,10 +395,10 @@ class SpeciesDatabase:
         if not key:
             return None
         matches: list[tuple[int, SpeciesRecord]] = []
-        for alias, record in self.aliases.items():
+        for alias, record in self._ocr_embedded_aliases:
             # Substring matching is deliberately restricted to Chinese names;
             # short English aliases create too many accidental OCR matches.
-            if len(alias) >= 2 and re.search(r"[\u3400-\u9fff]", alias) and alias in key:
+            if alias in key:
                 matches.append((len(alias), record))
         return max(matches, default=(0, None), key=lambda item: item[0])[1]
 
@@ -462,6 +488,7 @@ class SpeciesDatabase:
                 return self.get_by_id(identifier)
         return None
 
+    @lru_cache(maxsize=2048)
     def resolve_ocr_name(self, value: str, gender: str = "") -> tuple[SpeciesRecord | None, bool, float]:
         """Resolve one OCR name row and report whether the correction is safe.
 
@@ -484,23 +511,7 @@ class SpeciesDatabase:
             if embedded is not None:
                 return embedded, True, 1.0
 
-        per_record: dict[int, tuple[float, SpeciesRecord, int, int]] = {}
-        for record in self.records:
-            aliases = {
-                normalize_name(alias)
-                for alias in record.names
-                if re.search(r"[\u3400-\u9fff]", alias)
-            }
-            for candidate in variants:
-                for alias in aliases:
-                    if not alias or abs(len(alias) - len(candidate)) > 3:
-                        continue
-                    score = SequenceMatcher(None, candidate, alias).ratio()
-                    current = per_record.get(record.id)
-                    if current is None or score > current[0]:
-                        per_record[record.id] = (score, record, len(candidate), len(alias))
-
-        ranked = sorted(per_record.values(), key=lambda item: (-item[0], abs(item[2] - item[3]), item[1].id))
+        ranked = self._rank_ocr_names(variants)
         if not ranked:
             return None, False, 0.0
         best_score, best_record, query_length, alias_length = ranked[0]
@@ -512,6 +523,48 @@ class SpeciesDatabase:
             return None, False, best_score
         confident = best_score >= 0.82 and margin >= 0.06
         return best_record, confident, best_score
+
+    @lru_cache(maxsize=128)
+    def _rank_ocr_names(self, variants: tuple[str, ...]) -> tuple:
+        per_record: dict[int, tuple[float, SpeciesRecord, int, int]] = {}
+        for record, aliases in self._ocr_aliases:
+            for candidate in variants:
+                for alias in aliases:
+                    if not alias or abs(len(alias) - len(candidate)) > 3:
+                        continue
+                    score = SequenceMatcher(None, candidate, alias).ratio()
+                    current = per_record.get(record.id)
+                    if current is None or score > current[0]:
+                        per_record[record.id] = (score, record, len(candidate), len(alias))
+
+        return tuple(sorted(per_record.values(), key=lambda item: (-item[0], abs(item[2] - item[3]), item[1].id)))
+
+    @staticmethod
+    def _ocr_type_hint(value: str) -> frozenset[str]:
+        raw = re.sub(r"^.*?\bl(?:[vw][.,，·]?|[.,，·])\s*\d+", "", value or "", flags=re.IGNORECASE)
+        key = normalize_name(raw).rstrip("♀♂早")
+        types = []
+        for _ in range(2):
+            suffix = next((word for word in OCR_TYPE_WORDS if key.endswith(word)), None)
+            if suffix is None:
+                break
+            types.append(OCR_TYPE_ALIASES[suffix])
+            key = key[:-len(suffix)]
+        return frozenset(types) if key else frozenset()
+
+    def ocr_name_candidates(self, value: str, gender: str = "", limit: int = 5) -> tuple[SpeciesRecord, ...]:
+        """Suggestions require an explicit user choice, regardless of type context."""
+        key = normalize_name(value)
+        limit = max(0, min(5, limit))
+        if not limit or not key or len(key) > 40 or not re.search(r"[\u3400-\u9fff]", key):
+            return ()
+        record, confident, _score = self.resolve_ocr_name(value, gender)
+        if record is not None and confident:
+            return (record,)
+        ranked = [row[1] for row in self._rank_ocr_names(self._ocr_name_variants(value, gender)) if row[0] >= .45]
+        hint = self._ocr_type_hint(value)
+        matching = [record for record in ranked if hint and hint.issubset(self._ocr_types.get(record.id, frozenset()))]
+        return tuple((matching or ranked)[:limit])
 
 
 @lru_cache(maxsize=1)

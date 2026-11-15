@@ -690,8 +690,12 @@ class OCRProcessor:
 
         from species_data import get_species_database
         species_raw = species
-        resolved, confident, species_score = get_species_database().resolve_ocr_name(species, gender)
+        species_db = get_species_database()
+        resolved, confident, species_score = species_db.resolve_ocr_name(species, gender)
         species = resolved.display_name if resolved and confident else ""
+        species_candidates = [] if species else [
+            record.display_name for record in species_db.ocr_name_candidates(species_raw, gender)
+        ]
 
         relevant: list[OCRItem] = []
         for item in ([species_item] if species_item else []) + iv_items:
@@ -716,6 +720,7 @@ class OCRProcessor:
             "species": species,
             "species_raw": species_raw,
             "species_confidence": species_score,
+            "species_candidates": species_candidates,
             "gender": gender,
             "ivs": ivs or [None] * 6,
             "nature": nature,

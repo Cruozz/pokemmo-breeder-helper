@@ -32,6 +32,11 @@ Additional bundled files:
 - `pokemmo_overrides.json`: reviewed PokeMMO/legacy Chinese species aliases and
   explicit game-specific breeding differences such as the Nidoran family.
 - `move_ocr_overrides.json`: reviewed OCR mistakes from supplied screenshots.
+- `species_ocr_types.json`: a 649-species type index extracted locally from
+  the bundled `guide.json.gz` by `scripts/build_species_ocr_types.py`; its
+  source SHA-256 is recorded. Types only narrow suggestions for an uncertain
+  OCR name. They never authorize an automatic species correction or change
+  breeding rules. Matching still uses `species.json` and reviewed aliases.
 
 The generated JSON metadata records each source workbook name, modified time
 and SHA-256 digest. No PokeMMO process, client file, log or network traffic is
