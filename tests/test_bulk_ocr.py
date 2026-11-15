@@ -85,11 +85,30 @@ def test_next_batch_cannot_overflow_last_page_or_accept_bad_batch_size():
     with pytest.raises(ValueError):next_batch_range(3,1,20,21)
 
 
-def test_count_or_highlight_mismatch_leaves_all_positions_unassigned():
+def test_count_mismatch_still_leaves_all_positions_unassigned():
     cells=[dict(slot=i+8,gender="M",level=40) for i in range(2)]
-    for count,highlights in ((1,[]),(2,[8,10])):
+    for count,highlights in ((1,[]),(1,[8,10])):
         result=combine([ready(1,8),ready(2,9)],cells,6,8,count,highlights)
         assert result.blockers and all(row.slot is None and row.gender=="" for row in result.rows)
+
+
+@pytest.mark.parametrize("highlights",[[1],[8,10],[28,29,30,38,39,40],list(range(1,21))])
+def test_color_highlights_are_advisory_and_cannot_replace_the_entered_range(highlights):
+    rows=[ready(i+1,21+i,reviewed=False,nature=None,has_particles=None,is_costume=None) for i in range(20)]
+    cells=[dict(slot=21+i,gender="M",level=40,is_alpha=False) for i in range(20)]
+    result=combine(rows,cells,3,21,20,highlights)
+    assert not result.blockers and result.warnings
+    assert [row.slot for row in result.rows]==list(range(21,41))
+    assert all(row.gender=="M" and row.warehouse_level==40 for row in result.rows)
+    inventory,_=prepare_inventory(result,"highlight-regression","测试",3,list(range(1,21)),[],False)
+    assert len(inventory)==20 and all(not monster.verified and monster.planner_usable for monster in inventory)
+    restored=BulkResult.from_dict(json.loads(json.dumps(result.to_dict())))
+    assert restored.warnings==result.warnings and restored.selected_slots==highlights
+
+
+def test_legacy_results_without_warning_field_still_load():
+    value=BulkResult([ready()]).to_dict();value.pop("warnings")
+    assert BulkResult.from_dict(value).warnings==[]
 
 
 def test_warehouse_level_mismatch_cannot_be_confirmed_without_manual_position_review():

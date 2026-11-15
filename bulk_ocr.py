@@ -108,6 +108,7 @@ class BulkResult:
     selected_slots: list[int] = field(default_factory=list)
     count: int = 0
     capture_id: str = field(default_factory=lambda:str(uuid.uuid4()))
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -116,7 +117,7 @@ class BulkResult:
     def from_dict(cls, value: dict) -> BulkResult:
         return cls([BulkRow.from_dict(row) for row in value.get("rows", [])],
                    list(value.get("blockers", [])), list(value.get("selected_slots", [])), int(value.get("count",0)),
-                   str(value.get("capture_id") or uuid.uuid4()))
+                   str(value.get("capture_id") or uuid.uuid4()),list(value.get("warnings", [])))
 
 
 def slot_range(page: int, start: int, count: int) -> list[int]:
@@ -219,7 +220,7 @@ def parse_release(image: Any, items: list[OCRItem]) -> list[BulkRow]:
 
 
 def selected_slots(image: Any) -> list[int]:
-    """Conservative positive highlight evidence; no highlights means unknown."""
+    """Advisory colour/focus hints; user-entered positions stay authoritative."""
     image = image.convert("RGB")
     width,height = image.width/10,image.height/6
     result = []
@@ -269,11 +270,12 @@ def combine(rows: list[BulkRow], cells: list[dict], page: int, start: int, count
             highlights: list[int] | None = None) -> BulkResult:
     slots = slot_range(page,start,count)
     blockers = []
+    warnings = []
     if len(rows)!=count or len(cells)!=count:
         blockers.append(f"数量不符：列表 {len(rows)} / 仓库 {len(cells)} / 设置 {count}。请修正数量或重新截取。")
     if highlights and highlights!=slots:
-        blockers.append("仓库高亮格位与设置范围不一致，请核对起始格、数量和截图。")
-    result = BulkResult(rows,blockers,list(highlights or []),len(rows))
+        warnings.append(f"仓库高亮仅供参考；已按设置的第 {start}～{slots[-1]} 格对应，不影响入库。")
+    result = BulkResult(rows,blockers,list(highlights or []),len(rows),warnings=warnings)
     for row in rows:
         row.slot = None
         row.gender = ""

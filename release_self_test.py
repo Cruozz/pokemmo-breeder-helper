@@ -64,6 +64,13 @@ def run_checks() -> dict[str, object]:
     if slot_range(6,8,20)!=list(range(8,28)):
         raise RuntimeError("Packaged batch position range failed")
     checks["bulk_capture"] = {"separate_workflow":True,"unknown_fields":"saved-unreviewed-and-usable","replay":"idempotent","count_mismatch":"unassigned","range":"6:8-27"}
+    hint_rows = [BulkRow(i+1,species="玛狃拉",level=40,ivs=[31,1,2,3,4,5]) for i in range(20)]
+    hint_cells = [{"slot":i+21,"level":40,"gender":"M","is_alpha":False} for i in range(20)]
+    hint_result = combine(hint_rows,hint_cells,3,21,20,[1])
+    hint_inventory,_ = prepare_inventory(hint_result,"focus-self-test","自检",3,list(range(1,21)),[],False)
+    if hint_result.blockers or not hint_result.warnings or [row.slot for row in hint_result.rows]!=list(range(21,41)) or len(hint_inventory)!=20:
+        raise RuntimeError("Packaged focus highlight blocked the entered range")
+    checks["bulk_capture"]["highlight_handling"] = "advisory-only-position-and-gender-retained"
     if next_batch_range(3,1,20,20)!=(3,21,20) or next_batch_range(3,51,10,20)!=(4,1,20):
         raise RuntimeError("Packaged batch continuation failed")
     from warehouse_vision import classify_alpha_icon
@@ -126,6 +133,12 @@ def run_checks() -> dict[str, object]:
             stored = workspace.store.load()
             if len(workspace.tabs.tabs())!=2 or not workspace.auto_import.get() or stored["result"]["rows"][0]["has_particles"] is not None:
                 raise RuntimeError("Packaged batch draft UI lost unknown fields")
+            workspace.page.set("3");workspace.start.set("21");workspace.count.set("20")
+            workspace.result = hint_result
+            workspace.stale = False
+            workspace._refresh(select=True)
+            if str(workspace.import_button.cget("state"))!="normal" or str(workspace.retry_button.cget("state"))!="normal":
+                raise RuntimeError("Packaged advisory highlight disabled inventory actions")
             workspace.page.set("3");workspace.start.set("1");workspace.count.set("20")
             workspace.result = BulkResult([BulkRow(i+1,slot=i+1,imported=True) for i in range(20)])
             workspace.stale = False

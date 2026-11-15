@@ -56,6 +56,25 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.root.update_idletasks()
         return self.app.bulk_workspace
 
+    def single_row_sources(self,bulk):
+        bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
+        warehouse=Image.new("RGB",(800,400),(30,35,40))
+        ImageDraw.Draw(warehouse).rectangle((567,42,573,53),fill=(20,150,240))
+        bulk.set_source("warehouse",warehouse)
+        bulk.set_source("release",Image.new("RGB",(700,180),(50,60,65)))
+        bulk.rois={"warehouse":(0,0,800,400),"release":(0,0,700,180)}
+        class FakeOCR:
+            def recognize(self,image):
+                def entry(text,x,y,width):return OCRItem(text,.99,[[x,y],[x+width,y],[x+width,y+20],[x,y+20]])
+                return [entry("40",20,20,25)] if image.size==(720,112) else [entry("Lv.40 玛狃拉'恶冰",70,50,168),entry("31/1/2/3/4/5",75,75,150)]
+        bulk.get_processor=lambda:FakeOCR()
+
+    def finish_recognition(self,bulk):
+        deadline=time.monotonic()+4
+        while bulk.busy and time.monotonic()<deadline:
+            self.root.update();time.sleep(.01)
+        self.assertFalse(bulk.busy)
+
     def test_modes_pause_capture_and_preserve_separate_fields_regions_and_progress(self):
         app=self.app
         app.species_var.set("伊布")
@@ -82,9 +101,11 @@ class BulkWorkspaceTests(unittest.TestCase):
 
     def test_batch_controls_fit_small_and_large_windows(self):
         bulk=self.bulk()
+        bulk.result.warnings=["仓库高亮仅供参考；已按设置的第 21～40 格对应，不影响入库。"]
+        bulk._refresh()
         for geometry in ("720x600","1200x800"):
             self.root.geometry(geometry);self.root.update();self.app._apply_responsive_layout();self.root.update_idletasks()
-            for page,button in ((bulk.input_page,bulk.recognize_button),(bulk.review_page,bulk.import_button)):
+            for page,button in ((bulk.input_page,bulk.recognize_button),(bulk.review_page,bulk.import_button),(bulk.review_page,bulk.retry_button)):
                 bulk.tabs.select(page);self.root.update_idletasks()
                 self.assertTrue(button.winfo_ismapped())
                 self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),self.root.winfo_rooty()+self.root.winfo_height())
@@ -300,23 +321,13 @@ class BulkWorkspaceTests(unittest.TestCase):
 
     def test_recognition_thread_reads_only_its_two_regions_and_keeps_unknown_review_fields(self):
         bulk=self.bulk()
-        bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
-        warehouse=Image.new("RGB",(800,400),(30,35,40))
-        ImageDraw.Draw(warehouse).rectangle((567,42,573,53),fill=(20,150,240))
-        bulk.set_source("warehouse",warehouse)
-        bulk.set_source("release",Image.new("RGB",(700,180),(50,60,65)))
-        bulk.rois={"warehouse":(0,0,800,400),"release":(0,0,700,180)}
-        class FakeOCR:
-            def recognize(self,image):
-                def entry(text,x,y,width):return OCRItem(text,.99,[[x,y],[x+width,y],[x+width,y+20],[x,y+20]])
-                return [entry("40",20,20,25)] if image.size==(720,112) else [entry("Lv.40 玛狃拉'恶冰",70,50,168),entry("31/1/2/3/4/5",75,75,150)]
-        bulk.get_processor=lambda:FakeOCR()
-        bulk.recognize()
-        deadline=time.monotonic()+4
-        while bulk.busy and time.monotonic()<deadline:
-            self.root.update();time.sleep(.01)
-        self.assertFalse(bulk.busy)
+        self.single_row_sources(bulk)
+        with patch("bulk_ocr.selected_slots",return_value=[1]):
+            bulk.recognize()
+            self.finish_recognition(bulk)
         self.assertEqual(bulk.result.blockers,[])
+        self.assertTrue(bulk.result.warnings)
+        self.assertIn("高亮仅供参考",bulk.summary.get())
         row=bulk.result.rows[0]
         self.assertEqual((row.species,row.slot,row.gender,row.warehouse_level),("玛狃拉",8,"M",40))
         self.assertIsNone(row.has_particles)
@@ -327,3 +338,26 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertEqual(len(load_inventory()),1)
         self.assertFalse(load_inventory()[0].verified)
         self.assertTrue(load_inventory()[0].planner_usable)
+
+    def test_legacy_highlight_blocked_batch_can_retry_saved_images_and_enter_inventory(self):
+        bulk=self.bulk()
+        self.single_row_sources(bulk)
+        processor=bulk.get_processor
+        row=replace(ready_row(),slot=None,gender="",warehouse_level=None,reviewed=False)
+        bulk.result=BulkResult([row],["仓库高亮格位与设置范围不一致，请核对起始格、数量和截图。"],[1])
+        bulk.stale=False
+        state=bulk._state();state["result"].pop("warnings")
+        bulk.shutdown();bulk.destroy();self.app.bulk_workspace=None
+        bulk.store.save(state)
+        restored=self.bulk()
+        self.assertIn("重新识别这一批",restored.status.get())
+        self.assertEqual(str(restored.import_button.cget("state")),"disabled")
+        restored.get_processor=processor
+        with patch("bulk_ocr.selected_slots",return_value=[1]):
+            restored.retry_button.invoke()
+            self.finish_recognition(restored)
+        self.assertFalse(restored.result.blockers)
+        self.assertEqual((restored.result.rows[0].slot,restored.result.rows[0].gender),(8,"M"))
+        self.assertTrue(restored.result.rows[0].imported)
+        self.assertEqual(len(load_inventory()),1)
+        self.assertFalse(load_inventory()[0].verified)

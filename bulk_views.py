@@ -162,8 +162,12 @@ class BulkCaptureWorkspace(ttk.Frame):
             ttk.Button(bulk,text=label,command=lambda f=field:self.apply_to_selected(f,False)).grid(row=0,column=i+1,padx=2)
         ttk.Button(bulk,text="性格不登记",command=lambda:self.apply_to_selected("nature","")).grid(row=1,column=1,columnspan=2,sticky="w",pady=4)
         ttk.Checkbutton(review_controls,text="已查看列表与仓库的顺序（可选）",variable=self.order_confirmed).pack(anchor="w",pady=(6,0))
-        self.import_button = ttk.Button(review_controls,text="直接入库（无需补填）",style="Primary.TButton",command=self.import_selected)
-        self.import_button.pack(anchor="e",pady=(6,0))
+        final_actions = ttk.Frame(review_controls)
+        final_actions.pack(fill="x",pady=(6,0))
+        self.retry_button = ttk.Button(final_actions,text="重新识别这一批",command=self.recognize)
+        self.retry_button.pack(side="left")
+        self.import_button = ttk.Button(final_actions,text="直接入库（无需补填）",style="Primary.TButton",command=self.import_selected)
+        self.import_button.pack(side="right")
         ttk.Label(self,textvariable=self.status,wraplength=900).pack(fill="x",pady=(6,0))
         self.bind("<Configure>",lambda event:self._wrap(event.width) if event.widget is self else None)
 
@@ -242,6 +246,8 @@ class BulkCaptureWorkspace(ttk.Frame):
         for kind in self.source_text:
             self._thumbnail(kind)
         self.status.set("批次图片缺失或损坏；已入库资料仍可在库存编辑。" if missing_images else "已恢复本机批次；资料可在这里或库存随时补充。")
+        if not missing_images and any("仓库高亮格位" in message for message in self.result.blockers):
+            self.status.set("这批曾因高亮提示被拦截；截图已保留，点“重新识别这一批”即可重新对应，无需重新载图。")
 
     def pause(self):
         self.request += 1
@@ -417,7 +423,7 @@ class BulkCaptureWorkspace(ttk.Frame):
                     self.tabs.select(self.review_page)
                     self._refresh(select=True)
                     self._save()
-                    self.status.set("请先处理数量与格位问题。" if result.blockers else f"已读取 {len(result.rows)} 只，补充资料为可选。")
+                    self.status.set("尚不能入库："+"；".join(result.blockers) if result.blockers else f"已读取 {len(result.rows)} 只，补充资料为可选。")
                     if self.auto_import.get() and not result.blockers and result.rows:
                         self.import_selected(automatic=True)
                 self._refresh()
@@ -443,8 +449,10 @@ class BulkCaptureWorkspace(ttk.Frame):
         ready = sum(row.slot is not None and not row.imported for row in self.result.rows)
         self.summary.set("参数或截图已更改，请重新识别；原核对结果暂保留。" if self.stale else
                          "；".join(self.result.blockers) if self.result.blockers else
-                         f"共 {len(self.result.rows)} 只 · 尚未入库 {ready} 只 · 双击补充资料；性格、粒子、时装均可不填。")
+                         f"共 {len(self.result.rows)} 只 · 尚未入库 {ready} 只 · 双击补充资料；性格、粒子、时装均可不填。"
+                         + (" "+"；".join(self.result.warnings) if self.result.warnings else ""))
         self.recognize_button.configure(state="disabled" if self.busy else "normal")
+        self.retry_button.configure(state="disabled" if self.busy else "normal")
         self.import_button.configure(state="disabled" if self.busy or self.stale or self.result.blockers else "normal")
 
     def select_all(self, _event=None):
