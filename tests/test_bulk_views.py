@@ -13,7 +13,7 @@ from PIL import Image,ImageDraw
 from app import App
 from bulk_ocr import BulkResult,BulkRow
 from ocr_engine import OCRItem
-from storage import load_inventory
+from storage import load_inventory,save_inventory
 
 
 def ready_row():
@@ -89,22 +89,17 @@ class BulkWorkspaceTests(unittest.TestCase):
                 self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),self.root.winfo_rooty()+self.root.winfo_height())
                 self.assertLessEqual(button.winfo_rootx()+button.winfo_width(),self.root.winfo_rootx()+self.root.winfo_width())
 
-    def test_unknown_rows_cannot_import_but_confirmed_rows_import_once_without_advancing_continuous(self):
+    def test_unreviewed_rows_import_without_filling_fields_or_advancing_continuous(self):
         bulk=self.bulk()
         bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
         row=ready_row()
-        row.has_particles=None
-        bulk.result=BulkResult([row]);bulk.stale=False;bulk.order_confirmed.set(True)
-        bulk._refresh(select=True)
-        with patch("bulk_views.messagebox.showwarning") as warning:
-            bulk.import_selected()
-        warning.assert_called_once()
-        self.assertEqual(self.app.inventory,[])
-        row.has_particles=False
+        row.has_particles=row.is_costume=row.is_alpha=row.nature=None
+        row.reviewed=False
+        bulk.result=BulkResult([row])
         continuous_account=self.app.account_var.get()
         bulk.account.set("批量账号")
         bulk.stale=False
-        bulk.order_confirmed.set(True)
+        self.assertFalse(bulk.order_confirmed.get())
         bulk._refresh(select=True)
         with patch("app.save_inventory",side_effect=OSError("test write failure")),patch("bulk_views.messagebox.showwarning"):
             bulk.import_selected()
@@ -115,8 +110,14 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertEqual(len(load_inventory()),1)
         self.assertEqual((self.app.inventory[0].page,self.app.inventory[0].slot),("6","8"))
         self.assertTrue(row.imported)
+        self.assertFalse(self.app.inventory[0].verified)
+        self.assertTrue(self.app.inventory[0].planner_usable)
+        self.assertIn("nature",self.app.inventory[0].unreviewed_fields)
+        self.assertIn("未审核",bulk.tree.item("1","values")[-1])
         self.assertEqual(self.app.account_var.get(),continuous_account)
         row.imported=False  # Replay after an inventory write but before a draft-save crash.
+        bulk.sync_inventory()
+        self.assertTrue(row.imported)
         bulk._refresh(select=True);bulk.import_selected()
         self.assertEqual(len(load_inventory()),1)
         self.assertEqual(self.app.batch_slot_var.get(),"1")
@@ -154,24 +155,104 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertFalse(restored.result.rows[0].reviewed)
         self.assertEqual(restored.images["warehouse"].size,(800,400))
 
-    def test_editor_requires_explicit_unknown_fields_and_supports_reviewing_them(self):
+    def test_empty_scan_can_be_saved_and_edited_in_inventory_without_filling_anything(self):
+        bulk=self.bulk()
+        bulk.auto_import.set(False)
+        bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
+        row=BulkRow(1,slot=8)
+        bulk.result=BulkResult([row]);bulk.stale=False;bulk._refresh(select=True)
+        with patch("bulk_views.messagebox.showwarning") as warning:
+            bulk.import_selected()
+        warning.assert_not_called()
+        self.assertEqual(len(load_inventory()),1)
+        identifier=self.app.inventory[0].id
+        self.app.inventory_tree.selection_set(identifier)
+        self.app.edit_inventory_selected();self.root.update()
+        with patch("app.messagebox.showwarning") as warning:
+            self.app.save_current_monster()
+        warning.assert_not_called()
+        stored=load_inventory()
+        self.assertEqual(len(stored),1)
+        self.assertEqual(stored[0].id,identifier)
+        self.assertFalse(stored[0].verified)
+        self.assertEqual(stored[0].ivs,[None]*6)
+        self.app.inventory_tree.selection_set(identifier)
+        self.app.mark_selected_inventory_reviewed()
+        self.app.inventory_tree.selection_set(identifier)
+        self.app.edit_inventory_selected();self.root.update()
+        with patch("app.messagebox.showwarning") as warning:
+            self.app.save_current_monster()
+        warning.assert_not_called()
+        self.assertTrue(load_inventory()[0].verified)
+        self.assertFalse(load_inventory()[0].planner_usable)
+
+    def test_editor_can_save_or_mark_reviewed_without_filling_unknown_fields(self):
         bulk=self.bulk()
         row=ready_row();row.nature=None;row.is_alpha=None;row.is_costume=None;row.has_particles=None;row.reviewed=False
         bulk.result=BulkResult([row]);bulk._refresh(select=True)
         bulk.edit_selected()
         window=bulk.editor
-        combos=[widget for widget in descendants(window) if isinstance(widget,ttk.Combobox)]
-        for combo in combos:
-            values=tuple(combo.cget("values"))
-            for value in ("未登记（仅作IV素材）","普通","非时装","无粒子"):
-                if value in values:
-                    combo.set(value)
-                    break
-        next(widget for widget in descendants(window) if isinstance(widget,ttk.Button) and widget.cget("text")=="核对完成 / 下一只").invoke()
+        next(widget for widget in descendants(window) if isinstance(widget,ttk.Button) and widget.cget("text")=="保存资料").invoke()
         self.assertIsNone(bulk.editor)
-        self.assertEqual(row.problems(),[])
+        self.assertFalse(row.reviewed)
+        self.assertIsNone(row.nature)
+        self.assertIsNone(row.has_particles)
+        bulk.edit_selected()
+        next(widget for widget in descendants(bulk.editor) if isinstance(widget,ttk.Button) and widget.cget("text")=="标为已审核 / 下一只").invoke()
+        self.assertIsNone(bulk.editor)
         self.assertTrue(row.reviewed)
-        self.assertEqual(row.nature,"")
+        self.assertIsNone(row.nature)
+
+    def test_supplementing_imported_row_updates_existing_stock_and_preserves_traits(self):
+        bulk=self.bulk()
+        bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
+        row=ready_row();row.reviewed=False;row.nature=None;row.has_particles=True;row.particles=["bats"];row.is_costume=True
+        bulk.result=BulkResult([row]);bulk.stale=False;bulk._refresh(select=True)
+        bulk.import_selected()
+        original_id=self.app.inventory[0].id
+        bulk.edit_selected()
+        combo=next(widget for widget in descendants(bulk.editor) if isinstance(widget,ttk.Combobox) and "固执" in tuple(widget.cget("values")))
+        combo.set("固执")
+        next(widget for widget in descendants(bulk.editor) if isinstance(widget,ttk.Button) and widget.cget("text")=="保存资料").invoke()
+        stored=load_inventory()
+        self.assertEqual(len(stored),1)
+        self.assertEqual((stored[0].id,stored[0].nature),(original_id,"固执"))
+        self.assertFalse(stored[0].verified)
+        self.assertEqual(stored[0].particles,["bats"])
+        self.assertTrue(stored[0].is_costume)
+        self.app.inventory=[];save_inventory([])
+        with patch("bulk_views.messagebox.showwarning") as warning:
+            bulk.apply_to_selected("nature","胆小")
+        warning.assert_called_once()
+        self.assertEqual(load_inventory(),[])
+        self.assertEqual(row.nature,"固执")
+
+    def test_inventory_editor_supplements_pending_batch_without_forcing_review(self):
+        bulk=self.bulk()
+        bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
+        row=ready_row();row.reviewed=False;row.nature=None;row.has_particles=True;row.particles=["bats"];row.is_costume=None
+        bulk.result=BulkResult([row]);bulk.stale=False;bulk._refresh(select=True)
+        bulk.import_selected()
+        identifier=self.app.inventory[0].id
+        self.app.inventory_tree.selection_set(identifier)
+        self.app.edit_inventory_selected()
+        self.root.update()
+        self.app.nature_var.set("内敛")
+        with patch("app.messagebox.showwarning") as warning:
+            self.app.save_current_monster()
+        warning.assert_not_called()
+        stored=load_inventory()
+        self.assertEqual(len(stored),1)
+        self.assertEqual((stored[0].id,stored[0].nature),(identifier,"内敛"))
+        self.assertFalse(stored[0].verified)
+        self.assertEqual(stored[0].particles,["bats"])
+        self.assertIn("is_costume",stored[0].unreviewed_fields)
+        self.bulk()
+        self.assertEqual(row.nature,"内敛")
+        self.assertFalse(row.reviewed)
+        self.app.inventory_tree.selection_set(identifier)
+        self.app.mark_selected_inventory_reviewed()
+        self.assertTrue(load_inventory()[0].verified)
 
     def test_recognition_thread_reads_only_its_two_regions_and_keeps_unknown_review_fields(self):
         bulk=self.bulk()
@@ -197,3 +278,8 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertIsNone(row.has_particles)
         self.assertIsNone(row.nature)
         self.assertFalse(row.reviewed)
+        self.assertTrue(bulk.auto_import.get())
+        self.assertTrue(row.imported)
+        self.assertEqual(len(load_inventory()),1)
+        self.assertFalse(load_inventory()[0].verified)
+        self.assertTrue(load_inventory()[0].planner_usable)

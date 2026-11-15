@@ -1,7 +1,8 @@
-"""Read-only, bounded two-image capture. Unknown cosmetics never imply absence."""
+"""Bounded two-image capture; save observed data before optional review."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
+from datetime import datetime, timezone
 import re
 import statistics
 import uuid
@@ -71,23 +72,32 @@ class BulkRow:
         return problems
 
     def monster(self, session_id: str, account: str, page: int) -> Monster:
-        problems = self.problems()
-        if problems:
-            raise ValueError(f"第 {self.index} 条：{'、'.join(problems)}")
+        if type(self.slot) is not int or not 1 <= self.slot <= 60:
+            raise ValueError(f"第 {self.index} 条尚未对应仓位，请核对数量和范围。")
+        if len(self.ivs)!=6 or any(value is not None and (type(value) is not int or not 0<=value<=31) for value in self.ivs):
+            raise ValueError(f"第 {self.index} 条个体值格式无效。")
         from cosmetics import costume_family
         record = get_species_database().get(self.species)
+        missing = [name for name,value in (("nature",self.nature),("is_alpha",self.is_alpha),
+                   ("has_particles",self.has_particles),("is_costume",self.is_costume),("has_hidden_ability",self.hidden_ability)) if value is None]
+        if record is None:missing.append("species")
+        if not self.gender:missing.append("gender")
+        if any(value is None for value in self.ivs):missing.append("ivs")
+        if not self.position_reviewed and (self.level is None or self.warehouse_level!=self.level):missing.append("position")
         return Monster(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"pokemmo-bulk:{session_id}:{self.index}")),
-            species=record.display_name, gender=self.gender, nature=self.nature or "", ivs=self.ivs,
-            egg_groups=list(record.egg_groups), is_alpha=bool(self.is_alpha),
+            species=record.display_name if record else self.species or "待识别", gender=self.gender, nature=self.nature or "", ivs=self.ivs,
+            egg_groups=list(record.egg_groups) if record else [], is_alpha=bool(self.is_alpha),
             has_hidden_ability=bool(self.hidden_ability), has_particles=bool(self.has_particles),
             particles=list(self.particles), is_costume=bool(self.is_costume),
-            costume_id=costume_family(record.display_name) if self.is_costume else "",
-            account=account, page=str(page), slot=str(self.slot), verified=True,
+            costume_id=costume_family(record.display_name) if self.is_costume and record else "",
+            account=account, page=str(page), slot=str(self.slot), verified=self.reviewed,
+            usable_unreviewed=True,unreviewed_fields=missing,
             source="批量识别：仓库＋确认列表",
             confidence=self.confidence,
-            notes=f"批量人工核对；等级 {self.level}；原名字：{self.raw_name}"
-                  + ("；性格未登记" if self.nature == "" else ""),
+            notes=f"批量录入；等级 {self.level or '未读出'}；原名字：{self.raw_name}"
+                  + ("；性格未登记" if not self.nature else "")
+                  + ("；仓位与等级待核对" if "position" in missing else ""),
         )
 
 
@@ -278,8 +288,8 @@ def recognize_bulk(warehouse: Any, release: Any, page: int, start: int, count: i
 def prepare_inventory(result: BulkResult, session_id: str, account: str, page: int,
                       indices: list[int], inventory: list[Monster], order_confirmed: bool) -> tuple[list[Monster],list[str]]:
     """Validate the whole import before any write. Replays use stable IDs."""
-    if result.blockers or not order_confirmed:
-        raise ValueError("请先排除数量、格位问题，并确认列表顺序与仓库一致。")
+    if result.blockers:
+        raise ValueError("请先排除数量与格位范围问题。")
     if not account.strip() or not 1 <= page <= 999 or not session_id:
         raise ValueError("账号、仓库页或批次信息无效。")
     by_index = {row.index:row for row in result.rows}
@@ -302,3 +312,64 @@ def prepare_inventory(result: BulkResult, session_id: str, account: str, page: i
             raise ValueError(f"仓库 {page} 第 {monster.slot} 格已有素材；请先核对库存，未覆盖原记录。")
         new_positions.add(position)
     return [*inventory,*[monster for monster in additions if monster.id not in existing_ids]],[monster.id for monster in additions]
+
+
+def batch_record_id(session_id: str, capture_id: str, index: int) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL,f"pokemmo-bulk:{session_id}:{capture_id}:{index}"))
+
+
+def patch_inventory_records(inventory: list[Monster], identifiers: list[str], changes: dict) -> list[Monster]:
+    """Supplement existing stock only; a consumed material must never reappear."""
+    by_id = {monster.id:monster for monster in inventory}
+    if not identifiers or any(identifier not in by_id for identifier in identifiers):
+        raise ValueError("所选素材已不在库存，请先刷新库存；没有重新添加已消耗的素材。")
+    allowed = {"species","gender","ivs","nature","hidden_ability","is_alpha","has_particles","particles","is_costume","reviewed","position_reviewed","level"}
+    if set(changes)-allowed:
+        raise ValueError("不支持的库存补充项目。")
+    updated = {}
+    database = get_species_database()
+    for identifier in identifiers:
+        previous = by_id[identifier]
+        values = {}
+        missing = set(previous.unreviewed_fields)
+        for field_name,value in changes.items():
+            if field_name=="level":
+                continue  # Level evidence remains in the batch draft.
+            if field_name=="position_reviewed":
+                if value:
+                    missing.discard("position")
+                    values["notes"] = previous.notes.replace("；仓位与等级待核对", "")
+                continue
+            target = {"hidden_ability":"has_hidden_ability","reviewed":"verified"}.get(field_name,field_name)
+            if target in {"nature","is_alpha","has_particles","is_costume","has_hidden_ability"}:
+                if value is None:missing.add(target)
+                else:missing.discard(target)
+            values[target] = "" if target=="nature" and value is None else bool(value) if target in {"is_alpha","has_particles","is_costume","has_hidden_ability","verified"} else value
+        if "ivs" in values:
+            ivs = values["ivs"]
+            if len(ivs)!=6 or any(value is not None and (type(value) is not int or not 0<=value<=31) for value in ivs):
+                raise ValueError("个体值格式无效。")
+            if any(value is None for value in ivs):missing.add("ivs")
+            else:missing.discard("ivs")
+        if "species" in values:
+            record = database.get(values["species"])
+            if record:
+                values.update(species=record.display_name,egg_groups=list(record.egg_groups))
+                missing.discard("species")
+            else:
+                values["egg_groups"] = []
+                missing.add("species")
+        if "gender" in values:
+            if values["gender"]:missing.discard("gender")
+            else:missing.add("gender")
+        if values.get("has_particles") is False:
+            values["particles"] = []
+        if "is_costume" in values or ("species" in values and previous.is_costume):
+            from cosmetics import costume_family
+            is_costume = values.get("is_costume",previous.is_costume)
+            values["costume_id"] = costume_family(values.get("species",previous.species)) if is_costume else ""
+            values["costume_lineage"] = (previous.costume_lineage or previous.id) if is_costume else ""
+        values["unreviewed_fields"] = sorted(missing)
+        values["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        updated[identifier] = replace(previous,**values)
+    return [updated.get(monster.id,monster) for monster in inventory]

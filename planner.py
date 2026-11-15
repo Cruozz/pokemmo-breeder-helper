@@ -338,14 +338,14 @@ def _make_report_with_candidates(
     target_inventory_genders = {
         normalize_gender(monster.gender)
         for monster in planning_inventory
-        if monster.verified and normalize_text(monster.species) in family_keys
+        if monster.planner_usable and normalize_text(monster.species) in family_keys
     }
     resolved_group_keys = {normalize_text(group) for group in resolved_groups if normalize_text(group)}
     protected_alpha_materials = [
         monster
         for monster in planning_inventory
         if (
-            monster.verified
+            monster.planner_usable
             and monster.is_alpha
             and not target_alpha
             and not allow_alpha_materials
@@ -364,7 +364,7 @@ def _make_report_with_candidates(
         for monster in planning_inventory
         if (
             allow_ditto
-            and monster.verified
+            and monster.planner_usable
             and normalize_text(monster.species) in {"百变怪", "ditto"}
             and (
                 monster.is_alpha

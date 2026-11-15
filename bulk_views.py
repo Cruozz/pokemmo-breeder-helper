@@ -9,7 +9,7 @@ from tkinter import BooleanVar, StringVar, Toplevel, filedialog, messagebox, ttk
 
 from PIL import Image, ImageGrab, ImageOps, ImageTk
 
-from bulk_ocr import BulkResult, BulkRow, recognize_bulk, slot_range, validate_roi
+from bulk_ocr import BulkResult, BulkRow, batch_record_id, recognize_bulk, slot_range, validate_roi
 from bulk_session import BulkSessionStore
 from capture import capture_window, list_windows
 from cosmetic_views import choose_particles
@@ -20,10 +20,11 @@ from species_data import get_species_database
 
 
 class BulkCaptureWorkspace(ttk.Frame):
-    def __init__(self, parent, *, directory, accounts, get_processor, inference_lock, on_import):
+    def __init__(self, parent, *, directory, accounts, get_processor, inference_lock, on_import, get_inventory=None, on_update=None):
         super().__init__(parent,padding=8)
         self.store = BulkSessionStore(directory)
         self.get_processor,self.inference_lock,self.on_import = get_processor,inference_lock,on_import
+        self.get_inventory,self.on_update = get_inventory,on_update
         self.session_id = str(uuid.uuid4())
         self.images = {}
         self.rois = {}
@@ -44,9 +45,10 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.start = StringVar(self,value="1")
         self.count = StringVar(self,value="20")
         self.order_confirmed = BooleanVar(self,value=False)
+        self.auto_import = BooleanVar(self,value=True)
         self.status = StringVar(self,value="先读取仓库网格，再读取放生确认列表。")
         self.range_text = StringVar(self)
-        self.summary = StringVar(self,value="尚未识别；草稿与素材库存分开保存。")
+        self.summary = StringVar(self,value="识别后直接入库，其他资料可随时补充。")
         self.source_text = {kind:StringVar(self,value="未载入") for kind in ("warehouse","release")}
         self._build(accounts)
         try:
@@ -63,6 +65,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         for variable in (self.account,self.page,self.start,self.count):
             variable.trace_add("write",self._parameters_changed)
         self.order_confirmed.trace_add("write",lambda *_:self._save())
+        self.auto_import.trace_add("write",lambda *_:self._save())
         self._range()
         self._refresh()
         self.poll_id = self.after(100,self._poll)
@@ -73,7 +76,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.input_page = ttk.Frame(self.tabs,padding=8)
         self.review_page = ttk.Frame(self.tabs,padding=8)
         self.tabs.add(self.input_page,text="1 位置与截图")
-        self.tabs.add(self.review_page,text="2 核对与入库")
+        self.tabs.add(self.review_page,text="2 结果与补充资料")
         parameters = ttk.Frame(self.input_page)
         parameters.pack(fill="x")
         for index,(label,variable,width) in enumerate((("账号",self.account,18),("仓库页",self.page,6),("起始格",self.start,6),("数量",self.count,6))):
@@ -84,6 +87,7 @@ class BulkCaptureWorkspace(ttk.Frame):
             entry.grid(row=row,column=column+1,sticky="ew",padx=4,pady=4)
             parameters.columnconfigure(column+1,weight=1)
         ttk.Label(self.input_page,textvariable=self.range_text).pack(anchor="w",pady=(6,8))
+        ttk.Checkbutton(self.input_page,text="识别后直接入库（未审核，也可作素材）",variable=self.auto_import).pack(anchor="w",pady=(0,6))
         window_bar = ttk.Frame(self.input_page)
         window_bar.pack(fill="x",pady=(0,8))
         ttk.Button(window_bar,text="刷新窗口",command=self.refresh_windows).pack(side="left")
@@ -147,16 +151,16 @@ class BulkCaptureWorkspace(ttk.Frame):
         edit = ttk.Frame(review_controls)
         edit.pack(fill="x",pady=(6,0))
         ttk.Button(edit,text="全选",command=self.select_all).pack(side="left")
-        ttk.Button(edit,text="逐项核对…",command=self.edit_selected).pack(side="left",padx=5)
-        ttk.Button(edit,text="确认所选资料",command=self.confirm_selected).pack(side="left")
+        ttk.Button(edit,text="补充资料…",command=self.edit_selected).pack(side="left",padx=5)
+        ttk.Button(edit,text="标记已审核",command=self.confirm_selected).pack(side="left")
         bulk = ttk.Frame(review_controls)
         bulk.pack(fill="x",pady=(6,0))
         ttk.Label(bulk,text="将所选标为：").grid(row=0,column=0,padx=(0,4))
         for i,(label,field) in enumerate((("普通", "is_alpha"),("无粒子","has_particles"),("非时装","is_costume"))):
             ttk.Button(bulk,text=label,command=lambda f=field:self.apply_to_selected(f,False)).grid(row=0,column=i+1,padx=2)
         ttk.Button(bulk,text="性格不登记",command=lambda:self.apply_to_selected("nature","")).grid(row=1,column=1,columnspan=2,sticky="w",pady=4)
-        ttk.Checkbutton(review_controls,text="已核对：列表按仓库从左到右、从上到下对应，包含重复名字的精灵",variable=self.order_confirmed).pack(anchor="w",pady=(6,0))
-        self.import_button = ttk.Button(review_controls,text="导入所选已核对项",style="Primary.TButton",command=self.import_selected)
+        ttk.Checkbutton(review_controls,text="已查看列表与仓库的顺序（可选）",variable=self.order_confirmed).pack(anchor="w",pady=(6,0))
+        self.import_button = ttk.Button(review_controls,text="直接入库（无需补填）",style="Primary.TButton",command=self.import_selected)
         self.import_button.pack(anchor="e",pady=(6,0))
         ttk.Label(self,textvariable=self.status,wraplength=900).pack(fill="x",pady=(6,0))
         self.bind("<Configure>",lambda event:self._wrap(event.width) if event.widget is self else None)
@@ -186,7 +190,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         return {"schema_version":1,"session_id":self.session_id,
                 "parameters":{"account":self.account.get(),"page":self.page.get(),"start":self.start.get(),"count":self.count.get()},
                 "rois":self.rois,"roi_sizes":self.roi_sizes,"image_sizes":{kind:list(image.size) for kind,image in self.images.items()},
-                "result":self.result.to_dict(),"stale":self.stale,"order_confirmed":self.order_confirmed.get()}
+                "result":self.result.to_dict(),"stale":self.stale,"order_confirmed":self.order_confirmed.get(),"auto_import":self.auto_import.get()}
 
     def _save(self):
         if self.loading:
@@ -206,6 +210,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.result = BulkResult.from_dict(state.get("result",{}))
         self.stale = bool(state.get("stale"))
         self.order_confirmed.set(bool(state.get("order_confirmed")))
+        self.auto_import.set(bool(state.get("auto_import",True)))
         self.images = {}
         missing_images = False
         for kind,size in state.get("image_sizes",{}).items():
@@ -223,7 +228,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.loading = False
         for kind in self.source_text:
             self._thumbnail(kind)
-        self.status.set("草稿图片缺失或损坏，请重新载入并识别；原资料保留。" if missing_images else "已恢复本机批量草稿；未确认项尚未进入素材库存。")
+        self.status.set("批次图片缺失或损坏；已入库资料仍可在库存编辑。" if missing_images else "已恢复本机批次；资料可在这里或库存随时补充。")
 
     def pause(self):
         self.request += 1
@@ -399,7 +404,9 @@ class BulkCaptureWorkspace(ttk.Frame):
                     self.tabs.select(self.review_page)
                     self._refresh(select=True)
                     self._save()
-                    self.status.set("请先处理数量与格位问题。" if result.blockers else f"已读取 {len(result.rows)} 只，请核对后导入。")
+                    self.status.set("请先处理数量与格位问题。" if result.blockers else f"已读取 {len(result.rows)} 只，补充资料为可选。")
+                    if self.auto_import.get() and not result.blockers and result.rows:
+                        self.import_selected(automatic=True)
                 self._refresh()
         except queue.Empty:
             pass
@@ -410,20 +417,20 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.tree.delete(*self.tree.get_children())
         for row in self.result.rows:
             position = "待对应" if row.slot is None else f"{self.page.get()}-{(row.slot-1)//10+1},{(row.slot-1)%10+1}"
-            extra = " / ".join("待核对" if value is None else yes if value else no for value,yes,no in
+            extra = " / ".join("未填写" if value is None else yes if value else no for value,yes,no in
                                ((row.is_alpha,"头目","普通"),(row.has_particles,"有粒子","无粒子"),(row.is_costume,"时装","非时装")))
-            status = "已导入" if row.imported else "已核对" if not row.problems() else "待核对"
+            status = ("已入库 · " if row.imported else "")+("已审核" if row.reviewed else "未审核")
             self.tree.insert("","end",iid=str(row.index),values=(position,row.species or "待补全",{"M":"公","F":"母","N":"无"}.get(row.gender,"待核对"),
                              "/".join("x" if value is None else str(value) for value in row.ivs),
-                             "待核对" if row.hidden_ability is None else "有蓝钻" if row.hidden_ability else "未见蓝钻",
-                             "待核对" if row.nature is None else row.nature or "未登记",extra,status))
+                             "未识别" if row.hidden_ability is None else "有蓝钻" if row.hidden_ability else "未见蓝钻",
+                             "未填写" if row.nature is None else row.nature or "未登记",extra,status))
         keep = self.tree.get_children() if select else [item for item in selected if self.tree.exists(item)]
         if keep:
             self.tree.selection_set(keep)
-        ready = sum(not row.problems() and not row.imported for row in self.result.rows)
+        ready = sum(row.slot is not None and not row.imported for row in self.result.rows)
         self.summary.set("参数或截图已更改，请重新识别；原核对结果暂保留。" if self.stale else
                          "；".join(self.result.blockers) if self.result.blockers else
-                         f"共 {len(self.result.rows)} 只 · 可导入 {ready} 只 · 双击逐项核对；未知项目保留待核对。")
+                         f"共 {len(self.result.rows)} 只 · 尚未入库 {ready} 只 · 双击补充资料；性格、粒子、时装均可不填。")
         self.recognize_button.configure(state="disabled" if self.busy else "normal")
         self.import_button.configure(state="disabled" if self.busy or self.stale or self.result.blockers else "normal")
 
@@ -431,49 +438,86 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.tree.selection_set(self.tree.get_children())
         return "break"
 
-    def _selected(self):
+    def _selected(self, *, include_imported=True):
         indices = {int(value) for value in self.tree.selection()}
-        return [row for row in self.result.rows if row.index in indices and not row.imported]
+        return [row for row in self.result.rows if row.index in indices and (include_imported or not row.imported)]
+
+    def _update_imported(self, rows, changes):
+        imported = [row for row in rows if row.imported]
+        if imported:
+            if self.on_update is None:
+                raise ValueError("请从库存编辑已入库的记录。")
+            identifiers = [batch_record_id(self.session_id,self.result.capture_id,row.index) for row in imported]
+            self.on_update(identifiers,changes)
+
+    def sync_inventory(self):
+        if self.get_inventory is None:
+            return
+        by_id = {monster.id:monster for monster in self.get_inventory()}
+        for row in self.result.rows:
+            monster = by_id.get(batch_record_id(self.session_id,self.result.capture_id,row.index))
+            if monster is None:
+                continue
+            row.imported = True
+            row.species,row.gender,row.ivs = monster.species,monster.gender,list(monster.ivs)
+            row.reviewed = monster.verified
+            missing = set(monster.unreviewed_fields)
+            for field,target in (("nature","nature"),("is_alpha","is_alpha"),("has_particles","has_particles"),
+                                 ("is_costume","is_costume"),("hidden_ability","has_hidden_ability")):
+                setattr(row,field,None if target in missing else getattr(monster,target))
+            row.particles = list(monster.particles)
+            row.position_reviewed = "position" not in missing
+        self._refresh();self._save()
 
     def apply_to_selected(self, field, value):
         if self.busy or self.stale:
             return
         rows = self._selected()
+        try:
+            self._update_imported(rows,{field:value,"reviewed":False})
+        except Exception as error:
+            messagebox.showwarning("资料未保存",str(error),parent=self)
+            return
         for row in rows:
             setattr(row,field,value)
             if field=="has_particles" and not value:
                 row.particles = []
             row.reviewed = False
         self._refresh();self._save()
-        self.status.set(f"已将所选 {len(rows)} 项更新；请核对完整资料后确认。")
+        self.status.set(f"已更新所选 {len(rows)} 项；其他资料可继续留空。")
 
     def confirm_selected(self):
         if self.stale or self.result.blockers or self.busy:
             self.status.set("请先排除数量、格位问题并重新识别。")
             return
         rows = self._selected()
-        problems = [f"第 {row.index} 条：{'、'.join(row.problems(require_review=False))}" for row in rows if row.problems(require_review=False)]
-        if problems:
-            messagebox.showwarning("资料尚未完整","\n".join(problems[:5]),parent=self)
+        try:
+            self._update_imported(rows,{"reviewed":True})
+        except Exception as error:
+            messagebox.showwarning("状态未保存",str(error),parent=self)
             return
         for row in rows:
             row.reviewed = True
         self._refresh();self._save()
 
-    def import_selected(self):
+    def import_selected(self, *, automatic=False):
         if self.stale or self.busy:
             return
-        rows = self._selected()
+        rows = self._selected(include_imported=False)
+        if not rows:
+            self.status.set("所选条目已经在库存中，可直接补充资料。")
+            return
         try:
             added = self.on_import(self.result,self.session_id,self.account.get().strip(),int(self.page.get()),
                                    [row.index for row in rows],self.order_confirmed.get())
         except Exception as error:
-            messagebox.showwarning("尚不能入库",str(error),parent=self)
+            if not automatic:messagebox.showwarning("尚不能入库",str(error),parent=self)
+            self.status.set("本批尚未入库："+str(error))
             return
         for row in rows:
             row.imported = True
         self._refresh();self._save()
-        self.status.set(f"已导入所选 {len(rows)} 项，本次新增 {added} 只；原仓位记录未被覆盖。")
+        self.status.set(f"已入库 {len(rows)} 项（新增 {added} 只），未审核素材也可参与规划；资料可稍后补充。")
 
     def new_batch(self):
         if self.busy:
@@ -502,6 +546,7 @@ class BulkCaptureWorkspace(ttk.Frame):
                 return
             self._save()
             self._restore(state)
+            self.sync_inventory()
             self._range();self._refresh();self._save()
         except (OSError,ValueError,KeyError,TypeError) as error:
             messagebox.showerror("恢复失败",str(error),parent=self)
@@ -520,6 +565,8 @@ class BulkCaptureWorkspace(ttk.Frame):
         if self.editor is not None and self.editor.winfo_exists():
             self.editor.lift()
             return
+        if row.imported:
+            self.sync_inventory()
         from autocomplete import AutocompletePopup
         window = Toplevel(self)
         self.editor = window
@@ -553,23 +600,23 @@ class BulkCaptureWorkspace(ttk.Frame):
         form = ttk.Frame(body)
         form.pack(fill="x")
         species = StringVar(window,value=row.species)
-        gender = StringVar(window,value={"M":"公","F":"母","N":"无性别"}.get(row.gender,"待核对"))
+        gender = StringVar(window,value={"M":"公","F":"母","N":"无性别"}.get(row.gender,"未识别"))
         ivs = StringVar(window,value="/".join("x" if value is None else str(value) for value in row.ivs))
         level = StringVar(window,value=str(row.level or ""))
-        ha = StringVar(window,value="待核对" if row.hidden_ability is None else "有蓝钻" if row.hidden_ability else "未见蓝钻")
-        nature = StringVar(window,value="待核对" if row.nature is None else row.nature or "未登记（仅作IV素材）")
-        alpha = StringVar(window,value="待核对" if row.is_alpha is None else "头目" if row.is_alpha else "普通")
-        costume = StringVar(window,value="待核对" if row.is_costume is None else "时装" if row.is_costume else "非时装")
-        particle = StringVar(window,value="待核对" if row.has_particles is None else "有粒子" if row.has_particles else "无粒子")
+        ha = StringVar(window,value="未识别" if row.hidden_ability is None else "有蓝钻" if row.hidden_ability else "未见蓝钻")
+        nature = StringVar(window,value="未填写" if row.nature is None else row.nature or "未登记（仅作IV素材）")
+        alpha = StringVar(window,value="未填写" if row.is_alpha is None else "头目" if row.is_alpha else "普通")
+        costume = StringVar(window,value="未填写" if row.is_costume is None else "时装" if row.is_costume else "非时装")
+        particle = StringVar(window,value="未填写" if row.has_particles is None else "有粒子" if row.has_particles else "无粒子")
         position = BooleanVar(window,value=row.position_reviewed)
         selected_particles = list(row.particles)
         particle_text = StringVar(window,value=particle_names(selected_particles))
-        definitions = (("名字",species,row.candidates,False),("性别",gender,("待核对","公","母","无性别"),True),
+        definitions = (("名字",species,row.candidates,False),("性别",gender,("未识别","公","母","无性别"),True),
                        ("六项个体值",ivs,None,False),("等级",level,None,False),
-                       ("梦特",ha,("待核对","有蓝钻","未见蓝钻"),True),
-                       ("性格",nature,("待核对","未登记（仅作IV素材）",*[item.chinese for item in NATURES]),True),
-                       ("类别",alpha,("待核对","普通","头目"),True),("外观",costume,("待核对","非时装","时装"),True),
-                       ("粒子",particle,("待核对","无粒子","有粒子"),True))
+                       ("梦特",ha,("未识别","有蓝钻","未见蓝钻"),True),
+                       ("性格",nature,("未填写","未登记（仅作IV素材）",*[item.chinese for item in NATURES]),True),
+                       ("类别",alpha,("未填写","普通","头目"),True),("外观",costume,("未填写","非时装","时装"),True),
+                       ("粒子",particle,("未填写","无粒子","有粒子"),True))
         species_entry = None
         for i,(label,variable,values,readonly) in enumerate(definitions):
             r,c = i//2,i%2*2
@@ -592,14 +639,15 @@ class BulkCaptureWorkspace(ttk.Frame):
             choose_particles(window,selected_particles,chosen)
         ttk.Button(form,text="选择粒子…",command=pick_particles).grid(row=4,column=2,columnspan=2,sticky="w",padx=4)
         ttk.Label(body,textvariable=particle_text,wraplength=590).pack(anchor="w",pady=4)
-        ttk.Checkbutton(body,text="已人工核对当前仓位与等级（仓库等级缺失或不符时需勾选）",variable=position).pack(anchor="w",pady=5)
-        ttk.Label(body,text=f"原名字：{row.raw_name or '未读出'}\n仓库等级：{row.warehouse_level or '未读出'}；未显示的项目保持待核对。",wraplength=590).pack(anchor="w",pady=5)
+        ttk.Checkbutton(body,text="已核对当前仓位与等级（可选）",variable=position).pack(anchor="w",pady=5)
+        ttk.Label(body,text=f"原名字：{row.raw_name or '未读出'}\n仓库等级：{row.warehouse_level or '未读出'}；所有补充项目均可留空。",wraplength=590).pack(anchor="w",pady=5)
         footer = ttk.Frame(body)
         footer.pack(side="bottom",fill="x",pady=(8,0))
         def close():
             window.destroy()
             self.editor = None
         def save(complete=False):
+            before = asdict(row)
             parts = ivs.get().replace("／","/").split("/")
             try:
                 parsed_ivs = [None if part.strip().lower() in {"","x","?"} else int(part.strip()) for part in parts]
@@ -615,28 +663,30 @@ class BulkCaptureWorkspace(ttk.Frame):
             row.species = record.display_name if record else species.get().strip()
             row.gender = {"公":"M","母":"F","无性别":"N"}.get(gender.get(),"")
             row.ivs,row.level = parsed_ivs,parsed_level
-            row.hidden_ability = None if ha.get()=="待核对" else ha.get()=="有蓝钻"
-            row.nature = None if nature.get()=="待核对" else "" if nature.get().startswith("未登记") else nature.get()
-            row.is_alpha = None if alpha.get()=="待核对" else alpha.get()=="头目"
-            row.is_costume = None if costume.get()=="待核对" else costume.get()=="时装"
-            row.has_particles = None if particle.get()=="待核对" else particle.get()=="有粒子"
+            row.hidden_ability = None if ha.get()=="未识别" else ha.get()=="有蓝钻"
+            row.nature = None if nature.get()=="未填写" else "" if nature.get().startswith("未登记") else nature.get()
+            row.is_alpha = None if alpha.get()=="未填写" else alpha.get()=="头目"
+            row.is_costume = None if costume.get()=="未填写" else costume.get()=="时装"
+            row.has_particles = None if particle.get()=="未填写" else particle.get()=="有粒子"
             row.particles = list(selected_particles) if row.has_particles else []
             row.position_reviewed = position.get()
-            row.reviewed = False
-            problems = row.problems(require_review=False)
-            if complete and not problems:
-                row.reviewed = True
-            self._refresh();self._save()
-            if complete and problems:
-                messagebox.showwarning("还需核对","、".join(problems),parent=window)
+            row.reviewed = bool(complete)
+            after = asdict(row)
+            changes = {name:after[name] for name in ("species","gender","ivs","level","hidden_ability","nature","is_alpha","is_costume","has_particles","particles","position_reviewed","reviewed") if after[name]!=before[name]}
+            try:
+                if changes:self._update_imported([row],changes)
+            except Exception as error:
+                row.__dict__.update(before)
+                messagebox.showwarning("资料未保存",str(error),parent=window)
                 return
+            self._refresh();self._save()
             close()
             if complete and following:
                 self.tree.selection_set(str(following[0].index))
                 self.tree.see(str(following[0].index))
                 self._edit_row(following[0],following[1:])
         ttk.Button(footer,text="取消",command=close).pack(side="right")
-        ttk.Button(footer,text="保存草稿",command=save).pack(side="right",padx=6)
-        ttk.Button(footer,text="核对完成 / 下一只",style="Primary.TButton",command=lambda:save(True)).pack(side="right")
+        ttk.Button(footer,text="保存资料",command=save).pack(side="right",padx=6)
+        ttk.Button(footer,text="标为已审核 / 下一只",style="Primary.TButton",command=lambda:save(True)).pack(side="right")
         window.protocol("WM_DELETE_WINDOW",close)
         window.bind("<Escape>",lambda _event:close())

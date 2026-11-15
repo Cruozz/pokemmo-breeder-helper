@@ -73,6 +73,10 @@ class Monster:
     # must ask the user to confirm the real result before reusing it.
     gender_unconfirmed: bool = False
     verified: bool = True
+    # Review is a display state. Batch capture may authorize use before optional
+    # fields are reviewed; other incomplete capture drafts keep their old gate.
+    usable_unreviewed: bool = False
+    unreviewed_fields: list[str] = field(default_factory=list)
     scan_fingerprint: str = ""
     created_at: str = ""
     updated_at: str = ""
@@ -83,6 +87,11 @@ class Monster:
         self.has_particles = bool(self.has_particles or self.particles)
         self.is_costume = bool(self.is_costume or self.costume_id)
         self.gender = normalize_gender(self.gender)
+        self.unreviewed_fields = list(dict.fromkeys(str(name) for name in self.unreviewed_fields))
+        for name,known in (("nature",bool(self.nature)),("is_alpha",self.is_alpha),("has_hidden_ability",self.has_hidden_ability),
+                           ("has_particles",self.has_particles),("is_costume",self.is_costume)):
+            if known and name in self.unreviewed_fields:
+                self.unreviewed_fields.remove(name)
         self.ivs = list(self.ivs[:6]) + [None] * max(0, 6 - len(self.ivs))
         self.ivs = [self._coerce_iv(v) for v in self.ivs[:6]]
         self.egg_groups = [x.strip() for x in self.egg_groups if x and x.strip()]
@@ -105,6 +114,16 @@ class Monster:
     @property
     def iv_string(self) -> str:
         return "/".join("x" if value is None else str(value) for value in self.ivs)
+
+    @property
+    def planner_usable(self) -> bool:
+        if not self.usable_unreviewed:
+            return self.verified
+        if self.gender_unconfirmed or "position" in self.unreviewed_fields:
+            return False
+        from species_data import get_species_database
+        record = get_species_database().get(self.species)
+        return bool(record and self.gender in record.allowed_genders)
 
     def has_unrequested_perfect_iv(self, target_ivs: list[int | None]) -> bool:
         """Protect whole materials with a 31 on a target X stat."""
@@ -159,6 +178,10 @@ class Monster:
             nature_attempt_result=str(value.get("nature_attempt_result", "")),
             gender_unconfirmed=bool(value.get("gender_unconfirmed", False)),
             verified=bool(value.get("verified", True)),
+            usable_unreviewed=bool(value.get("usable_unreviewed",
+                value.get("source")=="批量识别：仓库＋确认列表" and value.get("verified") is False)),
+            unreviewed_fields=list(value.get("unreviewed_fields") or [])
+                + (["position"] if "仓位与等级待核对" in str(value.get("notes", "")) else []),
             scan_fingerprint=str(value.get("scan_fingerprint", "")),
             created_at=str(value.get("created_at", "")),
             updated_at=str(value.get("updated_at", "")),

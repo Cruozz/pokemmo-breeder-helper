@@ -374,6 +374,7 @@ class AppInventoryFlowTests(unittest.TestCase):
             "inventory_export_button",
             "inventory_import_button",
             "inventory_undo_button",
+            "inventory_review_button",
             "inventory_summary_label",
             "inventory_selection_label",
             "inventory_delete_button",
@@ -384,7 +385,7 @@ class AppInventoryFlowTests(unittest.TestCase):
         App._apply_inventory_action_layout(app, "narrow")
 
         rows = {getattr(app, name).grid_options["row"] for name in widget_names}
-        self.assertEqual(rows, {0, 1, 2})
+        self.assertEqual(rows, {0, 1, 2, 3})
         self.assertTrue(all(getattr(app, name).grid_options is not None for name in widget_names))
 
     def test_in_progress_marker_matches_same_parent_pair_after_local_replan(self) -> None:

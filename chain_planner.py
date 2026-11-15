@@ -3751,7 +3751,7 @@ def find_chain_candidates(
 
     confirmed_inventory = [
         monster for monster in inventory
-        if monster.verified
+        if monster.planner_usable
         and ACTIVE_COSMETICS.get().allowed(monster)
         and not monster.gender_unconfirmed
         and not monster.has_unrequested_perfect_iv(target_ivs)

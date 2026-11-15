@@ -5,7 +5,7 @@ import uuid
 from PIL import Image, ImageDraw
 import pytest
 
-from bulk_ocr import BulkResult, BulkRow, combine, parse_release, prepare_inventory, read_warehouse, slot_range, validate_roi
+from bulk_ocr import BulkResult, BulkRow, combine, parse_release, prepare_inventory, patch_inventory_records, read_warehouse, slot_range, validate_roi
 from bulk_session import BulkSessionStore
 from models import Monster
 from ocr_engine import OCRItem
@@ -94,15 +94,100 @@ def test_absent_gender_is_not_automatically_genderless():
 
 
 @pytest.mark.parametrize("field",["nature","is_alpha","has_particles","is_costume","hidden_ability"])
-def test_unseen_fields_remain_unknown_and_cannot_enter_verified_inventory(field):
-    row=ready(**{field:None})
+def test_unseen_optional_fields_can_enter_inventory_without_becoming_reviewed(field):
+    row=ready(reviewed=False,**{field:None})
     result=BulkResult([row])
-    with pytest.raises(ValueError):prepare_inventory(result,"test","主账号",6,[1],[],True)
+    combined,_=prepare_inventory(result,"test","主账号",6,[1],[],False)
+    assert not combined[0].verified and combined[0].usable_unreviewed and combined[0].planner_usable
+    assert ("has_hidden_ability" if field=="hidden_ability" else field) in combined[0].unreviewed_fields
 
 
-def test_row_confirmation_order_confirmation_and_exact_species_are_required():
+def test_no_manual_review_or_optional_fields_are_required_to_save_a_scan():
     for row,order in ((ready(reviewed=False),True),(ready(species="拉'恶冰"),True),(ready(),False)):
-        with pytest.raises(ValueError):prepare_inventory(BulkResult([row]),"test","主账号",6,[1],[],order)
+        combined,_=prepare_inventory(BulkResult([row]),"test","主账号",6,[1],[],order)
+        assert len(combined)==1
+    empty=BulkRow(1,slot=8)
+    combined,_=prepare_inventory(BulkResult([empty]),"empty","主账号",6,[1],[],False)
+    assert combined[0].species=="待识别" and combined[0].ivs==[None]*6 and not combined[0].verified
+    assert not combined[0].planner_usable
+    assert not replace(combined[0],verified=True).planner_usable
+
+
+def test_supplement_updates_only_chosen_fields_and_does_not_recreate_consumed_stock():
+    result=BulkResult([ready(reviewed=False,has_particles=True,particles=["bats"],is_costume=True)])
+    inventory,ids=prepare_inventory(result,"test","主账号",6,[1],[],False)
+    changed=patch_inventory_records(inventory,ids,{"nature":"固执"})
+    assert changed[0].nature=="固执" and not changed[0].verified and changed[0].planner_usable
+    assert changed[0].particles==["bats"] and changed[0].is_costume and changed[0].id==ids[0]
+    assert inventory[0].nature==""
+    with pytest.raises(ValueError,match="已不在库存"):patch_inventory_records([],ids,{"nature":"固执"})
+
+
+def test_json_roundtrip_and_older_mobile_export_preserve_batch_usability():
+    original=ready(reviewed=False,nature=None,has_particles=None,is_costume=None).monster("roundtrip","主账号",6)
+    restored=Monster.from_dict(json.loads(json.dumps(original.to_dict())))
+    assert not restored.verified and restored.planner_usable and "nature" in restored.unreviewed_fields
+    legacy=original.to_dict();legacy.pop("usable_unreviewed");legacy.pop("unreviewed_fields")
+    assert Monster.from_dict(legacy).planner_usable
+    assert not Monster(id="legacy-other",species="伊布",gender="F",verified=False,source="mobile-ocr").planner_usable
+
+
+def test_position_uncertainty_survives_older_json_until_explicitly_checked():
+    original=ready(reviewed=False,warehouse_level=41).monster("position","主账号",6)
+    assert not original.planner_usable
+    legacy=original.to_dict();legacy.pop("usable_unreviewed");legacy.pop("unreviewed_fields")
+    restored=Monster.from_dict(legacy)
+    assert not restored.planner_usable and "position" in restored.unreviewed_fields
+    checked=patch_inventory_records([restored],[restored.id],{"position_reviewed":True})[0]
+    assert checked.planner_usable and Monster.from_dict(checked.to_dict()).planner_usable
+
+
+def test_empty_and_partial_scans_survive_inventory_storage_without_manual_fields(tmp_path,monkeypatch):
+    from storage import load_inventory,save_inventory
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
+    rows=[BulkRow(1,slot=8),ready(2,9,reviewed=False,nature=None,has_particles=None,is_costume=None,ivs=[31,None,None,None,None,None])]
+    inventory,ids=prepare_inventory(BulkResult(rows),"partial","主账号",6,[1,2],[],False)
+    save_inventory(inventory)
+    restored=load_inventory()
+    assert [monster.id for monster in restored]==ids
+    assert restored[0].ivs==[None]*6 and not restored[0].verified and not restored[0].planner_usable
+    assert restored[1].ivs==[31,None,None,None,None,None] and restored[1].planner_usable
+    assert restored[1].nature=="" and "nature" in restored[1].unreviewed_fields
+
+
+def test_unreviewed_materials_actually_supply_a_breeding_plan_with_partial_ivs():
+    from planner import make_report_with_candidates
+    rows=[ready(1,8,species="伊布",gender="F",ivs=[31,None,None,None,None,None],reviewed=False,nature=None,has_particles=None,is_costume=None),
+          ready(2,9,species="伊布",gender="M",ivs=[None,31,None,None,None,None],reviewed=False,nature=None,has_particles=None,is_costume=None)]
+    inventory,ids=prepare_inventory(BulkResult(rows),"plan","主账号",6,[1,2],[],False)
+    report,candidates=make_report_with_candidates(inventory,"伊布","F","","31/31/x/x/x/x",["陆上"],allow_ditto=False)
+    assert candidates,report
+    assert candidates[0].root.used_ids==frozenset(ids)
+    assert candidates[0].root.purchases==0 and candidates[0].root.breeds==1
+    assert all(not monster.verified and monster.nature=="" for monster in inventory)
+
+
+@pytest.mark.parametrize("trait",[{"has_particles":True,"particles":["bats"]},{"is_costume":True}])
+def test_known_rare_traits_stay_protected_even_without_review(trait):
+    from planner import make_report_with_candidates
+    rows=[ready(1,8,species="喵喵",gender="F",ivs=[31,1,1,1,1,1],reviewed=False,**trait),
+          ready(2,9,species="喵喵",gender="M",ivs=[1,31,1,1,1,1],reviewed=False)]
+    inventory,ids=prepare_inventory(BulkResult(rows),"rare","主账号",6,[1,2],[],False)
+    _report,candidates=make_report_with_candidates(inventory,"猫老大","F","","31/31/x/x/x/x",["陆上"],allow_ditto=False)
+    assert all(ids[0] not in candidate.root.used_ids for candidate in candidates)
+
+
+def test_unknown_nature_is_not_assumed_and_can_be_added_later_for_a_nature_target():
+    from planner import make_report_with_candidates
+    row=ready(species="伊布",gender="F",ivs=[31,31,1,1,1,1],reviewed=False,nature=None)
+    inventory,ids=prepare_inventory(BulkResult([row]),"nature","主账号",6,[1],[],False)
+    _report,before=make_report_with_candidates(inventory,"伊布","F","固执","31/31/x/x/x/x",["陆上"],allow_ditto=False,nature_strategy="chain")
+    assert not any(candidate.root.purchases==0 and candidate.root.has_nature for candidate in before)
+    filled=patch_inventory_records(inventory,ids,{"nature":"固执"})
+    report,after=make_report_with_candidates(filled,"伊布","F","固执","31/31/x/x/x/x",["陆上"],allow_ditto=False,nature_strategy="chain")
+    assert after,report
+    assert after[0].root.used_ids==frozenset(ids) and after[0].root.purchases==0 and after[0].root.has_nature
+    assert not filled[0].verified
 
 
 def test_import_is_atomic_with_respect_to_validation_and_never_replaces_occupied_positions():

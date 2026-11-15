@@ -34,6 +34,8 @@ data class MonsterRecord(
   @SerialName("nature_attempt_result") val natureAttemptResult: String = "",
   @SerialName("gender_unconfirmed") val genderUnconfirmed: Boolean = false,
   val verified: Boolean = true,
+  @SerialName("usable_unreviewed") val usableUnreviewed: Boolean = false,
+  @SerialName("unreviewed_fields") val unreviewedFields: List<String> = emptyList(),
   @SerialName("scan_fingerprint") val scanFingerprint: String = "",
   @SerialName("created_at") val createdAt: String = "",
   @SerialName("updated_at") val updatedAt: String = "",

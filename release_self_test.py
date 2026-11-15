@@ -51,18 +51,19 @@ def run_checks() -> dict[str, object]:
     from bulk_ocr import BulkResult, BulkRow, combine, prepare_inventory, slot_range
     batch_row = BulkRow(1,species="玛狃拉",level=40,warehouse_level=40,slot=8,gender="M",ivs=[31,1,2,3,4,5],hidden_ability=False)
     batch_result = BulkResult([batch_row])
-    try:
-        prepare_inventory(batch_result,"self-test","自检",6,[1],[],True)
-    except ValueError:
-        pass
-    else:
-        raise RuntimeError("Packaged batch capture accepted unknown cosmetics")
+    batch_inventory,batch_ids = prepare_inventory(batch_result,"self-test","自检",6,[1],[],False)
+    saved = batch_inventory[0]
+    if saved.verified or not saved.planner_usable or saved.nature or not {"nature","has_particles","is_costume"}.issubset(saved.unreviewed_fields):
+        raise RuntimeError("Packaged batch capture blocked optional fields or lost unreviewed status")
+    replay,replay_ids = prepare_inventory(batch_result,"self-test","自检",6,[1],batch_inventory,False)
+    if len(replay)!=1 or batch_ids!=replay_ids or not Monster.from_dict(saved.to_dict()).planner_usable:
+        raise RuntimeError("Packaged batch inventory identity or optional metadata failed")
     mismatch = combine([BulkRow(1),BulkRow(2)],[{"slot":8,"level":40,"gender":"M"}],6,8,1)
     if not mismatch.blockers or any(row.slot is not None for row in mismatch.rows):
         raise RuntimeError("Packaged batch capture shifted mismatched records")
     if slot_range(6,8,20)!=list(range(8,28)):
         raise RuntimeError("Packaged batch position range failed")
-    checks["bulk_capture"] = {"separate_workflow":True,"unknown_fields":"blocked","count_mismatch":"unassigned","range":"6:8-27"}
+    checks["bulk_capture"] = {"separate_workflow":True,"unknown_fields":"saved-unreviewed-and-usable","replay":"idempotent","count_mismatch":"unassigned","range":"6:8-27"}
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")
@@ -112,7 +113,7 @@ def run_checks() -> dict[str, object]:
             workspace._refresh(select=True)
             workspace._save()
             stored = workspace.store.load()
-            if len(workspace.tabs.tabs())!=2 or stored["result"]["rows"][0]["has_particles"] is not None:
+            if len(workspace.tabs.tabs())!=2 or not workspace.auto_import.get() or stored["result"]["rows"][0]["has_particles"] is not None:
                 raise RuntimeError("Packaged batch draft UI lost unknown fields")
             workspace.shutdown();workspace.destroy()
             checks["bulk_capture"]["draft_ui"] = "two-tabs-and-local-pending-state"

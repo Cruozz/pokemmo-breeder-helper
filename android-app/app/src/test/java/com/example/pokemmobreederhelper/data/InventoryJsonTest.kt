@@ -2,6 +2,8 @@ package com.example.pokemmobreederhelper.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import kotlinx.serialization.encodeToString
 import org.junit.Test
 
 class InventoryJsonTest {
@@ -37,5 +39,17 @@ class InventoryJsonTest {
     assertEquals(1, items.size)
     assertTrue(items.single().id.isNotBlank())
     assertEquals(6, items.single().ivs.size)
+  }
+
+  @Test
+  fun unreviewedDesktopBatch_preservesOptionalFieldsAcrossExport() {
+    val raw = """[{"id":"batch","species":"伊布","gender":"F","ivs":[31,null,null,null,null,null],"verified":false,"usable_unreviewed":true,"unreviewed_fields":["nature","has_particles","is_costume"]}]"""
+    val item = AppJson.decodeInventory(raw).single()
+    assertFalse(item.verified)
+    assertTrue(item.usableUnreviewed)
+    assertEquals("", item.nature)
+    assertEquals(listOf("nature", "has_particles", "is_costume"), item.unreviewedFields)
+    val restored = AppJson.decodeInventory(AppJson.codec.encodeToString(listOf(item))).single()
+    assertEquals(item, restored)
   }
 }

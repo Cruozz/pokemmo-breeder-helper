@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.47"
+APP_VERSION = "0.2.48"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -504,8 +504,15 @@ class App(CosmeticControls):
             save_inventory(combined)
             self.inventory = combined
             self.refresh_inventory_tree()
-        self.status_var.set(f"批量导入完成，本次新增 {added} 只已核对素材。")
+        self.status_var.set(f"批量入库完成，本次新增 {added} 只；可在库存按需补充资料。")
         return added
+
+    def _patch_bulk_inventory(self, identifiers, changes):
+        from bulk_ocr import patch_inventory_records
+        combined = patch_inventory_records(self.inventory,identifiers,changes)
+        save_inventory(combined)
+        self.inventory = combined
+        self.refresh_inventory_tree()
 
     def _show_workspace_page(self, mode: str) -> None:
         pages = {
@@ -1039,7 +1046,10 @@ class App(CosmeticControls):
             if self.bulk_workspace is None:
                 from bulk_views import BulkCaptureWorkspace
                 self.bulk_workspace = BulkCaptureWorkspace(self.root,directory=data_dir()/"bulk-capture",accounts=self.accounts,
-                    get_processor=self._get_bulk_processor,inference_lock=self.ocr_inference_lock,on_import=self._import_bulk_result)
+                    get_processor=self._get_bulk_processor,inference_lock=self.ocr_inference_lock,on_import=self._import_bulk_result,
+                    get_inventory=lambda:self.inventory,on_update=self._patch_bulk_inventory)
+            if self.applied_workspace_mode!="bulk":
+                self.bulk_workspace.sync_inventory()
             self.bulk_workspace.pack(fill=BOTH,expand=True,padx=12,pady=(6,10))
             self.layout_orientation = desired
             self.applied_workspace_mode = "bulk"
@@ -1921,7 +1931,7 @@ class App(CosmeticControls):
         status_filter = ttk.Combobox(
             actions,
             textvariable=self.inventory_status_filter_var,
-            values=("全部状态", "已确认", "待核对"),
+            values=("全部状态", "已审核", "未审核"),
             state="readonly",
             width=9,
         )
@@ -1982,6 +1992,7 @@ class App(CosmeticControls):
         self.inventory_undo_button = ttk.Button(
             self.inventory_action_bar, text="撤销删除", command=self.undo_last_inventory_delete
         )
+        self.inventory_review_button = ttk.Button(self.inventory_action_bar,text="标记已审核",command=self.mark_selected_inventory_reviewed)
         self.inventory_summary_label = ttk.Label(
             self.inventory_action_bar,
             textvariable=self.inventory_summary_var,
@@ -2066,22 +2077,25 @@ class App(CosmeticControls):
             self.inventory_summary_label,
             self.inventory_selection_label,
             self.inventory_delete_button,
+            self.inventory_review_button,
         )
         for widget in widgets:
             widget.grid_forget()
-        for column in range(9):
+        for column in range(10):
             self.inventory_action_bar.columnconfigure(column, weight=0)
 
         if mode == "wide":
             placements = tuple((widget, 0, index, 1, "w") for index, widget in enumerate(widgets[:6])) + (
-                (self.inventory_summary_label, 0, 6, 1, "e"),
-                (self.inventory_selection_label, 0, 7, 1, "e"),
-                (self.inventory_delete_button, 0, 8, 1, "e"),
+                (self.inventory_review_button,0,6,1,"w"),
+                (self.inventory_summary_label, 0, 7, 1, "e"),
+                (self.inventory_selection_label, 0, 8, 1, "e"),
+                (self.inventory_delete_button, 0, 9, 1, "e"),
             )
-            self.inventory_action_bar.columnconfigure(6, weight=1)
+            self.inventory_action_bar.columnconfigure(7, weight=1)
         elif mode == "medium":
             placements = tuple((widget, 0, index, 1, "w") for index, widget in enumerate(widgets[:6])) + (
-                (self.inventory_summary_label, 1, 0, 4, "w"),
+                (self.inventory_review_button,1,0,1,"w"),
+                (self.inventory_summary_label, 1, 1, 3, "w"),
                 (self.inventory_selection_label, 1, 4, 1, "e"),
                 (self.inventory_delete_button, 1, 5, 1, "e"),
             )
@@ -2094,7 +2108,8 @@ class App(CosmeticControls):
                 (self.inventory_export_button, 1, 0, 1, "ew"),
                 (self.inventory_import_button, 1, 1, 1, "ew"),
                 (self.inventory_undo_button, 1, 2, 1, "ew"),
-                (self.inventory_summary_label, 2, 0, 1, "w"),
+                (self.inventory_review_button,2,0,1,"w"),
+                (self.inventory_summary_label, 3, 0, 3, "w"),
                 (self.inventory_selection_label, 2, 1, 1, "e"),
                 (self.inventory_delete_button, 2, 2, 1, "e"),
             )
@@ -2111,6 +2126,17 @@ class App(CosmeticControls):
                 pady=2,
             )
         self._inventory_action_layout = mode
+
+    def mark_selected_inventory_reviewed(self):
+        from dataclasses import replace
+        identifiers = set(self.inventory_tree.selection())
+        if not identifiers:
+            return
+        combined = [replace(monster,verified=True) if monster.id in identifiers else monster for monster in self.inventory]
+        save_inventory(combined)
+        self.inventory = combined
+        self.refresh_inventory_tree()
+        self.status_var.set(f"已将所选 {len(identifiers)} 条标记为已审核；未填写的资料仍可后补。")
 
     def build_planner_tab(self, parent: ttk.Frame) -> None:
         form = ttk.LabelFrame(parent, text="目标与约束", padding=10)
@@ -3234,7 +3260,7 @@ class App(CosmeticControls):
         alpha_count = 0
         alpha_ditto_count = 0
         for monster in inventory:
-            if not monster.verified:
+            if not monster.planner_usable:
                 continue
             species_key = "".join((monster.species or "").lower().split())
             is_ditto_material = species_key in {"百变怪", "ditto"}
@@ -4836,7 +4862,7 @@ class App(CosmeticControls):
         notes: str = "",
     ) -> Monster:
         existing = next((item for item in self.inventory if item.id == self.editing_monster_id), None)
-        return Monster(
+        monster = Monster(
             id=existing.id if existing else str(uuid.uuid4()),
             species=self.species_var.get().strip(),
             gender=self.gender_var.get(),
@@ -4859,10 +4885,13 @@ class App(CosmeticControls):
             confidence=confidence if confidence is not None else (existing.confidence if existing else None),
             notes=notes or (existing.notes if existing else ""),
             verified=verified,
+            usable_unreviewed=existing.usable_unreviewed if existing else False,
+            unreviewed_fields=list(existing.unreviewed_fields) if existing else [],
             scan_fingerprint=scan_fingerprint or (existing.scan_fingerprint if existing else ""),
             created_at=existing.created_at if existing else "",
             updated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         )
+        return monster
 
     def _upsert_inventory(self, monster: Monster, match_location: bool) -> None:
         replace_id = monster.id if any(item.id == monster.id for item in self.inventory) else ""
@@ -4914,6 +4943,16 @@ class App(CosmeticControls):
                 self.confirm_batch_result()
             else:
                 self.status_var.set("当前还没有可保存的连续扫描结果。")
+            return
+        existing = next((item for item in self.inventory if item.id==self.editing_monster_id),None)
+        if existing is not None and existing.usable_unreviewed:
+            monster = self._monster_from_form(verified=existing.verified,notes=existing.notes)
+            record = self.species_db.get(monster.species)
+            if record:
+                monster.species = record.display_name
+                monster.egg_groups = list(record.egg_groups)
+            self._upsert_inventory(monster,match_location=False)
+            self.status_var.set(f"已保存 {monster.species or '未命名素材'} 的补充资料，状态仍为{'已审核' if monster.verified else '未审核'}。")
             return
         species = self.species_var.get().strip()
         if not species or species == "待识别":
@@ -5068,9 +5107,9 @@ class App(CosmeticControls):
             ).lower()
             if query and query not in haystack:
                 continue
-            if status_filter == "已确认" and not monster.verified:
+            if status_filter in {"已确认","已审核"} and not monster.verified:
                 continue
-            if status_filter == "待核对" and monster.verified:
+            if status_filter in {"待核对","未审核"} and monster.verified:
                 continue
             if type_filter == "头目" and not monster.is_alpha:
                 continue
@@ -5086,21 +5125,24 @@ class App(CosmeticControls):
                 values=(
                     monster.account,
                     monster.position_label or "未定位",
-                    "已确认" if monster.verified else "待核对",
+                    "已审核" if monster.verified else "未审核",
                     monster.species,
                     (
                         "待确认（本路线无需）"
                         if monster.gender_unconfirmed
                         else {"F": "母", "M": "公", "N": "无性别"}.get(monster.gender, "未识别")
                     ),
-                    "头目" if monster.is_alpha else "普通",
-                    "已解锁" if monster.has_hidden_ability else "否",
-                    monster.nature,
+                    "头目" if monster.is_alpha else "未填写" if "is_alpha" in monster.unreviewed_fields else "普通",
+                    "已解锁" if monster.has_hidden_ability else "未填写" if "has_hidden_ability" in monster.unreviewed_fields else "否",
+                    monster.nature or "未填写",
                     monster.iv_string,
                     monster.group_string,
                     "、".join(monster.moves),
                     confidence,
-                    " · ".join(part for part in ("时装" if monster.is_costume else "", particle_names(monster.particles) if monster.particles else "带粒子" if monster.has_particles else "") if part),
+                    " · ".join(part for part in (
+                        "时装" if monster.is_costume else "时装未填写" if "is_costume" in monster.unreviewed_fields else "",
+                        particle_names(monster.particles) if monster.particles else "带粒子" if monster.has_particles else "粒子未填写" if "has_particles" in monster.unreviewed_fields else "",
+                    ) if part),
                 ),
                 tags=("verified" if monster.verified else "pending",),
             )
@@ -5108,7 +5150,7 @@ class App(CosmeticControls):
         if hasattr(self, "inventory_summary_var"):
             verified_count = sum(1 for monster in self.inventory if monster.verified)
             self.inventory_summary_var.set(
-                f"显示 {visible_count} / {len(self.inventory)} 条 · 已确认 {verified_count} · 双击编辑"
+                f"显示 {visible_count} / {len(self.inventory)} 条 · 未审核 {len(self.inventory)-verified_count} · 可用 {sum(item.planner_usable for item in self.inventory)} · 双击补充"
             )
         if hasattr(self, "plan_excluded_ids"):
             inventory_ids = {monster.id for monster in self.inventory}
@@ -5298,6 +5340,8 @@ class App(CosmeticControls):
         self.root.lift()
 
     def edit_inventory_selected(self, event=None) -> str:
+        if getattr(self,"batch_running",False):
+            self.stop_batch_scan()
         if event is not None:
             row_id = self.inventory_tree.identify_row(event.y)
             if not row_id:
@@ -5306,7 +5350,10 @@ class App(CosmeticControls):
             self.inventory_tree.focus(row_id)
         self.inventory_selected()
         if self.inventory_tree.selection():
-            self._select_workspace_mode("scan")
+            if hasattr(self,"scan_method_bar"):
+                self._set_scan_method("continuous")
+            else:
+                self._select_workspace_mode("scan")
             self.current_form_expanded = True
             self._set_compact_scan_view("result")
             if hasattr(self, "current_species_entry"):
@@ -5321,7 +5368,7 @@ class App(CosmeticControls):
         if monster:
             self._set_ocr_species_candidates(())
             self.editing_monster_id = monster.id
-            self.save_monster_button.configure(text="更新选中素材并标记已核对")
+            self.save_monster_button.configure(text=f"保存修改（保持{'已审核' if monster.verified else '未审核'}）" if monster.usable_unreviewed else "更新选中素材并标记已核对")
             self.current_source = monster.source
             self.page_var.set(monster.page)
             self.slot_var.set(monster.slot)
@@ -5364,7 +5411,7 @@ class App(CosmeticControls):
             )
             pending_gender_note = " 请在性别栏选择实际公/母；保存后才能用于普通配对。" if monster.gender_unconfirmed else ""
             self.status_var.set(
-                f"正在编辑 {monster.species}（{'已确认' if monster.verified else '待核对'}）。"
+                f"正在编辑 {monster.species}（{'已审核' if monster.verified else '未审核'}）。"
                 f"保存后会更新原记录。{pending_gender_note}"
             )
 
@@ -5636,7 +5683,7 @@ class App(CosmeticControls):
             )
             warning_key = (
                 record.id,
-                tuple(sorted(item.id for item in snapshot if item.verified and item.is_alpha)),
+                tuple(sorted(item.id for item in snapshot if item.planner_usable and item.is_alpha)),
                 allow_ditto,
             )
             if (
@@ -5689,7 +5736,7 @@ class App(CosmeticControls):
             "target_allow_ditto_var", "target_allow_alpha_materials_var", "target_convert_mother_with_ditto_var", "target_strategy_var", "target_purchase_max_v_var")}
         self.pending_plan_options.update(self._cosmetic_options())
         self.plan_status_var.set(
-            f"正在从 {sum(item.verified and item.id not in excluded_snapshot for item in snapshot)} 条可用已确认库存中"
+            f"正在从 {sum(item.planner_usable and item.id not in excluded_snapshot for item in snapshot)} 条可用库存中（含未审核素材）"
             f"按{self.target_strategy_var.get()}搜索最佳路线"
             + (f"（本次保护 {len(excluded_snapshot)} 只）……" if excluded_snapshot else "……")
         )
@@ -5831,13 +5878,13 @@ class App(CosmeticControls):
             # selected parked material was subsequently removed or excluded.
             return next((
                 monster for monster in self.inventory
-                if monster.id == retained_id and monster.verified
+                if monster.id == retained_id and monster.planner_usable
                 and monster.id not in excluded
             ), None)
         matches = [
             monster
             for monster in self.inventory
-            if monster.verified
+            if monster.planner_usable
             and monster.id not in excluded
             and monster.breeding_target_key == candidate.nature_target_key
             and monster.breeding_role == role
