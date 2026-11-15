@@ -56,12 +56,22 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.root.update_idletasks()
         return self.app.bulk_workspace
 
-    def single_row_sources(self,bulk):
+    def single_row_sources(self,bulk,gender="M",diamond=False):
         bulk.page.set("6");bulk.start.set("8");bulk.count.set("1")
         warehouse=Image.new("RGB",(800,400),(30,35,40))
-        ImageDraw.Draw(warehouse).rectangle((567,42,573,53),fill=(20,150,240))
+        draw=ImageDraw.Draw(warehouse)
+        color=(235,113,154) if gender=="F" else (20,150,240)
+        draw.ellipse((568,45,574,51),outline=color,width=1)
+        if gender=="F":
+            draw.line((571,51,571,57),fill=color)
+            draw.line((568,54,574,54),fill=color)
+        else:
+            draw.line((573,46,577,42),fill=color)
+            draw.line((574,42,577,42,577,45),fill=color)
         bulk.set_source("warehouse",warehouse)
-        bulk.set_source("release",Image.new("RGB",(700,180),(50,60,65)))
+        release=Image.new("RGB",(700,180),(50,60,65))
+        if diamond:ImageDraw.Draw(release).polygon([(258,49),(268,49),(273,55),(263,67),(253,55)],fill=(40,200,250))
+        bulk.set_source("release",release)
         bulk.rois={"warehouse":(0,0,800,400),"release":(0,0,700,180)}
         class FakeOCR:
             def recognize(self,image):
@@ -361,3 +371,48 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertTrue(restored.result.rows[0].imported)
         self.assertEqual(len(load_inventory()),1)
         self.assertFalse(load_inventory()[0].verified)
+
+    def test_rerecognition_corrects_same_unreviewed_stock_and_never_restores_consumed_records(self):
+        bulk=self.bulk()
+        self.single_row_sources(bulk,gender="F",diamond=True)
+        row=replace(ready_row(),gender="M",hidden_ability=False,reviewed=False,nature=None)
+        bulk.result=BulkResult([row]);bulk.stale=False;bulk._refresh(select=True)
+        bulk.import_selected()
+        identifier=self.app.inventory[0].id
+        self.app._patch_bulk_inventory([identifier],{"nature":"固执","has_particles":True,"particles":["bats"]})
+        original_capture=bulk.result.capture_id
+        bulk.retry_button.invoke();self.finish_recognition(bulk)
+        material=load_inventory()[0]
+        self.assertEqual((material.id,material.gender,material.has_hidden_ability),(identifier,"F",True))
+        self.assertEqual(len(load_inventory()),1)
+        self.assertEqual((material.nature,material.particles),("固执",["bats"]))
+        self.assertFalse(material.verified)
+        self.assertEqual(bulk.result.capture_id,original_capture)
+        self.assertTrue(list(bulk.store.directory(bulk.session_id).glob("before-recognition-repair-*.json")))
+        self.app.inventory=[];save_inventory([])
+        bulk.retry_button.invoke();self.finish_recognition(bulk)
+        self.assertEqual(load_inventory(),[])
+        self.assertTrue(bulk.result.rows[0].imported)
+        self.assertEqual(bulk.tree.item("1","values")[-1],"已离库")
+
+    def test_failed_retry_or_backup_keeps_original_batch_and_inventory(self):
+        bulk=self.bulk()
+        self.single_row_sources(bulk,gender="F",diamond=True)
+        row=replace(ready_row(),gender="M",hidden_ability=False,reviewed=False,nature=None)
+        bulk.result=BulkResult([row]);bulk.stale=False;bulk._refresh(select=True)
+        bulk.import_selected()
+        original_capture=bulk.result.capture_id
+        original_stock=[monster.to_dict() for monster in load_inventory()]
+        with patch("bulk_session.BulkSessionStore.save_repair_backup",side_effect=OSError("backup unavailable")):
+            bulk.retry_button.invoke();self.finish_recognition(bulk)
+        self.assertIn("校正未保存",bulk.status.get())
+        self.assertEqual([monster.to_dict() for monster in load_inventory()],original_stock)
+        self.assertEqual((bulk.result.capture_id,bulk.result.rows[0].gender),(original_capture,"M"))
+        self.assertTrue(bulk.result.rows[0].imported)
+        with patch("bulk_views.recognize_bulk",return_value=BulkResult(blockers=["数量不符"])):
+            bulk.retry_button.invoke();self.finish_recognition(bulk)
+        self.assertIn("原库存和批次保留",bulk.status.get())
+        self.assertEqual([monster.to_dict() for monster in load_inventory()],original_stock)
+        self.assertEqual(bulk.result.capture_id,original_capture)
+        bulk.retry_button.invoke();self.finish_recognition(bulk)
+        self.assertEqual((load_inventory()[0].gender,load_inventory()[0].has_hidden_ability),("F",True))

@@ -164,8 +164,7 @@ def _ordered_rows(entries: list[tuple[BulkRow,float,float]], height: float) -> l
 
 def parse_release(image: Any, items: list[OCRItem]) -> list[BulkRow]:
     """Join only a name and IV immediately below it in the same list cell."""
-    import numpy as np
-    from PIL import Image
+    from bulk_vision import hidden_ability_from_header
     names = OCRProcessor._level_items(items)
     iv_lines = [item for item in items if OCRProcessor._compact(item.text).count("/") >= 4]
     height = statistics.median([OCRProcessor._height(item.box) for item in [*names,*iv_lines]]) if names or iv_lines else 20
@@ -177,9 +176,6 @@ def parse_release(image: Any, items: list[OCRItem]) -> list[BulkRow]:
             columns[-1].append(x)
     if len(columns)>3:
         raise ValueError("检测到名单以外的名字，请只框选放生确认列表，排除左侧详情与背景。")
-    pixels = np.asarray(image.convert("RGB")).copy()
-    pixels[pixels[:,:,2].astype(int)-pixels[:,:,1].astype(int) < 8] = 0
-    badge_image = Image.fromarray(pixels)
     used: set[int] = set()
     entries = []
     database = get_species_database()
@@ -206,7 +202,7 @@ def parse_release(image: Any, items: list[OCRItem]) -> list[BulkRow]:
                         candidates=[] if record and confident else [r.display_name for r in database.ocr_name_candidates(raw)],
                         level=level if 1 <= level <= 100 else None,
                         ivs=OCRProcessor._iv_values(iv_item.text) if iv_item and OCRProcessor._iv_values(iv_item.text) else [None]*6,
-                        hidden_ability=OCRProcessor._hidden_ability_from_image(badge_image.crop((0,0,round(cell_right),image.height)),[name])[0],
+                        hidden_ability=hidden_ability_from_header(image,name.box,cell_right),
                         source_box=box,confidence=min(anchor.score,iv_item.score if iv_item else 0.0))
         entries.append((entry,x,y))
     for index,item in enumerate(iv_lines):
@@ -237,6 +233,7 @@ def selected_slots(image: Any) -> list[int]:
 
 def read_warehouse(image: Any, processor: OCRProcessor, slots: list[int]) -> list[dict]:
     from PIL import Image,ImageOps
+    from bulk_vision import gender_from_tile
     from warehouse_vision import classify_alpha_icon
     if image.width < 200 or image.height < 120:
         raise ValueError("仓库网格图片太小，请框选完整的 10 列、6 行网格。")
@@ -247,13 +244,11 @@ def read_warehouse(image: Any, processor: OCRProcessor, slots: list[int]) -> lis
     for index,slot in enumerate(slots):
         row,column = divmod(slot-1,10)
         x,y = column*width,row*height
-        region = image.crop((round(x+width*.06),round(y+height*.58),round(x+width*.27),round(y+height*.89)))
-        female,male = OCRProcessor._gender_color_counts(region.convert("RGB").getdata())
-        gender = "F" if female>=4 and female>male*1.5 else "M" if male>=4 and male>female*1.5 else ""
+        tile = image.crop((round(x),round(y),round(x+width),round(y+height)))
+        gender = gender_from_tile(tile)
         level_crop = image.crop((round(x+width*.46),round(y+height*.53),round(x+width*.94),round(y+height*.94)))
         level_crop = ImageOps.contain(level_crop.resize((level_crop.width*3,level_crop.height*3),Image.Resampling.LANCZOS),(112,80),Image.Resampling.LANCZOS)
         sheet.paste(level_crop,(index%columns*tile_w+10,index//columns*tile_h+10))
-        tile = image.crop((round(x),round(y),round(x+width),round(y+height)))
         cells.append({"slot":slot,"gender":gender,"level":None,"is_alpha":classify_alpha_icon(tile),"readings":[]})
     for item in processor.recognize(sheet):
         x = (OCRProcessor._left(item.box)+OCRProcessor._right(item.box))/2
@@ -332,6 +327,43 @@ def prepare_inventory(result: BulkResult, session_id: str, account: str, page: i
 
 def batch_record_id(session_id: str, capture_id: str, index: int) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL,f"pokemmo-bulk:{session_id}:{capture_id}:{index}"))
+
+
+def refresh_recognized_inventory(result: BulkResult, previous: BulkResult, session_id: str,
+                                 account: str, page: int, inventory: list[Monster]) -> tuple[list[Monster],list[str],int]:
+    """Refresh clear gender / positive HA evidence for the same saved capture only."""
+    if result.blockers or len(result.rows)!=len(previous.rows) or not result.rows:
+        raise ValueError("重新识别的数量尚未对应，原库存未修改。")
+    if [(row.index,row.slot) for row in result.rows]!=[(row.index,row.slot) for row in previous.rows]:
+        raise ValueError("重新识别的仓位发生变化，原库存未修改。")
+    result.capture_id=previous.capture_id
+    by_id={monster.id:monster for monster in inventory}
+    combined=list(inventory)
+    changed=[]
+    skipped=0
+    for row,old in zip(result.rows,previous.rows):
+        identifier=batch_record_id(session_id,previous.capture_id,row.index)
+        current=by_id.get(identifier)
+        if not old.imported and current is None:
+            continue
+        row.imported=True  # Includes consumed records: a retry must never re-add them.
+        if (current is None or current.verified or current.account!=account or current.page!=str(page)
+                or current.slot!=str(old.slot) or current.species!=old.species or current.ivs!=old.ivs
+                or row.species!=old.species or row.ivs!=old.ivs or row.level!=old.level):
+            skipped+=1
+            continue
+        changes={}
+        record=get_species_database().get(row.species)
+        if (row.gender and record and row.gender in record.allowed_genders
+                and (row.position_reviewed or row.warehouse_level==row.level)
+                and current.gender==old.gender and row.gender!=current.gender):
+            changes["gender"]=row.gender
+        if row.hidden_ability is True and not current.has_hidden_ability:
+            changes["hidden_ability"]=True
+        if changes:
+            combined=patch_inventory_records(combined,[identifier],changes)
+            changed.append(identifier)
+    return combined,changed,skipped
 
 
 def patch_inventory_records(inventory: list[Monster], identifiers: list[str], changes: dict) -> list[Monster]:

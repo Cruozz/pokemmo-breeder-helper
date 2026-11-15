@@ -82,6 +82,25 @@ def run_checks() -> dict[str, object]:
     if classify_alpha_icon(thumbnail) is True:
         raise RuntimeError("Packaged Alpha detector accepted a red body")
     checks["bulk_capture"].update(continuation="next-slot-and-next-page",alpha_icon="outline-required-red-body-excluded")
+    from bulk_vision import gender_from_tile, hidden_ability_from_header
+    from bulk_ocr import refresh_recognized_inventory
+    sex_tile=Image.new("RGB",(80,68),(35,43,48))
+    symbols=ImageDraw.Draw(sex_tile)
+    symbols.rectangle((9,1,78,66),outline=(20,170,245),width=2)
+    symbols.ellipse((14,48,20,54),outline=(235,113,154),width=1)
+    symbols.line((17,54,17,60),fill=(235,113,154))
+    symbols.line((14,57,20,57),fill=(235,113,154))
+    gem=Image.new("RGB",(320,100),(50,60,65))
+    ImageDraw.Draw(gem).polygon([(233,47),(244,47),(249,53),(238,64),(228,53)],fill=(40,200,250))
+    if gender_from_tile(sex_tile)!="F" or hidden_ability_from_header(gem,[[70,50],[214,50],[214,67],[70,67]],310) is not True:
+        raise RuntimeError("Packaged batch sex / wide-blue-gem recognition failed")
+    batch_row.imported=True
+    refreshed=BulkResult([BulkRow.from_dict({**batch_row.__dict__,"gender":"F","hidden_ability":True})])
+    corrected,changed,_=refresh_recognized_inventory(refreshed,batch_result,"self-test","自检",6,batch_inventory)
+    if changed!=batch_ids or corrected[0].gender!="F" or not corrected[0].has_hidden_ability or corrected[0].id!=saved.id:
+        raise RuntimeError("Packaged batch retry did not repair the same record")
+    checks["bulk_capture"].update(sex_symbol="female-ring-despite-blue-frame",hidden_ability="wide-gem-recognized",
+                                   stock_repair="same-id-unreviewed-only")
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")

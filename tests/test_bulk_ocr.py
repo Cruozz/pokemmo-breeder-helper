@@ -5,7 +5,7 @@ import uuid
 from PIL import Image, ImageDraw
 import pytest
 
-from bulk_ocr import BulkResult, BulkRow, combine, next_batch_range, parse_release, prepare_inventory, patch_inventory_records, read_warehouse, slot_range, validate_roi
+from bulk_ocr import BulkResult, BulkRow, combine, next_batch_range, parse_release, prepare_inventory, patch_inventory_records, read_warehouse, refresh_recognized_inventory, slot_range, validate_roi
 from bulk_session import BulkSessionStore
 from models import Monster
 from ocr_engine import OCRItem
@@ -153,6 +153,53 @@ def test_supplement_updates_only_chosen_fields_and_does_not_recreate_consumed_st
     assert changed[0].particles==["bats"] and changed[0].is_costume and changed[0].id==ids[0]
     assert inventory[0].nature==""
     with pytest.raises(ValueError,match="已不在库存"):patch_inventory_records([],ids,{"nature":"固执"})
+
+
+def test_rerecognition_repairs_same_record_and_preserves_supplemented_information():
+    previous=BulkResult([ready(reviewed=False,gender="M",hidden_ability=False)])
+    inventory,ids=prepare_inventory(previous,"repair","测试",6,[1],[],False)
+    previous.rows[0].imported=True
+    inventory=patch_inventory_records(inventory,ids,{"nature":"固执","has_particles":True,"particles":["bats"],"is_costume":True})
+    current=BulkResult([ready(reviewed=False,gender="F",hidden_ability=True,nature=None)])
+    repaired,changed,skipped=refresh_recognized_inventory(current,previous,"repair","测试",6,inventory)
+    assert changed==ids and skipped==0 and current.capture_id==previous.capture_id
+    assert repaired[0].id==ids[0] and repaired[0].gender=="F" and repaired[0].has_hidden_ability
+    assert (repaired[0].nature,repaired[0].particles,repaired[0].is_costume)==("固执",["bats"],True)
+    assert not repaired[0].verified and current.rows[0].imported
+    assert inventory[0].gender=="M" and not inventory[0].has_hidden_ability
+
+
+@pytest.mark.parametrize("protection",["consumed","reviewed","changed-ivs","changed-slot"])
+def test_rerecognition_does_not_restore_consumed_or_replace_protected_materials(protection):
+    previous=BulkResult([ready(reviewed=False)])
+    inventory,ids=prepare_inventory(previous,"protected","测试",6,[1],[],False)
+    previous.rows[0].imported=True
+    if protection=="consumed":inventory=[]
+    elif protection=="reviewed":inventory=[replace(inventory[0],verified=True)]
+    elif protection=="changed-ivs":inventory=[replace(inventory[0],ivs=[0]*6)]
+    elif protection=="changed-slot":inventory=[replace(inventory[0],slot="9")]
+    current=BulkResult([ready(reviewed=False,gender="F",hidden_ability=True)])
+    repaired,changed,skipped=refresh_recognized_inventory(current,previous,"protected","测试",6,inventory)
+    assert repaired==inventory and changed==[] and skipped==1 and current.rows[0].imported
+
+
+def test_unclear_rerecognition_does_not_clear_known_gender_or_hidden_ability():
+    previous=BulkResult([ready(reviewed=False,hidden_ability=True)])
+    inventory,ids=prepare_inventory(previous,"unclear","测试",6,[1],[],False)
+    previous.rows[0].imported=True
+    current=BulkResult([ready(reviewed=False,gender="",hidden_ability=False)])
+    repaired,changed,_=refresh_recognized_inventory(current,previous,"unclear","测试",6,inventory)
+    assert changed==[] and repaired[0].gender=="M" and repaired[0].has_hidden_ability
+
+
+def test_gender_edited_in_inventory_while_a_retry_runs_is_preserved():
+    previous=BulkResult([ready(reviewed=False,gender="M")])
+    inventory,ids=prepare_inventory(previous,"concurrent-edit","测试",6,[1],[],False)
+    previous.rows[0].imported=True
+    inventory=patch_inventory_records(inventory,ids,{"gender":"F"})
+    current=BulkResult([ready(reviewed=False,gender="M")])
+    repaired,changed,_=refresh_recognized_inventory(current,previous,"concurrent-edit","测试",6,inventory)
+    assert changed==[] and repaired[0].gender=="F"
 
 
 def test_json_roundtrip_and_older_mobile_export_preserve_batch_usability():

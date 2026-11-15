@@ -20,11 +20,13 @@ from species_data import get_species_database
 
 
 class BulkCaptureWorkspace(ttk.Frame):
-    def __init__(self, parent, *, directory, accounts, get_processor, inference_lock, on_import, get_inventory=None, on_update=None):
+    def __init__(self, parent, *, directory, accounts, get_processor, inference_lock, on_import, get_inventory=None, on_update=None, on_refresh=None):
         super().__init__(parent,padding=8)
         self.store = BulkSessionStore(directory)
         self.get_processor,self.inference_lock,self.on_import = get_processor,inference_lock,on_import
         self.get_inventory,self.on_update = get_inventory,on_update
+        self.on_refresh=on_refresh
+        self.recognition_previous=None
         self.session_id = str(uuid.uuid4())
         self.images = {}
         self.rois = {}
@@ -394,6 +396,7 @@ class BulkCaptureWorkspace(ttk.Frame):
             return
         self.request += 1
         request = self.request
+        self.recognition_previous=(request,BulkResult.from_dict(self.result.to_dict())) if not self.stale and any(row.imported for row in self.result.rows) else None
         self.busy = True
         self._refresh()
         self.status.set("正在读取这一批的名字、个体值、梦特、性别和等级……")
@@ -417,15 +420,32 @@ class BulkCaptureWorkspace(ttk.Frame):
                 elif error:
                     self.status.set("识别失败："+error)
                 else:
+                    refreshed=None
+                    if result.blockers and self.recognition_previous is not None and self.recognition_previous[0]==request:
+                        self.status.set("重新识别尚未对应，原库存和批次保留："+"；".join(result.blockers))
+                        self._refresh()
+                        continue
+                    if (not result.blockers and self.on_refresh is not None and self.recognition_previous is not None
+                            and self.recognition_previous[0]==request):
+                        try:
+                            refreshed=self.on_refresh(result,self.recognition_previous[1],self.session_id,self.account.get().strip(),int(self.page.get()))
+                        except Exception as exception:
+                            self.status.set("校正未保存，原批次保留："+str(exception))
+                            self._refresh()
+                            continue
+                    self.recognition_previous=None
                     self.result = result
                     self.stale = False
                     self.order_confirmed.set(False)
                     self.tabs.select(self.review_page)
                     self._refresh(select=True)
                     self._save()
+                    if refreshed is not None:self.sync_inventory()
                     self.status.set("尚不能入库："+"；".join(result.blockers) if result.blockers else f"已读取 {len(result.rows)} 只，补充资料为可选。")
                     if self.auto_import.get() and not result.blockers and result.rows:
                         self.import_selected(automatic=True)
+                    if refreshed is not None:
+                        self.status.set(f"本批已重新识别，校正 {refreshed[0]} 条库存的性别／梦特；{refreshed[1]} 条已审核、已离库或资料改动记录保留原状。其他手填资料保留。")
                 self._refresh()
         except queue.Empty:
             pass
@@ -434,11 +454,14 @@ class BulkCaptureWorkspace(ttk.Frame):
     def _refresh(self, *, select=False):
         selected = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
+        stock_ids={monster.id for monster in self.get_inventory()} if self.get_inventory is not None else None
         for row in self.result.rows:
             position = "待对应" if row.slot is None else f"{self.page.get()}-{(row.slot-1)//10+1},{(row.slot-1)%10+1}"
             extra = " / ".join("未填写" if value is None else yes if value else no for value,yes,no in
                                ((row.is_alpha,"头目","普通"),(row.has_particles,"有粒子","无粒子"),(row.is_costume,"时装","非时装")))
             status = ("已入库 · " if row.imported else "")+("已审核" if row.reviewed else "未审核")
+            if row.imported and stock_ids is not None and batch_record_id(self.session_id,self.result.capture_id,row.index) not in stock_ids:
+                status="已离库"
             self.tree.insert("","end",iid=str(row.index),values=(position,row.species or "待补全",{"M":"公","F":"母","N":"无"}.get(row.gender,"待核对"),
                              "/".join("x" if value is None else str(value) for value in row.ivs),
                              "未识别" if row.hidden_ability is None else "有蓝钻" if row.hidden_ability else "未见蓝钻",

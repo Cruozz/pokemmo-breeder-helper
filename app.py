@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.50"
+APP_VERSION = "0.2.51"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -513,6 +513,19 @@ class App(CosmeticControls):
         save_inventory(combined)
         self.inventory = combined
         self.refresh_inventory_tree()
+
+    def _refresh_bulk_inventory(self,result,previous,session_id,account,page):
+        from bulk_ocr import refresh_recognized_inventory
+        from bulk_session import BulkSessionStore
+        combined,changed,skipped=refresh_recognized_inventory(result,previous,session_id,account,page,self.inventory)
+        if changed:
+            identifiers=set(changed)
+            BulkSessionStore(data_dir()/"bulk-capture").save_repair_backup(
+                session_id,[monster.to_dict() for monster in self.inventory if monster.id in identifiers])
+            save_inventory(combined)
+            self.inventory=combined
+            self.refresh_inventory_tree()
+        return len(changed),skipped
 
     def _show_workspace_page(self, mode: str) -> None:
         pages = {
@@ -1047,7 +1060,7 @@ class App(CosmeticControls):
                 from bulk_views import BulkCaptureWorkspace
                 self.bulk_workspace = BulkCaptureWorkspace(self.root,directory=data_dir()/"bulk-capture",accounts=self.accounts,
                     get_processor=self._get_bulk_processor,inference_lock=self.ocr_inference_lock,on_import=self._import_bulk_result,
-                    get_inventory=lambda:self.inventory,on_update=self._patch_bulk_inventory)
+                    get_inventory=lambda:self.inventory,on_update=self._patch_bulk_inventory,on_refresh=self._refresh_bulk_inventory)
             if self.applied_workspace_mode!="bulk":
                 self.bulk_workspace.sync_inventory()
             self.bulk_workspace.pack(fill=BOTH,expand=True,padx=12,pady=(6,10))

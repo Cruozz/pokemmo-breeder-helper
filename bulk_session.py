@@ -53,6 +53,11 @@ class BulkSessionStore:
             raise ValueError("无效图片类型。")
         return self.directory(session_id)/(kind+".png")
 
+    def save_repair_backup(self, session_id: str, records: list[dict]) -> Path:
+        path=self.directory(session_id)/("before-recognition-repair-"+str(uuid.uuid4())+".json")
+        self._write(path,{"schema_version":1,"records":records})
+        return path
+
     def previous(self, current: str) -> dict | None:
         paths = sorted(self.root.glob("*/state.json"),key=lambda path:path.stat().st_mtime,reverse=True)
         for path in paths:
