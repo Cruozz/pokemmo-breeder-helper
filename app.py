@@ -14,7 +14,7 @@ _APP_IMPORT_STARTED = time.perf_counter()
 
 BASE_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = BASE_DIR / "vendor"
-APP_VERSION = "0.2.46"
+APP_VERSION = "0.2.47"
 APP_TITLE = "Pokemmo孵蛋助手——作者：晨若 QQ1052495869 有问题反馈哦"
 LIVE_PREVIEW_INTERVAL_MS = 300
 BATCH_SCAN_INTERVAL_MS = 350
@@ -202,6 +202,9 @@ class App(CosmeticControls):
         self.species_db = get_species_database()
         self.reference_db = get_reference_database()
         self.ocr: OCRProcessor | None = None
+        self.ocr_inference_lock = threading.Lock()
+        self.scan_method = "continuous"
+        self.bulk_workspace = None
         self.editing_monster_id: str | None = None
         self.current_candidates = []
         self.target_species_results: list[SpeciesRecord] = []
@@ -345,6 +348,8 @@ class App(CosmeticControls):
     def close(self) -> None:
         self.window_memory._remember()
         self.root.withdraw()
+        if getattr(self,"bulk_workspace",None) is not None:
+            self.bulk_workspace.shutdown()
         if getattr(self, "plan_job", None) is not None:
             self.plan_job.release(cancel=True)
             self.plan_job = None
@@ -404,6 +409,15 @@ class App(CosmeticControls):
         workspace_bar.bind("<Configure>", self._layout_workspace_nav)
         self._layout_workspace_nav()
 
+        self.scan_method_bar = ttk.Frame(self.root,style="App.TFrame")
+        self.scan_method_bar.pack(fill=X,padx=12,pady=(4,0))
+        self.continuous_method_button = ttk.Button(self.scan_method_bar,text="连续识别（逐只）",style="Primary.TButton",
+                                                   command=lambda:self._set_scan_method("continuous"))
+        self.continuous_method_button.pack(side=LEFT)
+        self.bulk_method_button = ttk.Button(self.scan_method_bar,text="批量识别（整批）",
+                                             command=lambda:self._set_scan_method("bulk"))
+        self.bulk_method_button.pack(side=LEFT,padx=(6,0))
+
         self.scan_status_frame = ttk.Frame(self.root, style="StatusBar.TFrame", padding=(8, 6))
         self.scan_status_frame.pack(fill=X, padx=12, pady=(6, 4))
         self.build_scan_status_bar(self.scan_status_frame)
@@ -450,9 +464,48 @@ class App(CosmeticControls):
         mode = mode if mode in {"inventory", "planner", "author", "live", "parallel", *PAGE_TITLES} else "scan"
         labels = {"scan": "扫描素材", "inventory": "素材库存", "planner": "孵蛋规划", "author": "作者的话", "live": "实时情报", "parallel": GUIDE_TITLE, **PAGE_TITLES}
         self.workspace_mode_var.set(labels[mode])
+        if mode != "scan" and getattr(self,"bulk_workspace",None) is not None:
+            self.bulk_workspace.pause()
         if mode == "scan":
             self.compact_scan_view = "result"
         self._schedule_responsive_layout(immediate=True)
+
+    def _set_scan_method(self, method: str) -> None:
+        method = "bulk" if method=="bulk" else "continuous"
+        if method != self.scan_method:
+            if self.batch_running:
+                self.stop_batch_scan()
+            self.live_preview_running = False
+            self._cancel_live_preview_tick()
+            if self.preview_zoom_window is not None:
+                self.preview_zoom_window.close()
+            if self.bulk_workspace is not None:
+                self.bulk_workspace.pause()
+            self.scan_method = method
+        self.continuous_method_button.configure(style="Primary.TButton" if method=="continuous" else "TButton")
+        self.bulk_method_button.configure(style="Primary.TButton" if method=="bulk" else "TButton")
+        self.layout_orientation = ""
+        self._select_workspace_mode("scan")
+
+    def _get_bulk_processor(self):
+        if self.ocr is None:
+            self.ocr = OCRProcessor(self._ocr_profile_key())
+        return self.ocr
+
+    def _import_bulk_result(self,result,session_id,account,page,indices,order_confirmed):
+        from bulk_ocr import prepare_inventory
+        combined,_identifiers = prepare_inventory(result,session_id,account,page,indices,self.inventory,order_confirmed)
+        added = len(combined)-len(self.inventory)
+        if added:
+            if account not in self.accounts:
+                updated_accounts = [*self.accounts,account]
+                save_accounts(updated_accounts)
+                self.accounts = updated_accounts
+            save_inventory(combined)
+            self.inventory = combined
+            self.refresh_inventory_tree()
+        self.status_var.set(f"批量导入完成，本次新增 {added} 只已核对素材。")
+        return added
 
     def _show_workspace_page(self, mode: str) -> None:
         pages = {
@@ -952,6 +1005,8 @@ class App(CosmeticControls):
             self._schedule_preview_redraw()
 
     def _embedded_preview_visible(self) -> bool:
+        if getattr(self,"scan_method","continuous")=="bulk":
+            return False
         if self.window_suspended or self.workspace_mode_var.get() != "扫描素材":
             return False
         if self.layout_orientation == "compact" and self.compact_scan_view != "preview":
@@ -966,6 +1021,31 @@ class App(CosmeticControls):
         desired = self._layout_for_width(width)
         density = "tight" if desired == "compact" and height < 780 else "normal"
         workspace_label = self.workspace_mode_var.get()
+        if getattr(self,"bulk_workspace",None) is not None:
+            self.bulk_workspace.pack_forget()
+        if workspace_label=="扫描素材":
+            anchor = self.scan_status_frame if self.scan_status_frame.winfo_manager() else self.main_pane if self.main_pane.winfo_manager() else None
+            options = {"before":anchor} if anchor is not None else {}
+            self.scan_method_bar.pack(fill=X,padx=12,pady=(4,0),**options)
+        else:
+            self.scan_method_bar.pack_forget()
+        if workspace_label=="扫描素材" and getattr(self,"scan_method","continuous")=="bulk":
+            self.scan_status_frame.pack_forget()
+            self.scan_controls_panel.pack_forget()
+            self.main_pane.pack_forget()
+            for workspace in (self.guide_workspace,self.live_workspace,self.parallel_workspace):
+                if workspace is not None:
+                    workspace.pack_forget()
+            if self.bulk_workspace is None:
+                from bulk_views import BulkCaptureWorkspace
+                self.bulk_workspace = BulkCaptureWorkspace(self.root,directory=data_dir()/"bulk-capture",accounts=self.accounts,
+                    get_processor=self._get_bulk_processor,inference_lock=self.ocr_inference_lock,on_import=self._import_bulk_result)
+            self.bulk_workspace.pack(fill=BOTH,expand=True,padx=12,pady=(6,10))
+            self.layout_orientation = desired
+            self.applied_workspace_mode = "bulk"
+            self.applied_layout_density = density
+            self._update_workspace_buttons("scan")
+            return
         if workspace_label == GUIDE_TITLE:
             self.scan_status_frame.pack_forget()
             self.scan_controls_panel.pack_forget()
@@ -1103,7 +1183,7 @@ class App(CosmeticControls):
         canvas.itemconfigure(self.scan_controls_window, width=width)
         wanted = max(1, self.scan_controls_content.winfo_reqheight())
         navigation = self.workspace_nav_rows[0].master.winfo_reqheight()
-        available = max(96, self.root.winfo_height()-navigation-self.scan_status_frame.winfo_reqheight()-280)
+        available = max(96, self.root.winfo_height()-navigation-self.scan_status_frame.winfo_reqheight()-self.scan_method_bar.winfo_reqheight()-280)
         height = min(wanted, available)
         if int(canvas.cget("height")) != height:
             canvas.configure(height=height)
@@ -1250,7 +1330,7 @@ class App(CosmeticControls):
         self.source_details.columnconfigure(1, weight=1)
         self.source_details.columnconfigure(2, weight=1)
 
-        batch = ttk.LabelFrame(parent, text="OCR 连续扫描", padding=(8, 6))
+        batch = ttk.LabelFrame(parent, text="连续识别（逐只）", padding=(8, 6))
         self.batch_frame = batch
         batch.pack(fill=X)
         self.batch_page_label = ttk.Label(batch, text="起始箱", style="Field.TLabel")
@@ -3800,6 +3880,8 @@ class App(CosmeticControls):
         self._start_ocr_worker(crop.copy(), image.copy(), fingerprint, self.batch_session, reason="next")
 
     def start_batch_scan(self) -> None:
+        if getattr(self,"scan_method","continuous")!="continuous":
+            self._set_scan_method("continuous")
         index = self.window_combo.current()
         if index < 0 or index >= len(self.windows):
             messagebox.showwarning("没有选择窗口", "请先刷新并选择 PokeMMO 窗口。")
@@ -3992,7 +4074,8 @@ class App(CosmeticControls):
         def worker() -> None:
             try:
                 assert self.ocr is not None
-                items = self.ocr.recognize(crop)
+                with getattr(self,"ocr_inference_lock",threading.Lock()):
+                    items = self.ocr.recognize(crop)
                 parsed = OCRProcessor.parse(items, crop)
                 self.batch_result_queue.put((session, parsed, full_image, fingerprint, "", reason))
             except Exception as exc:
@@ -4179,6 +4262,8 @@ class App(CosmeticControls):
         self._focus_helper_for_batch_action()
 
     def _handle_batch_enter(self, _event=None) -> str | None:
+        if getattr(self,"scan_method","continuous")=="bulk":
+            return None
         combo = getattr(self, "ocr_species_combo", None)
         widget = getattr(_event, "widget", None)
         if combo is not None and widget is not None and (
@@ -4345,7 +4430,7 @@ class App(CosmeticControls):
         self.page_var.set(str(page))
         self.slot_var.set(str(slot))
         if update_status:
-            self.status_var.set(f"批量位置已前进到箱 {page} / 格 {slot}。")
+            self.status_var.set(f"连续识别位置已前进到箱 {page} / 格 {slot}。")
 
     def refresh_windows(self) -> None:
         def is_helper(window: WindowInfo) -> bool:
@@ -4693,6 +4778,8 @@ class App(CosmeticControls):
         return self.current_image
 
     def ocr_current(self) -> None:
+        if getattr(self,"scan_method","continuous")=="bulk":
+            return
         try:
             image = self.image_for_ocr()
             self.ocr_confidence_var.set("OCR 置信度：识别中")
@@ -4700,7 +4787,8 @@ class App(CosmeticControls):
                 self.status_var.set("正在加载本地 OCR 模型，首次可能需要几秒……")
                 self.root.update_idletasks()
                 self.ocr = OCRProcessor(self._ocr_profile_key())
-            items = self.ocr.recognize(image)
+            with getattr(self,"ocr_inference_lock",threading.Lock()):
+                items = self.ocr.recognize(image)
             parsed = OCRProcessor.parse(items, image)
         except Exception as exc:
             messagebox.showerror("OCR 失败", str(exc))

@@ -48,6 +48,21 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Packaged name resolution cache is not active")
     checks["species_ocr"] = {"reviewed_name": "安瓢虫", "incomplete_name": "rejected-with-original-preserved",
                              "candidates": partial_name["species_candidates"], "type_context_species": 649, "cache": "ok"}
+    from bulk_ocr import BulkResult, BulkRow, combine, prepare_inventory, slot_range
+    batch_row = BulkRow(1,species="玛狃拉",level=40,warehouse_level=40,slot=8,gender="M",ivs=[31,1,2,3,4,5],hidden_ability=False)
+    batch_result = BulkResult([batch_row])
+    try:
+        prepare_inventory(batch_result,"self-test","自检",6,[1],[],True)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError("Packaged batch capture accepted unknown cosmetics")
+    mismatch = combine([BulkRow(1),BulkRow(2)],[{"slot":8,"level":40,"gender":"M"}],6,8,1)
+    if not mismatch.blockers or any(row.slot is not None for row in mismatch.rows):
+        raise RuntimeError("Packaged batch capture shifted mismatched records")
+    if slot_range(6,8,20)!=list(range(8,28)):
+        raise RuntimeError("Packaged batch position range failed")
+    checks["bulk_capture"] = {"separate_workflow":True,"unknown_fields":"blocked","count_mismatch":"unassigned","range":"6:8-27"}
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")
@@ -87,6 +102,20 @@ def run_checks() -> dict[str, object]:
         root.iconphoto(True, icon)
         root.update_idletasks()
         checks["tkinter"] = {"version": str(root.tk.call("info", "patchlevel")), "assets": "ok"}
+        import tempfile
+        import threading
+        from bulk_views import BulkCaptureWorkspace
+        with tempfile.TemporaryDirectory() as batch_directory:
+            workspace = BulkCaptureWorkspace(root,directory=Path(batch_directory),accounts=["自检"],
+                get_processor=lambda:None,inference_lock=threading.Lock(),on_import=lambda *_:0)
+            workspace.result = BulkResult([BulkRow(1)])
+            workspace._refresh(select=True)
+            workspace._save()
+            stored = workspace.store.load()
+            if len(workspace.tabs.tabs())!=2 or stored["result"]["rows"][0]["has_particles"] is not None:
+                raise RuntimeError("Packaged batch draft UI lost unknown fields")
+            workspace.shutdown();workspace.destroy()
+            checks["bulk_capture"]["draft_ui"] = "two-tabs-and-local-pending-state"
         from guide_data import SEASONS, STAT_LABELS, ev_values, get_guide_database
         from guide_views import PAGE_TITLES, QueryPage
         guide = get_guide_database()
