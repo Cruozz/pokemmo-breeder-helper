@@ -5,7 +5,7 @@ import uuid
 from PIL import Image, ImageDraw
 import pytest
 
-from bulk_ocr import BulkResult, BulkRow, combine, parse_release, prepare_inventory, patch_inventory_records, read_warehouse, slot_range, validate_roi
+from bulk_ocr import BulkResult, BulkRow, combine, next_batch_range, parse_release, prepare_inventory, patch_inventory_records, read_warehouse, slot_range, validate_roi
 from bulk_session import BulkSessionStore
 from models import Monster
 from ocr_engine import OCRItem
@@ -70,6 +70,19 @@ def test_invalid_or_cross_page_ranges_are_rejected(page,start,count):
 def test_range_can_cross_rows_but_keeps_exact_physical_slots():
     assert slot_range(6,8,20)==list(range(8,28))
     assert slot_range(6,60,1)==[60]
+
+
+@pytest.mark.parametrize("page,start,count,preferred,expected",[
+    (3,1,20,20,(3,21,20)),(3,21,20,20,(3,41,20)),(3,41,20,20,(4,1,20)),
+    (3,31,20,20,(3,51,10)),(3,51,10,20,(4,1,20)),(3,8,5,5,(3,13,5)),
+])
+def test_next_batch_follows_the_last_slot_and_clamps_at_page_end(page,start,count,preferred,expected):
+    assert next_batch_range(page,start,count,preferred)==expected
+
+
+def test_next_batch_cannot_overflow_last_page_or_accept_bad_batch_size():
+    with pytest.raises(ValueError):next_batch_range(999,41,20,20)
+    with pytest.raises(ValueError):next_batch_range(3,1,20,21)
 
 
 def test_count_or_highlight_mismatch_leaves_all_positions_unassigned():

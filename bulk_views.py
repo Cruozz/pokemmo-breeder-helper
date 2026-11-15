@@ -9,7 +9,7 @@ from tkinter import BooleanVar, StringVar, Toplevel, filedialog, messagebox, ttk
 
 from PIL import Image, ImageGrab, ImageOps, ImageTk
 
-from bulk_ocr import BulkResult, BulkRow, batch_record_id, recognize_bulk, slot_range, validate_roi
+from bulk_ocr import BulkResult, BulkRow, batch_record_id, next_batch_range, recognize_bulk, slot_range, validate_roi
 from bulk_session import BulkSessionStore
 from capture import capture_window, list_windows
 from cosmetic_views import choose_particles
@@ -40,6 +40,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.photos = {}
         self.windows = []
         self.loading = True
+        self.preferred_count = 20
         self.account = StringVar(self,value=accounts[0] if accounts else "主账号")
         self.page = StringVar(self,value="1")
         self.start = StringVar(self,value="1")
@@ -64,6 +65,7 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.loading = False
         for variable in (self.account,self.page,self.start,self.count):
             variable.trace_add("write",self._parameters_changed)
+        self.count.trace_add("write",self._count_changed)
         self.order_confirmed.trace_add("write",lambda *_:self._save())
         self.auto_import.trace_add("write",lambda *_:self._save())
         self._range()
@@ -186,11 +188,20 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.request += 1
         self._range();self._refresh();self._save()
 
+    def _count_changed(self, *_args):
+        if not self.loading:
+            try:
+                count = int(self.count.get())
+                if 1<=count<=20:self.preferred_count = count
+            except ValueError:
+                pass
+
     def _state(self):
         return {"schema_version":1,"session_id":self.session_id,
                 "parameters":{"account":self.account.get(),"page":self.page.get(),"start":self.start.get(),"count":self.count.get()},
                 "rois":self.rois,"roi_sizes":self.roi_sizes,"image_sizes":{kind:list(image.size) for kind,image in self.images.items()},
-                "result":self.result.to_dict(),"stale":self.stale,"order_confirmed":self.order_confirmed.get(),"auto_import":self.auto_import.get()}
+                "result":self.result.to_dict(),"stale":self.stale,"order_confirmed":self.order_confirmed.get(),"auto_import":self.auto_import.get(),
+                "preferred_count":self.preferred_count}
 
     def _save(self):
         if self.loading:
@@ -205,6 +216,8 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.session_id = state["session_id"]
         for name,variable in (("account",self.account),("page",self.page),("start",self.start),("count",self.count)):
             variable.set(str(state["parameters"][name]))
+        self.preferred_count = int(state.get("preferred_count",state["parameters"]["count"]))
+        if not 1<=self.preferred_count<=20:self.preferred_count = 20
         self.rois = dict(state.get("rois",{}))
         self.roi_sizes = dict(state.get("roi_sizes",state.get("image_sizes",{})))
         self.result = BulkResult.from_dict(state.get("result",{}))
@@ -522,8 +535,22 @@ class BulkCaptureWorkspace(ttk.Frame):
     def new_batch(self):
         if self.busy:
             return
+        if not self.result.rows and not self.images:
+            self.status.set("当前已经是空批次，请载入本批截图；位置未前进，上批资料仍可恢复。")
+            return
+        following = None
+        if self.result.rows and not self.stale and not self.result.blockers and all(row.imported for row in self.result.rows):
+            try:
+                page,start,count = int(self.page.get()),int(self.start.get()),int(self.count.get())
+                if [row.slot for row in self.result.rows]==slot_range(page,start,count):
+                    following = next_batch_range(page,start,count,self.preferred_count)
+            except ValueError as error:
+                self.status.set("未切换批次："+str(error))
+                return
         self._save()
         self.loading = True
+        if following:
+            self.page.set(str(following[0]));self.start.set(str(following[1]));self.count.set(str(following[2]))
         self.session_id = str(uuid.uuid4())
         self.images = {}
         self.result = BulkResult()
@@ -532,9 +559,10 @@ class BulkCaptureWorkspace(ttk.Frame):
         self.loading = False
         for kind in self.source_text:
             self._thumbnail(kind)
-        self._refresh();self._save()
+        self._range();self._refresh();self._save()
         self.tabs.select(self.input_page)
-        self.status.set("新批次已开始，上批草稿保留，可点击“恢复上批”找回。")
+        self.status.set((f"已接续到第 {following[0]} 页第 {following[1]} 格，共 {following[2]} 只；" if following else "新批次已开始，位置未前进；")
+                        +"上批资料保留，可点击“恢复上批”找回。")
 
     def restore_previous(self):
         if self.busy:

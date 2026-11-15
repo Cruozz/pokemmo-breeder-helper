@@ -127,6 +127,17 @@ def slot_range(page: int, start: int, count: int) -> list[int]:
     return list(range(start,start+count))
 
 
+def next_batch_range(page: int, start: int, count: int, preferred_count: int) -> tuple[int,int,int]:
+    previous = slot_range(page,start,count)
+    if type(preferred_count) is not int or not 1<=preferred_count<=20:
+        raise ValueError("每批数量需为 1～20 只。")
+    next_page = page + (previous[-1]//60)
+    next_start = previous[-1]%60+1
+    next_count = min(preferred_count,61-next_start)
+    slot_range(next_page,next_start,next_count)
+    return next_page,next_start,next_count
+
+
 def validate_roi(image: Any, bounds: tuple | list) -> tuple[int,int,int,int]:
     if len(bounds) != 4:
         raise ValueError("请先框选识别范围。")
@@ -225,6 +236,7 @@ def selected_slots(image: Any) -> list[int]:
 
 def read_warehouse(image: Any, processor: OCRProcessor, slots: list[int]) -> list[dict]:
     from PIL import Image,ImageOps
+    from warehouse_vision import classify_alpha_icon
     if image.width < 200 or image.height < 120:
         raise ValueError("仓库网格图片太小，请框选完整的 10 列、6 行网格。")
     width,height = image.width/10,image.height/6
@@ -240,7 +252,8 @@ def read_warehouse(image: Any, processor: OCRProcessor, slots: list[int]) -> lis
         level_crop = image.crop((round(x+width*.46),round(y+height*.53),round(x+width*.94),round(y+height*.94)))
         level_crop = ImageOps.contain(level_crop.resize((level_crop.width*3,level_crop.height*3),Image.Resampling.LANCZOS),(112,80),Image.Resampling.LANCZOS)
         sheet.paste(level_crop,(index%columns*tile_w+10,index//columns*tile_h+10))
-        cells.append({"slot":slot,"gender":gender,"level":None,"readings":[]})
+        tile = image.crop((round(x),round(y),round(x+width),round(y+height)))
+        cells.append({"slot":slot,"gender":gender,"level":None,"is_alpha":classify_alpha_icon(tile),"readings":[]})
     for item in processor.recognize(sheet):
         x = (OCRProcessor._left(item.box)+OCRProcessor._right(item.box))/2
         index = int(OCRProcessor._center_y(item.box)//tile_h)*columns+int(x//tile_w)
@@ -270,6 +283,7 @@ def combine(rows: list[BulkRow], cells: list[dict], page: int, start: int, count
     database = get_species_database()
     for row,cell in zip(rows,cells):
         row.slot,row.gender,row.warehouse_level = cell["slot"],cell["gender"],cell["level"]
+        row.is_alpha = cell.get("is_alpha",row.is_alpha)
         record = database.get(row.species)
         if not row.gender and record and record.allowed_genders == ("N",) and row.level==cell["level"]:
             row.gender = "N"

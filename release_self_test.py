@@ -48,7 +48,7 @@ def run_checks() -> dict[str, object]:
         raise RuntimeError("Packaged name resolution cache is not active")
     checks["species_ocr"] = {"reviewed_name": "安瓢虫", "incomplete_name": "rejected-with-original-preserved",
                              "candidates": partial_name["species_candidates"], "type_context_species": 649, "cache": "ok"}
-    from bulk_ocr import BulkResult, BulkRow, combine, prepare_inventory, slot_range
+    from bulk_ocr import BulkResult, BulkRow, combine, next_batch_range, prepare_inventory, slot_range
     batch_row = BulkRow(1,species="玛狃拉",level=40,warehouse_level=40,slot=8,gender="M",ivs=[31,1,2,3,4,5],hidden_ability=False)
     batch_result = BulkResult([batch_row])
     batch_inventory,batch_ids = prepare_inventory(batch_result,"self-test","自检",6,[1],[],False)
@@ -64,6 +64,17 @@ def run_checks() -> dict[str, object]:
     if slot_range(6,8,20)!=list(range(8,28)):
         raise RuntimeError("Packaged batch position range failed")
     checks["bulk_capture"] = {"separate_workflow":True,"unknown_fields":"saved-unreviewed-and-usable","replay":"idempotent","count_mismatch":"unassigned","range":"6:8-27"}
+    if next_batch_range(3,1,20,20)!=(3,21,20) or next_batch_range(3,51,10,20)!=(4,1,20):
+        raise RuntimeError("Packaged batch continuation failed")
+    from warehouse_vision import classify_alpha_icon
+    thumbnail = Image.new("RGB",(80,68),(47,50,53))
+    ImageDraw.Draw(thumbnail).ellipse((30,14,60,44),fill=(90,170,95),outline=(191,20,29),width=2)
+    if classify_alpha_icon(thumbnail) is not True:
+        raise RuntimeError("Packaged Alpha thumbnail contour failed")
+    ImageDraw.Draw(thumbnail).ellipse((30,14,60,44),fill=(191,20,29))
+    if classify_alpha_icon(thumbnail) is True:
+        raise RuntimeError("Packaged Alpha detector accepted a red body")
+    checks["bulk_capture"].update(continuation="next-slot-and-next-page",alpha_icon="outline-required-red-body-excluded")
     catalog = particle_catalog()
     if len(catalog) != 42 or sum(not item["intrinsic"] for item in catalog) != 40:
         raise RuntimeError("Bundled particle catalogue is incomplete")
@@ -115,6 +126,12 @@ def run_checks() -> dict[str, object]:
             stored = workspace.store.load()
             if len(workspace.tabs.tabs())!=2 or not workspace.auto_import.get() or stored["result"]["rows"][0]["has_particles"] is not None:
                 raise RuntimeError("Packaged batch draft UI lost unknown fields")
+            workspace.page.set("3");workspace.start.set("1");workspace.count.set("20")
+            workspace.result = BulkResult([BulkRow(i+1,slot=i+1,imported=True) for i in range(20)])
+            workspace.stale = False
+            workspace.new_batch()
+            if (workspace.page.get(),workspace.start.get(),workspace.count.get())!=("3","21","20"):
+                raise RuntimeError("Packaged new-batch UI did not advance")
             workspace.shutdown();workspace.destroy()
             checks["bulk_capture"]["draft_ui"] = "two-tabs-and-local-pending-state"
         from guide_data import SEASONS, STAT_LABELS, ev_values, get_guide_database

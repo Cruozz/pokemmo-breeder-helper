@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import threading
@@ -154,6 +155,49 @@ class BulkWorkspaceTests(unittest.TestCase):
         self.assertIsNone(restored.result.rows[0].nature)
         self.assertFalse(restored.result.rows[0].reviewed)
         self.assertEqual(restored.images["warehouse"].size,(800,400))
+
+    def test_completed_batches_advance_twenty_slots_then_to_the_next_page(self):
+        bulk=self.bulk()
+        bulk.page.set("3");bulk.start.set("1");bulk.count.set("20")
+        first_session=bulk.session_id
+        for start,expected in ((1,("3","21","20")),(21,("3","41","20")),(41,("4","1","20"))):
+            bulk.result=BulkResult([replace(ready_row(),index=i+1,slot=start+i,reviewed=False) for i in range(20)])
+            bulk.stale=False;bulk._refresh(select=True);bulk.import_selected()
+            self.assertTrue(all(row.imported for row in bulk.result.rows))
+            bulk.new_batch()
+            self.assertEqual((bulk.page.get(),bulk.start.get(),bulk.count.get()),expected)
+            self.assertEqual(bulk.preferred_count,20)
+        self.assertEqual(len(load_inventory()),60)
+        self.assertNotEqual(bulk.session_id,first_session)
+        empty_session=bulk.session_id
+        bulk.new_batch()
+        self.assertEqual(bulk.session_id,empty_session)
+        bulk.restore_previous()
+        self.assertEqual((bulk.page.get(),bulk.start.get(),bulk.count.get()),("3","41","20"))
+        self.assertTrue(all(row.imported for row in bulk.result.rows))
+
+    def test_short_last_batch_remembers_twenty_after_restore_and_page_change(self):
+        bulk=self.bulk()
+        bulk.page.set("3");bulk.start.set("31");bulk.count.set("20")
+        bulk.result=BulkResult([replace(ready_row(),index=i+1,slot=31+i,imported=True) for i in range(20)])
+        bulk.stale=False;bulk.new_batch()
+        self.assertEqual((bulk.page.get(),bulk.start.get(),bulk.count.get()),("3","51","10"))
+        bulk.shutdown();bulk.destroy();self.app.bulk_workspace=None
+        restored=self.bulk()
+        self.assertEqual(restored.preferred_count,20)
+        restored.result=BulkResult([replace(ready_row(),index=i+1,slot=51+i,imported=True) for i in range(10)])
+        restored.stale=False;restored.new_batch()
+        self.assertEqual((restored.page.get(),restored.start.get(),restored.count.get()),("4","1","20"))
+
+    def test_new_batch_does_not_skip_unsaved_partial_invalid_or_stale_results(self):
+        bulk=self.bulk()
+        bulk.page.set("3");bulk.start.set("1");bulk.count.set("2")
+        for imported,stale,blockers in (((False,False),False,[]),((True,False),False,[]),((True,True),True,[]),((True,True),False,["数量不符"])):
+            bulk.result=BulkResult([replace(ready_row(),index=i+1,slot=i+1,imported=imported[i]) for i in range(2)],blockers)
+            bulk.stale=stale;bulk.new_batch()
+            self.assertEqual((bulk.page.get(),bulk.start.get()),("3","1"))
+        bulk.new_batch()
+        self.assertEqual(bulk.start.get(),"1")
 
     def test_empty_scan_can_be_saved_and_edited_in_inventory_without_filling_anything(self):
         bulk=self.bulk()
